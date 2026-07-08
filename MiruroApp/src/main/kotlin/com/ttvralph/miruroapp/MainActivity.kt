@@ -3,6 +3,8 @@ package com.ttvralph.miruroapp
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Bundle
 import android.text.TextUtils
 import android.view.Gravity
@@ -22,7 +24,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var root: LinearLayout
     private var screen = Screen.HOME
 
-    private enum class Screen { HOME, SEARCH, FAVORITES, SETTINGS, DETAILS }
+    private enum class Screen { HOME, SEARCH, FAVORITES, SETTINGS, DETAILS, PLAYER }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,7 +82,7 @@ class MainActivity : ComponentActivity() {
 
     private fun showSettings() {
         screen = Screen.SETTINGS; root.removeAllViews(); header("Settings")
-        state("Miruro Anime is a standalone Android TV metadata app using public AniList APIs. No Cloudstream dependency, playback, source extraction, or account login is included.")
+        state("Miruro Anime uses AniList for browsing and Miruro-backed HLS/DASH sources for episode playback. If a provider is missing, playback automatically tries equivalent episodes from other providers.")
     }
 
     private fun showDetails(id: Int) {
@@ -109,7 +111,27 @@ class MainActivity : ComponentActivity() {
     private fun animeRow(label: String, items: List<AnimeItem>) { title(label); HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; items.forEach { addView(animeCard(it), LinearLayout.LayoutParams(dp(190), dp(330)).apply { rightMargin = dp(18) }) } }); root.addView(this) } }
     private fun animeCard(item: AnimeItem) = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; isFocusable = true; background = rounded(CARD, dp(18), 0, 0); setPadding(dp(8),dp(8),dp(8),dp(8)); addView(poster(item.posterUrl), LinearLayout.LayoutParams(-1, dp(250))); addView(text(item.title, 16f, Color.WHITE, true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }); addView(text("${item.year ?: ""} ${item.type}", 13f, SUBTLE, false)); setOnClickListener { showDetails(item.id) }; focusFx() }
     private fun searchResult(item: AnimeItem) = root.addView(LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; isFocusable = true; background = rounded(CARD, dp(16), 0, 0); setPadding(dp(10),dp(10),dp(18),dp(10)); addView(poster(item.posterUrl), LinearLayout.LayoutParams(dp(96), dp(138)).apply { rightMargin=dp(18) }); addView(LinearLayout(context).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER_VERTICAL; addView(text(item.title, 22f, Color.WHITE, true)); addView(text("${item.year ?: ""} • ${item.type}", 16f, SUBTLE, false)) }, LinearLayout.LayoutParams(0,-1,1f)); setOnClickListener { showDetails(item.id) }; focusFx() }, LinearLayout.LayoutParams(-1, dp(162)).apply { setMargins(0,0,0,dp(14)) })
-    private fun seasonBlock(season: AnimeSeason) { title("Season ${season.seasonNumber}: ${season.title}"); LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; AudioType.values().forEach { addView(tvButton(it.name) {}, LinearLayout.LayoutParams(dp(120), dp(48)).apply { rightMargin = dp(10) }) }; root.addView(this) }; if (season.episodes.isEmpty()) state("No episodes available") else season.episodes.forEach { ep -> navButton("${ep.episodeNumber}. ${ep.title ?: "Episode ${ep.episodeNumber}"}", listOfNotNull(ep.runtimeMinutes?.let { "${it}m" }, ep.releaseDate).joinToString(" • ")) {} } }
+    private fun seasonBlock(season: AnimeSeason) { title("Season ${season.seasonNumber}: ${season.title}"); LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; AudioType.values().forEach { addView(tvButton(it.name) {}, LinearLayout.LayoutParams(dp(120), dp(48)).apply { rightMargin = dp(10) }) }; root.addView(this) }; if (season.episodes.isEmpty()) state("No episodes available") else season.episodes.groupBy { it.audioType }.forEach { (audio, episodes) -> title(audio.name); episodes.forEach { ep -> navButton("${ep.episodeNumber}. ${ep.title ?: "Episode ${ep.episodeNumber}"}", listOfNotNull(ep.runtimeMinutes?.let { "${it}m" }, ep.releaseDate, ep.playback?.provider?.uppercase()).joinToString(" • ")) { playEpisode(ep) } } } }
+
+    private fun playEpisode(ep: AnimeEpisode) {
+        val playback = ep.playback ?: return Toast.makeText(this, "Episode source missing", Toast.LENGTH_LONG).show()
+        screen = Screen.PLAYER; root.removeAllViews(); header("Details"); state("Loading stream for episode ${ep.episodeNumber}…")
+        lifecycleScope.launch {
+            val source = runCatching { repo.playableStream(playback) }.getOrNull()
+            root.removeAllViews()
+            if (source == null) { header("Details"); state("No playable stream found for episode ${ep.episodeNumber}"); return@launch }
+            val video = VideoView(this@MainActivity).apply {
+                val headers = source.referer?.let { mapOf("Referer" to it, "Origin" to "https://www.miruro.to") }
+                if (headers == null) setVideoURI(Uri.parse(source.url)) else setVideoURI(Uri.parse(source.url), headers)
+                setOnPreparedListener { player: MediaPlayer -> player.start() }
+                setOnErrorListener { _, _, _ -> Toast.makeText(this@MainActivity, "Playback failed", Toast.LENGTH_LONG).show(); true }
+                setMediaController(MediaController(this@MainActivity).also { it.setAnchorView(this) })
+                requestFocus()
+            }
+            root.addView(video, LinearLayout.LayoutParams(-1, dp(520)))
+            root.addView(text("Playing ${ep.title ?: "Episode ${ep.episodeNumber}"} • ${source.label}", 18f, TEXT, false))
+        }
+    }
     private fun navButton(a:String,b:String,click:()->Unit)=root.addView(tvButton("$a\n$b", click), LinearLayout.LayoutParams(-1, dp(68)).apply{bottomMargin=dp(10)})
     private fun poster(url: String?) = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; background = rounded(0xff20283a.toInt(), dp(14), 0, 0); load(url) }
     private fun title(s:String)=root.addView(text(s, if(s=="Miruro Anime") 36f else 24f, Color.WHITE, true).apply{setPadding(0,dp(18),0,dp(10))})

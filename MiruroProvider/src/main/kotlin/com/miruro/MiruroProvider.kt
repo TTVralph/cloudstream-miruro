@@ -36,7 +36,7 @@ import java.util.TimeZone
 import java.util.zip.GZIPInputStream
 
 class MiruroProvider : MainAPI() {
-    override var mainUrl = "https://www.miruro.tv"
+    override var mainUrl = "https://www.miruro.to"
     override var name = "Miruro"
     override var lang = "en"
 
@@ -59,8 +59,8 @@ class MiruroProvider : MainAPI() {
 
     private val mapper = jacksonObjectMapper()
     private val anilistUrl = "https://graphql.anilist.co"
-    private val pipeUrl = "$mainUrl/api/secure/pipe"
-    private val providerPriority = listOf("zoro", "animepahe", "gogoanime", "kiwi")
+    private val pipeHosts = listOf("https://www.miruro.to", "https://www.miruro.tv", "https://www.miruro.bz", "https://www.miruro.ru")
+    private val providerPriority = listOf("kiwi", "pewe", "bee", "bonk", "bun", "ally", "nun", "twin", "cog", "moo", "hop", "telli")
     private val requestHeaders = mapOf(
         "Accept" to "application/json, text/plain, */*",
         "Accept-Language" to "en-US,en;q=0.9",
@@ -263,6 +263,25 @@ class MiruroProvider : MainAPI() {
         return mapper.readTree(json).path("data")
     }
 
+
+    private suspend fun pipeRequest(payload: JsonNode): JsonNode {
+        val encoded = encodePipeRequest(payload)
+        var lastError: Throwable? = null
+        pipeHosts.forEach { host ->
+            val headers = requestHeaders + mapOf(
+                "Origin" to host,
+                "Referer" to "$host/"
+            )
+            val result = runCatching {
+                val response = app.get("$host/api/secure/pipe?e=${encodeUrl(encoded)}", headers = headers).text.trim()
+                decodePipeResponse(response)
+            }
+            result.getOrNull()?.let { return it }
+            lastError = result.exceptionOrNull()
+        }
+        throw lastError ?: IllegalStateException("Miruro pipe request failed")
+    }
+
     private suspend fun fetchRawEpisodes(anilistId: Int): JsonNode {
         val payload = mapper.createObjectNode().apply {
             put("path", "episodes")
@@ -271,9 +290,7 @@ class MiruroProvider : MainAPI() {
             putNull("body")
             put("version", "0.1.0")
         }
-        val encoded = encodePipeRequest(payload)
-        val response = app.get("$pipeUrl?e=${encodeUrl(encoded)}", headers = requestHeaders).text.trim()
-        return decodePipeResponse(response)
+        return pipeRequest(payload)
     }
 
     private suspend fun resolveSourceEpisodeId(
@@ -310,13 +327,23 @@ class MiruroProvider : MainAPI() {
             putNull("body")
             put("version", "0.1.0")
         }
-        val encoded = encodePipeRequest(payload)
-        val response = app.get("$pipeUrl?e=${encodeUrl(encoded)}", headers = requestHeaders).text.trim()
-        return decodePipeResponse(response)
+        return pipeRequest(payload)
+    }
+
+    private fun isPlayableStream(node: JsonNode): Boolean {
+        val url = streamUrl(node) ?: return false
+        val type = streamType(node)?.lowercase(Locale.ROOT)
+        return type in setOf("hls", "m3u8", "dash", "mpd") || url.contains(".m3u8") || url.contains(".mpd")
+    }
+
+    private fun streamReferer(node: JsonNode): String {
+        return firstText(node, "referer", "referrer")
+            ?: node.path("source").takeIf { it.isObject }?.let { firstText(it, "referer", "referrer") }
+            ?: "$mainUrl/"
     }
 
     private fun hasPlayableStreams(node: JsonNode): Boolean {
-        return findFirstArray(node, "streams", "sources")?.any { streamUrl(it) != null } == true
+        return findFirstArray(node, "streams", "sources")?.any { isPlayableStream(it) } == true
     }
 
     private suspend fun fetchSources(
@@ -960,10 +987,12 @@ class MiruroProvider : MainAPI() {
                 }
 
                 findFirstArray(sources, "streams", "sources")?.forEach { stream ->
+                    if (!isPlayableStream(stream)) return@forEach
                     val url = streamUrl(stream) ?: return@forEach
                     if (!streamUrls.add(url)) return@forEach
                     val qualityLabel = streamQuality(stream)
                     val streamType = streamType(stream)?.lowercase(Locale.ROOT)
+                    val referer = streamReferer(stream)
                     callback(
                         newExtractorLink(
                             source = name,
@@ -971,10 +1000,10 @@ class MiruroProvider : MainAPI() {
                             url = url,
                             type = if (streamType == "dash" || streamType == "mpd") ExtractorLinkType.DASH else ExtractorLinkType.M3U8
                         ) {
-                            referer = mainUrl
+                            referer = referer
                             quality = getQualityFromName(qualityLabel).takeIf { it != Qualities.Unknown.value }
                                 ?: Qualities.Unknown.value
-                            headers = mapOf("Referer" to "$mainUrl/", "Origin" to mainUrl)
+                            headers = mapOf("Referer" to referer, "Origin" to mainUrl)
                         }
                     )
                     found = true
