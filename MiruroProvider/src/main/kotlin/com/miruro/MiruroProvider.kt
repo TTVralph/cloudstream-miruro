@@ -47,12 +47,10 @@ class MiruroProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "TRENDING_DESC" to "Trending Now",
-        "POPULARITY_DESC|CURRENT|TV,TV_SHORT,ONA" to "Airing This Season",
-        "SCORE_DESC|CURRENT|TV,TV_SHORT,ONA" to "Best Airing Anime",
-        "POPULARITY_DESC|MOVIE" to "Popular Anime Movies",
-        "SCORE_DESC|COMPLETED|TV,TV_SHORT,ONA,OVA,SPECIAL" to "All-Time Favorites",
-        "POPULARITY_DESC|Action,Adventure" to "Action & Adventure",
-        "POPULARITY_DESC|Comedy,Slice of Life" to "Easy Watching"
+        "POPULARITY_DESC|CURRENT|TV,TV_SHORT,ONA" to "Currently Airing",
+        "POPULARITY_DESC|SEASON|TV,TV_SHORT,ONA" to "Popular This Season",
+        "SCORE_DESC|COMPLETED|TV,TV_SHORT,ONA,OVA,SPECIAL" to "Top Rated Anime",
+        "POPULARITY_DESC|MOVIE" to "Anime Movies"
     )
     override val hasDownloadSupport = false
 
@@ -380,6 +378,14 @@ class MiruroProvider : MainAPI() {
         return if (value > 300) ((value + 59) / 60) else value
     }
 
+    private fun availabilityLine(subCount: Int, dubCount: Int): String? {
+        return when {
+            subCount > 0 && dubCount > 0 -> "Sub: $subCount episodes • Dub: $dubCount episodes"
+            subCount > 0 -> "Sub only • $subCount episodes"
+            dubCount > 0 -> "Dub only • $dubCount episodes"
+            else -> null
+        }
+    }
 
     private fun mediaSearchResponse(item: JsonNode): SearchResponse? {
         val id = item.path("id").asInt(0).takeIf { it > 0 } ?: return null
@@ -427,6 +433,11 @@ class MiruroProvider : MainAPI() {
                 variables["season"] = season
                 variables["seasonYear"] = year
                 variables["status"] = "RELEASING"
+                variables["genreIn"] = null
+            }
+            "SEASON" -> {
+                variables["season"] = season
+                variables["seasonYear"] = year
                 variables["genreIn"] = null
             }
             "UPCOMING" -> {
@@ -486,6 +497,10 @@ class MiruroProvider : MainAPI() {
                 variables["season"] = season
                 variables["seasonYear"] = year
                 variables["status"] = "RELEASING"
+            }
+            "SEASON" -> {
+                variables["season"] = season
+                variables["seasonYear"] = year
             }
             "UPCOMING" -> {
                 variables["status"] = "NOT_YET_RELEASED"
@@ -609,8 +624,15 @@ class MiruroProvider : MainAPI() {
                 providers.fields().forEach { providerEntry ->
                     val provider = providerEntry.key
                     val episodes = providerEntry.value.path("episodes")
-                    listOf("sub" to DubStatus.Subbed, "dub" to DubStatus.Dubbed).forEach { (category, dubStatus) ->
-                        val list = episodes.path(category)
+                    val categorizedLists = if (episodes.isArray) {
+                        listOf(Triple("sub", DubStatus.Subbed, episodes))
+                    } else {
+                        listOfNotNull(
+                            episodes.path("sub").takeIf { it.isArray }?.let { Triple("sub", DubStatus.Subbed, it) },
+                            episodes.path("dub").takeIf { it.isArray }?.let { Triple("dub", DubStatus.Dubbed, it) }
+                        )
+                    }
+                    categorizedLists.forEach { (category, dubStatus, list) ->
                         if (list.isArray) {
                             val bucket = episodeMap.getOrPut(dubStatus) { mutableListOf() }
                             list.forEach { ep ->
@@ -643,10 +665,22 @@ class MiruroProvider : MainAPI() {
                 }
             }
 
+            val normalizedEpisodes = mutableMapOf<DubStatus, List<Episode>>().apply {
+                episodeMap.forEach { (dubStatus, episodeList) ->
+                    this[dubStatus] = episodeList.distinctBy { it.data }.sortedBy { it.episode }
+                }
+            }
+            val availability = availabilityLine(
+                normalizedEpisodes[DubStatus.Subbed].orEmpty().mapNotNull { it.episode }.distinct().size,
+                normalizedEpisodes[DubStatus.Dubbed].orEmpty().mapNotNull { it.episode }.distinct().size
+            )
+            val plotWithAvailability = listOfNotNull(availability, enrichedDescription.ifBlank { description })
+                .joinToString("\n\n")
+
             if (type == TvType.AnimeMovie && episodeMap.isEmpty()) {
                 return newMovieLoadResponse(title, url, type, "kiwi|$anilistId|sub|1|movie-1") {
                     posterUrl = poster
-                    plot = enrichedDescription.ifBlank { description }
+                    plot = plotWithAvailability
                 }
             }
 
@@ -660,14 +694,22 @@ class MiruroProvider : MainAPI() {
                 }.toMutableList()
             }
 
+            val finalEpisodes = mutableMapOf<DubStatus, List<Episode>>().apply {
+                episodeMap.forEach { (dubStatus, episodeList) ->
+                    this[dubStatus] = episodeList.distinctBy { it.data }.sortedBy { it.episode }
+                }
+            }
+            val finalAvailability = availabilityLine(
+                finalEpisodes[DubStatus.Subbed].orEmpty().mapNotNull { it.episode }.distinct().size,
+                finalEpisodes[DubStatus.Dubbed].orEmpty().mapNotNull { it.episode }.distinct().size
+            )
+            val finalPlot = listOfNotNull(finalAvailability, enrichedDescription.ifBlank { description })
+                .joinToString("\n\n")
+
             newAnimeLoadResponse(title, url, type) {
                 posterUrl = poster
-                plot = enrichedDescription.ifBlank { description }
-                episodes = mutableMapOf<DubStatus, List<Episode>>().apply {
-                    episodeMap.forEach { (dubStatus, episodeList) ->
-                        this[dubStatus] = episodeList.distinctBy { it.data }.sortedBy { it.episode }
-                    }
-                }
+                plot = finalPlot
+                episodes = finalEpisodes
             }
         } catch (_: Exception) {
             null
