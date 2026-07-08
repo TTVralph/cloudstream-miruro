@@ -17,7 +17,9 @@ import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.nicehttp.JsonAsString
 import java.io.ByteArrayInputStream
@@ -281,8 +283,10 @@ class MiruroProvider : MainAPI() {
             newAnimeLoadResponse(title, url, type) {
                 posterUrl = poster
                 plot = description
-                episodes = episodeMap.mapValues { (_, episodeList) ->
-                    episodeList.distinctBy { it.data }.sortedBy { it.episode }
+                episodes = mutableMapOf<DubStatus, List<Episode>>().apply {
+                    episodeMap.forEach { (dubStatus, episodeList) ->
+                        this[dubStatus] = episodeList.distinctBy { it.data }.sortedBy { it.episode }
+                    }
                 }
             }
         } catch (_: Exception) {
@@ -317,16 +321,17 @@ class MiruroProvider : MainAPI() {
                 val qualityLabel = textOrNull(stream.get("quality")) ?: "Auto"
                 val streamType = textOrNull(stream.get("type"))?.lowercase(Locale.ROOT)
                 callback(
-                    ExtractorLink(
+                    newExtractorLink(
                         source = name,
                         name = "$name ${provider.uppercase(Locale.ROOT)} $qualityLabel",
                         url = url,
-                        referer = mainUrl,
+                        type = if (streamType == "dash") ExtractorLinkType.DASH else ExtractorLinkType.M3U8
+                    ) {
+                        referer = mainUrl
                         quality = getQualityFromName(qualityLabel).takeIf { it != Qualities.Unknown.value }
-                            ?: Qualities.Unknown.value,
-                        isM3u8 = streamType != "dash",
+                            ?: Qualities.Unknown.value
                         headers = mapOf("Referer" to "$mainUrl/", "Origin" to mainUrl)
-                    )
+                    }
                 )
                 found = true
             }
