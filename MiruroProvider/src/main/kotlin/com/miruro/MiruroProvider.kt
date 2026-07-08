@@ -464,9 +464,66 @@ class MiruroProvider : MainAPI() {
             ?: emptyList()
     }
 
+    private suspend fun fallbackAniListMediaPage(data: String, page: Int, perPage: Int): List<SearchResponse> {
+        val parts = data.split("|")
+        val sort = parts.firstOrNull()?.takeIf { it.isNotBlank() } ?: "TRENDING_DESC"
+        val filter = parts.getOrNull(1)
+        val (season, year) = currentAniListSeason()
+        val variables = mutableMapOf<String, Any?>(
+            "page" to page,
+            "perPage" to perPage,
+            "sort" to listOf(sort),
+            "season" to null,
+            "seasonYear" to null,
+            "status" to null
+        )
+
+        when (filter) {
+            "CURRENT" -> {
+                variables["season"] = season
+                variables["seasonYear"] = year
+            }
+            "UPCOMING" -> variables["status"] = "NOT_YET_RELEASED"
+            "COMPLETED" -> variables["status"] = "FINISHED"
+        }
+
+        val gql = """
+            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus) {
+                Page(page: ${'$'}page, perPage: ${'$'}perPage) {
+                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, isAdult: false) {
+                        id
+                        title { romaji english native }
+                        coverImage { large extraLarge }
+                        format
+                    }
+                }
+            }
+        """.trimIndent()
+        return anilistQuery(gql, variables)
+            .path("Page")
+            .path("media")
+            .takeIf { it.isArray }
+            ?.mapNotNull { mediaSearchResponse(it) }
+            ?.distinctBy { it.url }
+            ?: emptyList()
+    }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val results = anilistMediaPage(request.data, page, 18)
-        return newHomePageResponse(request.name, results, hasNext = results.size >= 18)
+        val results = runCatching { anilistMediaPage(request.data, page, 18) }
+            .getOrDefault(emptyList())
+            .ifEmpty {
+                runCatching { fallbackAniListMediaPage(request.data, page, 24) }
+                    .getOrDefault(emptyList())
+            }
+            .ifEmpty {
+                if (request.data == "TRENDING_DESC") {
+                    emptyList()
+                } else {
+                    runCatching { fallbackAniListMediaPage("TRENDING_DESC", page, 24) }
+                        .getOrDefault(emptyList())
+                }
+            }
+        return newHomePageResponse(request.name, results, hasNext = results.isNotEmpty())
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
