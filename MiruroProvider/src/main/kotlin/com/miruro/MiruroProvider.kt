@@ -51,7 +51,6 @@ class MiruroProvider : MainAPI() {
         "SCORE_DESC|CURRENT|TV,TV_SHORT,ONA" to "Best Airing Anime",
         "POPULARITY_DESC|MOVIE" to "Popular Anime Movies",
         "SCORE_DESC|COMPLETED|TV,TV_SHORT,ONA,OVA,SPECIAL" to "All-Time Favorites",
-        "POPULARITY_DESC|UPCOMING|TV,TV_SHORT,ONA,MOVIE" to "Coming Soon",
         "POPULARITY_DESC|Action,Adventure" to "Action & Adventure",
         "POPULARITY_DESC|Comedy,Slice of Life" to "Easy Watching"
     )
@@ -417,6 +416,7 @@ class MiruroProvider : MainAPI() {
             "season" to null,
             "seasonYear" to null,
             "status" to null,
+            "statusNot" to "NOT_YET_RELEASED",
             "format" to null,
             "formatIn" to formats,
             "genreIn" to genres
@@ -426,10 +426,12 @@ class MiruroProvider : MainAPI() {
             "CURRENT" -> {
                 variables["season"] = season
                 variables["seasonYear"] = year
+                variables["status"] = "RELEASING"
                 variables["genreIn"] = null
             }
             "UPCOMING" -> {
                 variables["status"] = "NOT_YET_RELEASED"
+                variables["statusNot"] = null
                 variables["genreIn"] = null
             }
             "COMPLETED" -> {
@@ -444,9 +446,9 @@ class MiruroProvider : MainAPI() {
         }
 
         val gql = """
-            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus, ${'$'}format: MediaFormat, ${'$'}formatIn: [MediaFormat], ${'$'}genreIn: [String]) {
+            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus, ${'$'}statusNot: MediaStatus, ${'$'}format: MediaFormat, ${'$'}formatIn: [MediaFormat], ${'$'}genreIn: [String]) {
                 Page(page: ${'$'}page, perPage: ${'$'}perPage) {
-                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, format: ${'$'}format, format_in: ${'$'}formatIn, genre_in: ${'$'}genreIn, isAdult: false) {
+                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, status_not: ${'$'}statusNot, format: ${'$'}format, format_in: ${'$'}formatIn, genre_in: ${'$'}genreIn, isAdult: false) {
                         id
                         title { romaji english native }
                         coverImage { large extraLarge }
@@ -475,22 +477,27 @@ class MiruroProvider : MainAPI() {
             "sort" to listOf(sort),
             "season" to null,
             "seasonYear" to null,
-            "status" to null
+            "status" to null,
+            "statusNot" to "NOT_YET_RELEASED"
         )
 
         when (filter) {
             "CURRENT" -> {
                 variables["season"] = season
                 variables["seasonYear"] = year
+                variables["status"] = "RELEASING"
             }
-            "UPCOMING" -> variables["status"] = "NOT_YET_RELEASED"
+            "UPCOMING" -> {
+                variables["status"] = "NOT_YET_RELEASED"
+                variables["statusNot"] = null
+            }
             "COMPLETED" -> variables["status"] = "FINISHED"
         }
 
         val gql = """
-            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus) {
+            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus, ${'$'}statusNot: MediaStatus) {
                 Page(page: ${'$'}page, perPage: ${'$'}perPage) {
-                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, isAdult: false) {
+                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, status_not: ${'$'}statusNot, isAdult: false) {
                         id
                         title { romaji english native }
                         coverImage { large extraLarge }
@@ -583,7 +590,10 @@ class MiruroProvider : MainAPI() {
                 ?: textOrNull(media.path("coverImage").get("large"))
             val description = cleanDescription(textOrNull(media.get("description")))
             val tags = listOfNotNull(
-                textOrNull(media.get("status"))?.lowercase(Locale.ROOT)?.replaceFirstChar { it.titlecase(Locale.ROOT) },
+                textOrNull(media.get("status"))
+                    ?.lowercase(Locale.ROOT)
+                    ?.replace('_', ' ')
+                    ?.replaceFirstChar { it.titlecase(Locale.ROOT) },
                 media.path("seasonYear").asInt(0).takeIf { it > 0 }?.toString(),
                 media.path("averageScore").asInt(0).takeIf { it > 0 }?.let { "$it% AniList" }
             ) + media.path("genres").takeIf { it.isArray }?.mapNotNull { textOrNull(it) }.orEmpty()
