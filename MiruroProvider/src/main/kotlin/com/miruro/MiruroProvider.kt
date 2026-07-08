@@ -14,11 +14,9 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.newAnimeLoadResponse
 import com.lagradost.cloudstream3.newAnimeSearchResponse
 import com.lagradost.cloudstream3.newEpisode
-import com.lagradost.cloudstream3.newExtractorLink
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.nicehttp.JsonAsString
@@ -218,7 +216,6 @@ class MiruroProvider : MainAPI() {
                 query (${'$'}id: Int) {
                     Media(id: ${'$'}id, type: ANIME) {
                         id
-                        idMal
                         title { romaji english native }
                         description(asHtml: false)
                         coverImage { large extraLarge }
@@ -233,8 +230,6 @@ class MiruroProvider : MainAPI() {
                 ?: textOrNull(media.path("coverImage").get("large"))
             val description = cleanDescription(textOrNull(media.get("description")))
             val type = tvTypeFromFormat(textOrNull(media.get("format")))
-            val malId = media.path("idMal").asInt(0).takeIf { it > 0 }
-
             val episodeMap = mutableMapOf<DubStatus, MutableList<Episode>>()
             val rawEpisodes = runCatching { fetchRawEpisodes(anilistId) }.getOrNull()
             val providers = rawEpisodes?.path("providers")
@@ -257,7 +252,6 @@ class MiruroProvider : MainAPI() {
                                         name = episodeTitle
                                         episode = number
                                         posterUrl = textOrNull(ep.get("image"))
-                                        description = cleanDescription(textOrNull(ep.get("description")))
                                         runTime = ep.path("duration").asInt(0).takeIf { it > 0 }
                                     }
                                 )
@@ -271,8 +265,6 @@ class MiruroProvider : MainAPI() {
                 return newMovieLoadResponse(title, url, type, "kiwi|$anilistId|sub|movie-1") {
                     posterUrl = poster
                     plot = description
-                    addAniListId(anilistId)
-                    malId?.let { addMalId(it) }
                 }
             }
 
@@ -289,13 +281,8 @@ class MiruroProvider : MainAPI() {
             newAnimeLoadResponse(title, url, type) {
                 posterUrl = poster
                 plot = description
-                addAniListId(anilistId)
-                malId?.let { addMalId(it) }
-                episodeMap.forEach { (dubStatus, episodeList) ->
-                    addEpisodes(
-                        dubStatus,
-                        episodeList.distinctBy { it.data }.sortedBy { it.episode }
-                    )
+                episodes = episodeMap.mapValues { (_, episodeList) ->
+                    episodeList.distinctBy { it.data }.sortedBy { it.episode }
                 }
             }
         } catch (_: Exception) {
@@ -330,17 +317,16 @@ class MiruroProvider : MainAPI() {
                 val qualityLabel = textOrNull(stream.get("quality")) ?: "Auto"
                 val streamType = textOrNull(stream.get("type"))?.lowercase(Locale.ROOT)
                 callback(
-                    newExtractorLink(
+                    ExtractorLink(
                         source = name,
                         name = "$name ${provider.uppercase(Locale.ROOT)} $qualityLabel",
                         url = url,
-                        type = if (streamType == "dash") ExtractorLinkType.DASH else ExtractorLinkType.M3U8
-                    ) {
+                        referer = mainUrl,
                         quality = getQualityFromName(qualityLabel).takeIf { it != Qualities.Unknown.value }
-                            ?: Qualities.Unknown.value
-                        referer = mainUrl
+                            ?: Qualities.Unknown.value,
+                        isM3u8 = streamType != "dash",
                         headers = mapOf("Referer" to "$mainUrl/", "Origin" to mainUrl)
-                    }
+                    )
                 )
                 found = true
             }
