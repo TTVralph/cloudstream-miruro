@@ -133,6 +133,45 @@ class MiruroProvider : MainAPI() {
         }
     }
 
+    private fun findFirstArray(node: JsonNode, vararg names: String): JsonNode? {
+        if (node.isObject) {
+            firstArray(node, *names)?.let { return it }
+            node.fields().forEach { entry ->
+                findFirstArray(entry.value, *names)?.let { return it }
+            }
+        } else if (node.isArray) {
+            node.forEach { child ->
+                findFirstArray(child, *names)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun firstText(node: JsonNode, vararg names: String): String? {
+        return names.firstNotNullOfOrNull { name -> textOrNull(node.get(name)) }
+    }
+
+    private fun streamUrl(node: JsonNode): String? {
+        return firstText(node, "url", "file", "stream")
+            ?: node.path("source").takeIf { it.isObject }?.let { firstText(it, "url", "file", "stream") }
+    }
+
+    private fun streamType(node: JsonNode): String? {
+        return firstText(node, "type", "format")
+            ?: node.path("source").takeIf { it.isObject }?.let { firstText(it, "type", "format") }
+    }
+
+    private fun streamQuality(node: JsonNode): String {
+        return firstText(node, "quality", "label", "resolution")
+            ?: node.path("source").takeIf { it.isObject }?.let { firstText(it, "quality", "label", "resolution") }
+            ?: "Auto"
+    }
+
+    private fun generatedEpisodeSlug(episodeId: String, number: Int): String {
+        val prefix = episodeId.substringBefore(":")
+        return "$prefix-$number"
+    }
+
     private suspend fun anilistQuery(query: String, variables: Map<String, Any?>): JsonNode {
         val body = mapper.createObjectNode().apply {
             put("query", query)
@@ -159,13 +198,36 @@ class MiruroProvider : MainAPI() {
         return decodePipeResponse(response)
     }
 
+    private suspend fun resolveSourceEpisodeId(
+        episodeId: String,
+        provider: String,
+        anilistId: Int,
+        category: String
+    ): String {
+        if (!episodeId.startsWith("watch/")) return episodeId
+        val slug = episodeId.substringAfterLast("/")
+        val episodes = fetchRawEpisodes(anilistId)
+            .path("providers")
+            .path(provider)
+            .path("episodes")
+            .path(category)
+        if (!episodes.isArray) return episodeId
+        episodes.forEach { ep ->
+            val rawId = normalizeEpisodeId(textOrNull(ep.get("id")) ?: return@forEach)
+            val number = ep.path("number").asInt(0)
+            if (number > 0 && generatedEpisodeSlug(rawId, number) == slug) return rawId
+        }
+        return episodeId
+    }
+
     private suspend fun fetchSources(
         episodeId: String,
         provider: String,
         anilistId: Int,
         category: String
     ): JsonNode {
-        val encodedEpisodeId = urlSafeBase64(episodeId.toByteArray())
+        val sourceEpisodeId = resolveSourceEpisodeId(episodeId, provider, anilistId, category)
+        val encodedEpisodeId = urlSafeBase64(sourceEpisodeId.toByteArray())
         val payload = mapper.createObjectNode().apply {
             put("path", "sources")
             put("method", "GET")
@@ -331,23 +393,23 @@ class MiruroProvider : MainAPI() {
             val episodeId = parts[3]
             val sources = fetchSources(episodeId, provider, anilistId, category)
 
-            firstArray(sources, "subtitles", "tracks")?.forEach { subtitle ->
-                val url = textOrNull(subtitle.get("file")) ?: textOrNull(subtitle.get("url")) ?: return@forEach
-                val label = textOrNull(subtitle.get("label")) ?: textOrNull(subtitle.get("lang")) ?: "Subtitle"
+            findFirstArray(sources, "subtitles", "tracks")?.forEach { subtitle ->
+                val url = firstText(subtitle, "file", "url") ?: return@forEach
+                val label = firstText(subtitle, "label", "lang", "language") ?: "Subtitle"
                 subtitleCallback(newSubtitleFile(label, url))
             }
 
             var found = false
-            firstArray(sources, "streams", "sources")?.forEach { stream ->
-                val url = textOrNull(stream.get("url")) ?: return@forEach
-                val qualityLabel = textOrNull(stream.get("quality")) ?: "Auto"
-                val streamType = textOrNull(stream.get("type"))?.lowercase(Locale.ROOT)
+            findFirstArray(sources, "streams", "sources")?.forEach { stream ->
+                val url = streamUrl(stream) ?: return@forEach
+                val qualityLabel = streamQuality(stream)
+                val streamType = streamType(stream)?.lowercase(Locale.ROOT)
                 callback(
                     newExtractorLink(
                         source = name,
                         name = "$name ${provider.uppercase(Locale.ROOT)} $qualityLabel",
                         url = url,
-                        type = if (streamType == "dash") ExtractorLinkType.DASH else ExtractorLinkType.M3U8
+                        type = if (streamType == "dash" || streamType == "mpd") ExtractorLinkType.DASH else ExtractorLinkType.M3U8
                     ) {
                         referer = mainUrl
                         quality = getQualityFromName(qualityLabel).takeIf { it != Qualities.Unknown.value }
