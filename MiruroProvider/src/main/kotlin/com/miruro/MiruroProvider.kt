@@ -292,7 +292,10 @@ class MiruroProvider : MainAPI() {
                 addAniListId(anilistId)
                 malId?.let { addMalId(it) }
                 episodeMap.forEach { (dubStatus, episodeList) ->
-                    episodes[dubStatus] = episodeList.distinctBy { it.data }.sortedBy { it.episode }
+                    addEpisodes(
+                        dubStatus,
+                        episodeList.distinctBy { it.data }.sortedBy { it.episode }
+                    )
                 }
             }
         } catch (_: Exception) {
