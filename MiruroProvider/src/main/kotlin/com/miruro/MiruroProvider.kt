@@ -172,6 +172,16 @@ class MiruroProvider : MainAPI() {
         return "$prefix-$number"
     }
 
+    private fun episodeNumberFromId(episodeId: String): Int? {
+        val slug = episodeId.substringAfterLast("/")
+        return Regex("""(?:^|[-_])(\d+)$""")
+            .find(slug)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+            ?.takeIf { it > 0 }
+    }
+
     private fun watchPath(provider: String, anilistId: Int, category: String, episodeId: String, number: Int): String {
         return "watch/$provider/$anilistId/$category/${generatedEpisodeSlug(episodeId, number)}"
     }
@@ -267,6 +277,54 @@ class MiruroProvider : MainAPI() {
                 put("anilistId", anilistId)
             }
         )
+    }
+
+
+    private data class SourceCandidate(
+        val provider: String,
+        val episodeId: String
+    )
+
+    private suspend fun sourceCandidates(
+        selectedProvider: String,
+        anilistId: Int,
+        category: String,
+        selectedEpisodeId: String,
+        episodeNumber: Int?
+    ): List<SourceCandidate> {
+        val candidates = mutableListOf(SourceCandidate(selectedProvider, selectedEpisodeId))
+        val rawEpisodes = runCatching { fetchRawEpisodes(anilistId) }.getOrNull()
+            ?.path("providers")
+            ?: return candidates
+        if (!rawEpisodes.isObject) return candidates
+
+        val normalizedSelectedId = normalizeEpisodeId(selectedEpisodeId)
+        rawEpisodes.fields().forEach { providerEntry ->
+            val provider = providerEntry.key
+            val episodes = providerEntry.value.path("episodes").path(category)
+            if (!episodes.isArray) return@forEach
+
+            episodes.forEach { ep ->
+                val rawEpisodeId = textOrNull(ep.get("id")) ?: return@forEach
+                val sourceEpisodeId = if (rawEpisodeId.startsWith("watch/")) {
+                    rawEpisodeId
+                } else {
+                    normalizeEpisodeId(rawEpisodeId)
+                }
+                val number = ep.path("number").asInt(0).takeIf { it > 0 }
+                val sameEpisode = when {
+                    episodeNumber != null && number == episodeNumber -> true
+                    sourceEpisodeId == selectedEpisodeId -> true
+                    sourceEpisodeId == normalizedSelectedId -> true
+                    else -> false
+                }
+                if (sameEpisode) {
+                    candidates.add(SourceCandidate(provider, sourceEpisodeId))
+                }
+            }
+        }
+
+        return candidates.distinct()
     }
 
     private fun preferredTitle(titleNode: JsonNode): String? {
@@ -365,7 +423,7 @@ class MiruroProvider : MainAPI() {
                                     watchPath(provider, anilistId, category, sourceEpisodeId, number)
                                 }
                                 val episodeTitle = textOrNull(ep.get("title")) ?: "Episode $number"
-                                val data = listOf(provider, anilistId.toString(), category, episodeId)
+                                val data = listOf(provider, anilistId.toString(), category, number.toString(), episodeId)
                                     .joinToString("|")
                                 bucket.add(
                                     newEpisode(data) {
@@ -382,7 +440,7 @@ class MiruroProvider : MainAPI() {
             }
 
             if (type == TvType.AnimeMovie && episodeMap.isEmpty()) {
-                return newMovieLoadResponse(title, url, type, "kiwi|$anilistId|sub|movie-1") {
+                return newMovieLoadResponse(title, url, type, "kiwi|$anilistId|sub|1|movie-1") {
                     posterUrl = poster
                     plot = description
                 }
@@ -391,7 +449,7 @@ class MiruroProvider : MainAPI() {
             if (episodeMap.isEmpty()) {
                 val episodeCount = media.path("episodes").asInt(1).coerceIn(1, 500)
                 episodeMap[DubStatus.Subbed] = (1..episodeCount).map { episodeNumber ->
-                    newEpisode("kiwi|$anilistId|sub|animepahe-$episodeNumber") {
+                    newEpisode("kiwi|$anilistId|sub|$episodeNumber|animepahe-$episodeNumber") {
                         name = "Episode $episodeNumber"
                         episode = episodeNumber
                     }
@@ -419,39 +477,57 @@ class MiruroProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         return try {
-            val parts = data.split("|", limit = 4)
-            if (parts.size != 4) return false
+            val parts = data.split("|", limit = 5)
+            if (parts.size != 4 && parts.size != 5) return false
             val provider = parts[0]
             val anilistId = parts[1].toIntOrNull() ?: return false
             val category = parts[2]
-            val episodeId = parts[3]
-            val sources = fetchSources(episodeId, provider, anilistId, category)
+            val episodeNumber = if (parts.size == 5) parts[3].toIntOrNull() else null
+            val episodeId = if (parts.size == 5) parts[4] else parts[3]
+            val candidates = sourceCandidates(
+                provider,
+                anilistId,
+                category,
+                episodeId,
+                episodeNumber ?: episodeNumberFromId(episodeId)
+            )
 
-            findFirstArray(sources, "subtitles", "tracks")?.forEach { subtitle ->
-                val url = firstText(subtitle, "file", "url") ?: return@forEach
-                val label = firstText(subtitle, "label", "lang", "language") ?: "Subtitle"
-                subtitleCallback(newSubtitleFile(label, url))
-            }
-
+            val subtitleUrls = mutableSetOf<String>()
+            val streamUrls = mutableSetOf<String>()
             var found = false
-            findFirstArray(sources, "streams", "sources")?.forEach { stream ->
-                val url = streamUrl(stream) ?: return@forEach
-                val qualityLabel = streamQuality(stream)
-                val streamType = streamType(stream)?.lowercase(Locale.ROOT)
-                callback(
-                    newExtractorLink(
-                        source = name,
-                        name = "$name ${provider.uppercase(Locale.ROOT)} $qualityLabel",
-                        url = url,
-                        type = if (streamType == "dash" || streamType == "mpd") ExtractorLinkType.DASH else ExtractorLinkType.M3U8
-                    ) {
-                        referer = mainUrl
-                        quality = getQualityFromName(qualityLabel).takeIf { it != Qualities.Unknown.value }
-                            ?: Qualities.Unknown.value
-                        headers = mapOf("Referer" to "$mainUrl/", "Origin" to mainUrl)
-                    }
-                )
-                found = true
+
+            candidates.forEach { candidate ->
+                val sources = runCatching {
+                    fetchSources(candidate.episodeId, candidate.provider, anilistId, category)
+                }.getOrNull() ?: return@forEach
+
+                findFirstArray(sources, "subtitles", "tracks")?.forEach { subtitle ->
+                    val url = firstText(subtitle, "file", "url") ?: return@forEach
+                    if (!subtitleUrls.add(url)) return@forEach
+                    val label = firstText(subtitle, "label", "lang", "language") ?: "Subtitle"
+                    subtitleCallback(newSubtitleFile(label, url))
+                }
+
+                findFirstArray(sources, "streams", "sources")?.forEach { stream ->
+                    val url = streamUrl(stream) ?: return@forEach
+                    if (!streamUrls.add(url)) return@forEach
+                    val qualityLabel = streamQuality(stream)
+                    val streamType = streamType(stream)?.lowercase(Locale.ROOT)
+                    callback(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name ${candidate.provider.uppercase(Locale.ROOT)} $qualityLabel",
+                            url = url,
+                            type = if (streamType == "dash" || streamType == "mpd") ExtractorLinkType.DASH else ExtractorLinkType.M3U8
+                        ) {
+                            referer = mainUrl
+                            quality = getQualityFromName(qualityLabel).takeIf { it != Qualities.Unknown.value }
+                                ?: Qualities.Unknown.value
+                            headers = mapOf("Referer" to "$mainUrl/", "Origin" to mainUrl)
+                        }
+                    )
+                    found = true
+                }
             }
 
             found
