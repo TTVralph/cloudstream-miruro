@@ -71,6 +71,11 @@ class MiruroProvider : MainAPI() {
         "Sec-Fetch-Site" to "same-origin",
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
     )
+    private val anilistHeaders = mapOf(
+        "Accept" to "application/json",
+        "Content-Type" to "application/json",
+        "User-Agent" to requestHeaders.getValue("User-Agent")
+    )
 
     private fun encodeUrl(value: String): String {
         return URLEncoder.encode(value, "UTF-8")
@@ -212,7 +217,7 @@ class MiruroProvider : MainAPI() {
         val json = app.post(
             anilistUrl,
             json = JsonAsString(mapper.writeValueAsString(body)),
-            headers = requestHeaders
+            headers = anilistHeaders
         ).text
         return mapper.readTree(json).path("data")
     }
@@ -587,8 +592,9 @@ class MiruroProvider : MainAPI() {
                         .getOrDefault(emptyList())
                 }
             }
-        val enrichedResults = results.map { result -> addHomePageDubStatus(result) }
-        return newHomePageResponse(request.name, enrichedResults, hasNext = enrichedResults.isNotEmpty())
+        // Keep the catalogue responsive even when Miruro's episode pipe is blocked or slow.
+        // Episode/sub-dub metadata is resolved on the detail page instead of blocking the home page.
+        return newHomePageResponse(request.name, results, hasNext = results.isNotEmpty())
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
