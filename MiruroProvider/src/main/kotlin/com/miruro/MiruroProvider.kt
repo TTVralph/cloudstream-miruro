@@ -74,6 +74,69 @@ class MiruroProvider : MainAPI() {
         "User-Agent" to requestHeaders.getValue("User-Agent")
     )
 
+    private val homepageFallbackTitles = mapOf(
+        "TRENDING_NOW" to listOf(
+            "One Piece",
+            "Jujutsu Kaisen",
+            "Demon Slayer",
+            "Solo Leveling",
+            "Chainsaw Man",
+            "Frieren",
+            "My Hero Academia",
+            "Attack on Titan",
+            "Blue Lock",
+            "Spy x Family"
+        ),
+        "CURRENTLY_AIRING" to listOf(
+            "One Piece",
+            "Sakamoto Days",
+            "My Hero Academia",
+            "Black Clover",
+            "Boruto",
+            "Blue Lock",
+            "Jujutsu Kaisen",
+            "Demon Slayer",
+            "Frieren",
+            "Spy x Family"
+        ),
+        "POPULAR_THIS_SEASON" to listOf(
+            "Demon Slayer",
+            "Jujutsu Kaisen",
+            "Solo Leveling",
+            "Frieren",
+            "Blue Lock",
+            "Spy x Family",
+            "My Hero Academia",
+            "Chainsaw Man",
+            "One Piece",
+            "Kaiju No 8"
+        ),
+        "TOP_RATED_ANIME" to listOf(
+            "Fullmetal Alchemist Brotherhood",
+            "Frieren",
+            "Steins Gate",
+            "Attack on Titan",
+            "Hunter x Hunter",
+            "Gintama",
+            "Vinland Saga",
+            "Mob Psycho 100",
+            "Code Geass",
+            "Death Note"
+        ),
+        "ANIME_MOVIES" to listOf(
+            "Your Name",
+            "A Silent Voice",
+            "Spirited Away",
+            "Demon Slayer Mugen Train",
+            "Jujutsu Kaisen 0",
+            "Suzume",
+            "Weathering With You",
+            "Howl's Moving Castle",
+            "Princess Mononoke",
+            "Akira"
+        )
+    )
+
     private fun encodeUrl(value: String): String {
         return URLEncoder.encode(value, "UTF-8")
     }
@@ -454,6 +517,61 @@ class MiruroProvider : MainAPI() {
             ?: emptyList()
     }
 
+
+    private suspend fun anilistSearchFirst(title: String): SearchResponse? {
+        val gql = """
+            query (${'$'}search: String) {
+                Page(page: 1, perPage: 5) {
+                    media(search: ${'$'}search, type: ANIME, sort: SEARCH_MATCH, isAdult: false) {
+                        id
+                        title { romaji english native }
+                        coverImage { extraLarge large medium }
+                        format
+                    }
+                }
+            }
+        """.trimIndent()
+        val media = anilistQuery(gql, mapOf("search" to title))
+            .path("Page")
+            .path("media")
+        if (!media.isArray) return null
+        return media.firstNotNullOfOrNull { mediaSearchResponse(it) }
+    }
+
+    private suspend fun fallbackHomepageSearches(category: String): List<SearchResponse> {
+        val titles = homepageFallbackTitles[category].orEmpty()
+        if (titles.isEmpty()) return emptyList()
+
+        val results = mutableListOf<SearchResponse>()
+        titles.forEach { title ->
+            runCatching { anilistSearchFirst(title) }
+                .getOrNull()
+                ?.let { results.add(it) }
+        }
+        return results.distinctBy { it.url }
+    }
+
+    private suspend fun homepageCategoryResults(
+        category: String,
+        page: Int,
+        season: String,
+        year: Int
+    ): List<SearchResponse> {
+        val primary = runCatching {
+            when (category) {
+                "TRENDING_NOW" -> anilistMediaPage(page, 20, listOf("TRENDING_DESC", "POPULARITY_DESC"))
+                "CURRENTLY_AIRING" -> anilistMediaPage(page, 20, listOf("POPULARITY_DESC"), status = "RELEASING")
+                "POPULAR_THIS_SEASON" -> anilistMediaPage(page, 20, listOf("POPULARITY_DESC"), season = season, seasonYear = year)
+                "TOP_RATED_ANIME" -> anilistMediaPage(page, 20, listOf("SCORE_DESC"))
+                "ANIME_MOVIES" -> anilistMediaPage(page, 20, listOf("POPULARITY_DESC"), format = "MOVIE")
+                else -> emptyList()
+            }
+        }.getOrElse { emptyList() }
+        if (primary.isNotEmpty() || page > 1) return primary
+
+        return runCatching { fallbackHomepageSearches(category) }.getOrElse { emptyList() }
+    }
+
     private fun currentAniListSeason(): Pair<String, Int> {
         val now = java.util.Calendar.getInstance()
         val year = now.get(java.util.Calendar.YEAR)
@@ -468,16 +586,7 @@ class MiruroProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val (season, year) = currentAniListSeason()
-        val results = runCatching {
-            when (request.data) {
-                "TRENDING_NOW" -> anilistMediaPage(page, 20, listOf("TRENDING_DESC", "POPULARITY_DESC"))
-                "CURRENTLY_AIRING" -> anilistMediaPage(page, 20, listOf("POPULARITY_DESC"), status = "RELEASING")
-                "POPULAR_THIS_SEASON" -> anilistMediaPage(page, 20, listOf("POPULARITY_DESC"), season = season, seasonYear = year)
-                "TOP_RATED_ANIME" -> anilistMediaPage(page, 20, listOf("SCORE_DESC"))
-                "ANIME_MOVIES" -> anilistMediaPage(page, 20, listOf("POPULARITY_DESC"), format = "MOVIE")
-                else -> emptyList()
-            }
-        }.getOrElse { emptyList() }
+        val results = homepageCategoryResults(request.data, page, season, year)
         return newHomePageResponse(request.name, results, hasNext = results.isNotEmpty())
     }
 
