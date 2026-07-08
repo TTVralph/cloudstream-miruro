@@ -23,7 +23,7 @@ class AniListRepository {
     private val jsonType = "application/json".toMediaType()
     private val dateCache = mutableMapOf<Int, Map<Int, String>>()
     private val pipeHosts = listOf("https://www.miruro.to", "https://www.miruro.tv", "https://www.miruro.bz", "https://www.miruro.ru")
-    private val providerPriority = listOf("kiwi", "pewe", "bee", "bonk", "bun", "ally", "nun", "twin", "cog", "moo", "hop", "telli")
+    private val providerPriority = listOf("kiwi", "arc", "zoro", "hop", "pewe", "bee", "bonk", "bun", "ally", "nun", "twin", "cog", "moo", "telli")
 
     suspend fun homeRows(): List<HomeRow> = listOf(
         "Trending Now" to mapOf("sort" to listOf("TRENDING_DESC")),
@@ -45,7 +45,7 @@ class AniListRepository {
             val miruroEpisodes = runCatching { miruroEpisodes(entry.id, index + 1, entry.duration, dates) }.getOrDefault(emptyList())
             val episodes = miruroEpisodes.ifEmpty {
                 (1..(entry.episodes ?: 0).coerceAtMost(2000)).map { ep ->
-                    AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.SUB)
+                    AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.SUB, EpisodePlayback("", entry.id, "sub", "", ep))
                 }
             }
             AnimeSeason(entry.id, index + 1, entry.title, entry.year, episodes)
@@ -94,7 +94,11 @@ class AniListRepository {
     }
 
     private suspend fun sourceCandidates(playback: EpisodePlayback): List<SourceCandidate> {
-        val candidates = mutableListOf(SourceCandidate(playback.provider, playback.anilistId, playback.category, playback.episodeId, playback.episodeNumber))
+        val candidates = mutableListOf<SourceCandidate>().apply {
+            if (playback.provider.isNotBlank() && playback.episodeId.isNotBlank()) {
+                add(SourceCandidate(playback.provider, playback.anilistId, playback.category, playback.episodeId, playback.episodeNumber))
+            }
+        }
         val providers = runCatching { pipeGet("episodes", mapper.createObjectNode().apply { put("anilistId", playback.anilistId) }).path("providers") }.getOrNull()
         if (providers?.isObject == true) {
             providers.fields().forEach { entry ->
