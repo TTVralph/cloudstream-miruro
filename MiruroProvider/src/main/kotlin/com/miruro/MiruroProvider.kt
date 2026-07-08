@@ -220,29 +220,49 @@ class MiruroProvider : MainAPI() {
         return episodeId
     }
 
-    private suspend fun fetchSources(
-        episodeId: String,
-        provider: String,
-        anilistId: Int,
-        category: String
-    ): JsonNode {
-        val sourceEpisodeId = resolveSourceEpisodeId(episodeId, provider, anilistId, category)
-        val encodedEpisodeId = urlSafeBase64(sourceEpisodeId.toByteArray())
+    private suspend fun pipeGet(path: String, query: JsonNode? = null): JsonNode {
         val payload = mapper.createObjectNode().apply {
-            put("path", "sources")
+            put("path", path)
             put("method", "GET")
-            set<JsonNode>("query", mapper.createObjectNode().apply {
-                put("episodeId", encodedEpisodeId)
-                put("provider", provider)
-                put("category", category)
-                put("anilistId", anilistId)
-            })
+            if (query == null) {
+                putNull("query")
+            } else {
+                set<JsonNode>("query", query)
+            }
             putNull("body")
             put("version", "0.1.0")
         }
         val encoded = encodePipeRequest(payload)
         val response = app.get("$pipeUrl?e=${encodeUrl(encoded)}", headers = requestHeaders).text.trim()
         return decodePipeResponse(response)
+    }
+
+    private fun hasPlayableStreams(node: JsonNode): Boolean {
+        return findFirstArray(node, "streams", "sources")?.any { streamUrl(it) != null } == true
+    }
+
+    private suspend fun fetchSources(
+        episodeId: String,
+        provider: String,
+        anilistId: Int,
+        category: String
+    ): JsonNode {
+        if (episodeId.startsWith("watch/")) {
+            val directSources = runCatching { pipeGet(episodeId) }.getOrNull()
+            if (directSources != null && hasPlayableStreams(directSources)) return directSources
+        }
+
+        val sourceEpisodeId = resolveSourceEpisodeId(episodeId, provider, anilistId, category)
+        val encodedEpisodeId = urlSafeBase64(sourceEpisodeId.toByteArray())
+        return pipeGet(
+            "sources",
+            mapper.createObjectNode().apply {
+                put("episodeId", encodedEpisodeId)
+                put("provider", provider)
+                put("category", category)
+                put("anilistId", anilistId)
+            }
+        )
     }
 
     private fun preferredTitle(titleNode: JsonNode): String? {
@@ -328,7 +348,12 @@ class MiruroProvider : MainAPI() {
                         if (list.isArray) {
                             val bucket = episodeMap.getOrPut(dubStatus) { mutableListOf() }
                             list.forEach { ep ->
-                                val episodeId = normalizeEpisodeId(textOrNull(ep.get("id")) ?: return@forEach)
+                                val rawEpisodeId = textOrNull(ep.get("id")) ?: return@forEach
+                                val episodeId = if (rawEpisodeId.startsWith("watch/")) {
+                                    rawEpisodeId
+                                } else {
+                                    normalizeEpisodeId(rawEpisodeId)
+                                }
                                 val number = ep.path("number").asInt(0).takeIf { it > 0 } ?: return@forEach
                                 val episodeTitle = textOrNull(ep.get("title")) ?: "Episode $number"
                                 val data = listOf(provider, anilistId.toString(), category, episodeId)
