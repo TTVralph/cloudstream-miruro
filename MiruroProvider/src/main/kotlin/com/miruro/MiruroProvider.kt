@@ -12,7 +12,6 @@ import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.addDubStatus
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.newAnimeLoadResponse
@@ -29,7 +28,6 @@ import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.nicehttp.JsonAsString
 import java.io.ByteArrayInputStream
 import java.net.URLEncoder
-import java.util.Calendar
 import java.util.Locale
 import java.util.zip.GZIPInputStream
 
@@ -47,12 +45,11 @@ class MiruroProvider : MainAPI() {
     override val hasQuickSearch = true
 
     override val mainPage = mainPageOf(
-        "TRENDING_DESC" to "Trending Now",
-        "POPULARITY_DESC|CURRENT" to "Popular This Season",
-        "UPDATED_AT_DESC" to "Recently Updated",
-        "SCORE_DESC" to "Top Rated",
-        "START_DATE_DESC|UPCOMING" to "Upcoming Anime",
-        "POPULARITY_DESC|COMPLETED" to "Completed Anime"
+        "TRENDING_DESC" to "Trending Anime",
+        "POPULARITY_DESC" to "Popular Anime",
+        "SCORE_DESC" to "Top Rated Anime",
+        "START_DATE_DESC" to "Recently Added Anime",
+        "FAVOURITES_DESC" to "Fan Favorites"
     )
     override val hasDownloadSupport = false
 
@@ -367,18 +364,6 @@ class MiruroProvider : MainAPI() {
         return if (index == -1) providerPriority.size else index
     }
 
-    private fun currentAniListSeason(): Pair<String, Int> {
-        val calendar = Calendar.getInstance()
-        val year = calendar.get(Calendar.YEAR)
-        val season = when (calendar.get(Calendar.MONTH)) {
-            Calendar.DECEMBER, Calendar.JANUARY, Calendar.FEBRUARY -> "WINTER"
-            Calendar.MARCH, Calendar.APRIL, Calendar.MAY -> "SPRING"
-            Calendar.JUNE, Calendar.JULY, Calendar.AUGUST -> "SUMMER"
-            else -> "FALL"
-        }
-        return season to year
-    }
-
     private fun runtimeMinutes(value: Int): Int? {
         if (value <= 0) return null
         // AniList durations are already minutes, while Miruro episode payloads often return seconds.
@@ -407,98 +392,11 @@ class MiruroProvider : MainAPI() {
         }
     }
 
-    private fun episodeCount(list: JsonNode?): Int? {
-        return list
-            ?.takeIf { it.isArray }
-            ?.mapNotNull { ep -> ep.path("number").asInt(0).takeIf { number -> number > 0 } }
-            ?.distinct()
-            ?.maxOrNull()
-    }
-
-    private suspend fun addHomePageDubStatus(response: SearchResponse): SearchResponse {
-        val animeResponse = response as? com.lagradost.cloudstream3.AnimeSearchResponse ?: return response
-        val anilistId = extractAniListId(response.url) ?: return response
-        val providers = runCatching { fetchRawEpisodes(anilistId).path("providers") }.getOrNull() ?: return response
-        if (!providers.isObject) return response
-
-        var subCount: Int? = null
-        var dubCount: Int? = null
-        providers.fields().forEach { providerEntry ->
-            val episodes = providerEntry.value.path("episodes")
-            if (episodes.isArray) {
-                subCount = maxOf(subCount ?: 0, episodeCount(episodes) ?: 0).takeIf { it > 0 } ?: subCount
-            } else {
-                subCount = maxOf(subCount ?: 0, episodeCount(episodes.path("sub")) ?: 0).takeIf { it > 0 } ?: subCount
-                dubCount = maxOf(dubCount ?: 0, episodeCount(episodes.path("dub")) ?: 0).takeIf { it > 0 } ?: dubCount
-            }
-        }
-
-        if (subCount != null) animeResponse.addDubStatus(DubStatus.Subbed, subCount)
-        if (dubCount != null) animeResponse.addDubStatus(DubStatus.Dubbed, dubCount)
-        return animeResponse
-    }
-
-    private fun enumList(value: String?): List<String>? {
-        return value
-            ?.split(",")
-            ?.map { it.trim() }
-            ?.filter { it.isNotBlank() }
-            ?.takeIf { it.isNotEmpty() }
-    }
-
-    private suspend fun anilistMediaPage(data: String, page: Int, perPage: Int): List<SearchResponse> {
-        val parts = data.split("|")
-        val sort = parts.firstOrNull()?.takeIf { it.isNotBlank() } ?: "TRENDING_DESC"
-        val filter = parts.getOrNull(1)
-        val formats = enumList(parts.getOrNull(2))
-        val genres = if (filter == "ANIME") null else enumList(filter)
-        val (season, year) = currentAniListSeason()
-        val variables = mutableMapOf<String, Any?>(
-            "page" to page,
-            "perPage" to perPage,
-            "sort" to listOf(sort),
-            "season" to null,
-            "seasonYear" to null,
-            "status" to null,
-            "statusNot" to "NOT_YET_RELEASED",
-            "format" to null,
-            "formatIn" to formats,
-            "genreIn" to genres,
-            "countryOfOrigin" to "JP"
-        )
-
-        when (filter) {
-            "CURRENT" -> {
-                variables["season"] = season
-                variables["seasonYear"] = year
-                variables["status"] = "RELEASING"
-                variables["genreIn"] = null
-            }
-            "SEASON" -> {
-                variables["season"] = season
-                variables["seasonYear"] = year
-                variables["genreIn"] = null
-            }
-            "UPCOMING" -> {
-                variables["status"] = "NOT_YET_RELEASED"
-                variables["statusNot"] = null
-                variables["genreIn"] = null
-            }
-            "COMPLETED" -> {
-                variables["status"] = "FINISHED"
-                variables["genreIn"] = null
-            }
-            "MOVIE" -> {
-                variables["format"] = "MOVIE"
-                variables["formatIn"] = null
-                variables["genreIn"] = null
-            }
-        }
-
+    private suspend fun anilistMediaPage(sort: String, page: Int, perPage: Int): List<SearchResponse> {
         val gql = """
-            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus, ${'$'}statusNot: MediaStatus, ${'$'}format: MediaFormat, ${'$'}formatIn: [MediaFormat], ${'$'}genreIn: [String], ${'$'}countryOfOrigin: CountryCode) {
+            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort]) {
                 Page(page: ${'$'}page, perPage: ${'$'}perPage) {
-                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, status_not: ${'$'}statusNot, format: ${'$'}format, format_in: ${'$'}formatIn, genre_in: ${'$'}genreIn, countryOfOrigin: ${'$'}countryOfOrigin, isAdult: false) {
+                    media(type: ANIME, sort: ${'$'}sort, isAdult: false) {
                         id
                         title { romaji english native }
                         coverImage { large extraLarge }
@@ -507,93 +405,16 @@ class MiruroProvider : MainAPI() {
                 }
             }
         """.trimIndent()
-        return anilistQuery(gql, variables)
+        return anilistQuery(gql, mapOf("page" to page, "perPage" to perPage, "sort" to listOf(sort)))
             .path("Page")
             .path("media")
             .takeIf { it.isArray }
             ?.mapNotNull { mediaSearchResponse(it) }
-            ?.distinctBy { it.url }
-            ?: emptyList()
-    }
-
-    private suspend fun fallbackAniListMediaPage(data: String, page: Int, perPage: Int): List<SearchResponse> {
-        val parts = data.split("|")
-        val sort = parts.firstOrNull()?.takeIf { it.isNotBlank() } ?: "TRENDING_DESC"
-        val filter = parts.getOrNull(1)
-        val formats = enumList(parts.getOrNull(2))
-        val (season, year) = currentAniListSeason()
-        val variables = mutableMapOf<String, Any?>(
-            "page" to page,
-            "perPage" to perPage,
-            "sort" to listOf(sort),
-            "season" to null,
-            "seasonYear" to null,
-            "status" to null,
-            "statusNot" to "NOT_YET_RELEASED",
-            "format" to null,
-            "formatIn" to formats,
-            "countryOfOrigin" to "JP"
-        )
-
-        when (filter) {
-            "CURRENT" -> {
-                variables["season"] = season
-                variables["seasonYear"] = year
-                variables["status"] = "RELEASING"
-            }
-            "SEASON" -> {
-                variables["season"] = season
-                variables["seasonYear"] = year
-            }
-            "UPCOMING" -> {
-                variables["status"] = "NOT_YET_RELEASED"
-                variables["statusNot"] = null
-            }
-            "COMPLETED" -> variables["status"] = "FINISHED"
-            "MOVIE" -> {
-                variables["format"] = "MOVIE"
-                variables["formatIn"] = null
-            }
-        }
-
-        val gql = """
-            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus, ${'$'}statusNot: MediaStatus, ${'$'}format: MediaFormat, ${'$'}formatIn: [MediaFormat], ${'$'}countryOfOrigin: CountryCode) {
-                Page(page: ${'$'}page, perPage: ${'$'}perPage) {
-                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, status_not: ${'$'}statusNot, format: ${'$'}format, format_in: ${'$'}formatIn, countryOfOrigin: ${'$'}countryOfOrigin, isAdult: false) {
-                        id
-                        title { romaji english native }
-                        coverImage { large extraLarge }
-                        format
-                    }
-                }
-            }
-        """.trimIndent()
-        return anilistQuery(gql, variables)
-            .path("Page")
-            .path("media")
-            .takeIf { it.isArray }
-            ?.mapNotNull { mediaSearchResponse(it) }
-            ?.distinctBy { it.url }
             ?: emptyList()
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val results = runCatching { anilistMediaPage(request.data, page, 18) }
-            .getOrDefault(emptyList())
-            .ifEmpty {
-                runCatching { fallbackAniListMediaPage(request.data, page, 24) }
-                    .getOrDefault(emptyList())
-            }
-            .ifEmpty {
-                if (request.data == "TRENDING_DESC") {
-                    emptyList()
-                } else {
-                    runCatching { fallbackAniListMediaPage("TRENDING_DESC", page, 24) }
-                        .getOrDefault(emptyList())
-                }
-            }
-        // Keep the catalogue responsive even when Miruro's episode pipe is blocked or slow.
-        // Episode/sub-dub metadata is resolved on the detail page instead of blocking the home page.
+        val results = anilistMediaPage(request.data, page, 20)
         return newHomePageResponse(request.name, results, hasNext = results.isNotEmpty())
     }
 
