@@ -16,7 +16,7 @@
         "version": 2,
         "internalName": "MiruroProvider",
         "description": "Cloudstream extension for Miruro anime browsing and playback",
-        "url": "https://raw.githubusercontent.com/TTVralph/cloudstream-miruro/main/docs/MiruroProvider.cs3",
+        "url": "https://raw.githubusercontent.com/TTVralph/cloudstream-miruro/builds/MiruroProvider.cs3",
         "name": "MiruroProvider"
     }
 ]
