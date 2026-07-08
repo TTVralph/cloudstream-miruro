@@ -1,0 +1,752 @@
+warning: in the working copy of 'MiruroProvider/build.gradle.kts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'MiruroProvider/src/main/kotlin/com/miruro/MiruroProvider.kt', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/MiruroProvider/build.gradle.kts b/MiruroProvider/build.gradle.kts[m
+[1mindex ff7adc8..e48c0d0 100644[m
+[1m--- a/MiruroProvider/build.gradle.kts[m
+[1m+++ b/MiruroProvider/build.gradle.kts[m
+[36m@@ -1,7 +1,7 @@[m
+[31m-version = 1[m
+[32m+[m[32mversion = 2[m
+ [m
+ cloudstream {[m
+[31m-    description = "CloudStream extension for Miruro anime metadata"[m
+[32m+[m[32m    description = "Cloudstream extension for Miruro anime browsing and playback"[m
+     authors = listOf("Miruro")[m
+     status = 1[m
+     tvTypes = listOf("Anime", "AnimeMovie")[m
+[1mdiff --git a/MiruroProvider/src/main/kotlin/com/miruro/MiruroProvider.kt b/MiruroProvider/src/main/kotlin/com/miruro/MiruroProvider.kt[m
+[1mindex 05a6ed3..610724d 100644[m
+[1m--- a/MiruroProvider/src/main/kotlin/com/miruro/MiruroProvider.kt[m
+[1m+++ b/MiruroProvider/src/main/kotlin/com/miruro/MiruroProvider.kt[m
+[36m@@ -1,25 +1,38 @@[m
+ package com.miruro[m
+ [m
+[32m+[m[32mimport android.util.Base64[m
+ import com.fasterxml.jackson.databind.JsonNode[m
+ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper[m
+ import com.lagradost.cloudstream3.DubStatus[m
+ import com.lagradost.cloudstream3.Episode[m
+[32m+[m[32mimport com.lagradost.cloudstream3.HomePageResponse[m
+ import com.lagradost.cloudstream3.LoadResponse[m
+[32m+[m[32mimport com.lagradost.cloudstream3.MainPageRequest[m
+ import com.lagradost.cloudstream3.MainAPI[m
+ import com.lagradost.cloudstream3.SearchResponse[m
+ import com.lagradost.cloudstream3.SubtitleFile[m
+ import com.lagradost.cloudstream3.TvType[m
+ import com.lagradost.cloudstream3.app[m
+[32m+[m[32mimport com.lagradost.cloudstream3.mainPageOf[m
+ import com.lagradost.cloudstream3.newAnimeLoadResponse[m
+ import com.lagradost.cloudstream3.newAnimeSearchResponse[m
+ import com.lagradost.cloudstream3.newEpisode[m
+[32m+[m[32mimport com.lagradost.cloudstream3.newHomePageResponse[m
+ import com.lagradost.cloudstream3.newMovieLoadResponse[m
+[32m+[m[32mimport com.lagradost.cloudstream3.newSubtitleFile[m
+ import com.lagradost.cloudstream3.utils.ExtractorLink[m
+[32m+[m[32mimport com.lagradost.cloudstream3.utils.ExtractorLinkType[m
+[32m+[m[32mimport com.lagradost.cloudstream3.utils.Qualities[m
+[32m+[m[32mimport com.lagradost.cloudstream3.utils.newExtractorLink[m
+[32m+[m[32mimport com.lagradost.cloudstream3.utils.getQualityFromName[m
+[32m+[m[32mimport com.lagradost.nicehttp.JsonAsString[m
+[32m+[m[32mimport java.io.ByteArrayInputStream[m
+ import java.net.URLEncoder[m
+ import java.util.Locale[m
+[32m+[m[32mimport java.util.zip.GZIPInputStream[m
+ [m
+ class MiruroProvider : MainAPI() {[m
+[31m-    override var mainUrl = "https://www.miruro.to"[m
+[32m+[m[32m    override var mainUrl = "https://www.miruro.tv"[m
+     override var name = "Miruro"[m
+     override var lang = "en"[m
+ [m
+[36m@@ -28,11 +41,38 @@[m [mclass MiruroProvider : MainAPI() {[m
+         TvType.AnimeMovie[m
+     )[m
+ [m
+[31m-    override val hasMainPage = false[m
+[31m-    override val hasQuickSearch = false[m
+[32m+[m[32m    override val hasMainPage = true[m
+[32m+[m[32m    override val hasQuickSearch = true[m
+[32m+[m
+[32m+[m[32m    override val mainPage = mainPageOf([m
+[32m+[m[32m        "TRENDING_DESC" to "Trending Anime",[m
+[32m+[m[32m        "POPULARITY_DESC" to "Popular Anime",[m
+[32m+[m[32m        "SCORE_DESC" to "Top Rated Anime",[m
+[32m+[m[32m        "START_DATE_DESC" to "Recently Added Anime",[m
+[32m+[m[32m        "FAVOURITES_DESC" to "Fan Favorites"[m
+[32m+[m[32m    )[m
+     override val hasDownloadSupport = false[m
+ [m
+     private val mapper = jacksonObjectMapper()[m
+[32m+[m[32m    private val anilistUrl = "https://graphql.anilist.co"[m
+[32m+[m[32m    private val pipeUrl = "$mainUrl/api/secure/pipe"[m
+[32m+[m[32m    private val providerPriority = listOf("zoro", "animepahe", "gogoanime", "kiwi")[m
+[32m+[m[32m    private val requestHeaders = mapOf([m
+[32m+[m[32m        "Accept" to "application/json, text/plain, */*",[m
+[32m+[m[32m        "Accept-Language" to "en-US,en;q=0.9",[m
+[32m+[m[32m        "Content-Type" to "application/json",[m
+[32m+[m[32m        "Origin" to mainUrl,[m
+[32m+[m[32m        "Referer" to "$mainUrl/",[m
+[32m+[m[32m        "Sec-Fetch-Dest" to "empty",[m
+[32m+[m[32m        "Sec-Fetch-Mode" to "cors",[m
+[32m+[m[32m        "Sec-Fetch-Site" to "same-origin",[m
+[32m+[m[32m        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"[m
+[32m+[m[32m    )[m
+[32m+[m[32m    private val anilistHeaders = mapOf([m
+[32m+[m[32m        "Accept" to "application/json",[m
+[32m+[m[32m        "Content-Type" to "application/json",[m
+[32m+[m[32m        "User-Agent" to requestHeaders.getValue("User-Agent")[m
+[32m+[m[32m    )[m
+ [m
+     private fun encodeUrl(value: String): String {[m
+         return URLEncoder.encode(value, "UTF-8")[m
+[36m@@ -58,17 +98,18 @@[m [mclass MiruroProvider : MainAPI() {[m
+             ?.takeIf { it.isNotBlank() }[m
+     }[m
+ [m
+[31m-    private fun extractKitsuId(url: String): String? {[m
+[31m-        return Regex("""/kitsu/([^/]+)""")[m
+[32m+[m[32m    private fun extractAniListId(url: String): Int? {[m
+[32m+[m[32m        return Regex("""/anilist/(\d+)""")[m
+             .find(url)[m
+             ?.groupValues[m
+             ?.getOrNull(1)[m
+[32m+[m[32m            ?.toIntOrNull()[m
+     }[m
+ [m
+     private fun errorResult(message: String): List<SearchResponse> {[m
+         return listOf([m
+             newAnimeSearchResponse([m
+[31m-                "KITSU ERROR: ${message.take(120)}",[m
+[32m+[m[32m                "MIRURO ERROR: ${message.take(120)}",[m
+                 "$mainUrl/error",[m
+                 TvType.Anime[m
+             ) {[m
+[36m@@ -77,133 +118,468 @@[m [mclass MiruroProvider : MainAPI() {[m
+         )[m
+     }[m
+ [m
+[31m-    override suspend fun search(query: String): List<SearchResponse> {[m
+[31m-        return try {[m
+[31m-            val apiUrl =[m
+[31m-                "https://kitsu.io/api/edge/anime?filter[text]=${encodeUrl(query)}&page[limit]=20"[m
+[31m-[m
+[31m-            val json = app.get([m
+[31m-                apiUrl,[m
+[31m-                headers = mapOf([m
+[31m-                    "Accept" to "application/vnd.api+json",[m
+[31m-                    "User-Agent" to "Mozilla/5.0"[m
+[31m-                )[m
+[31m-            ).text[m
+[31m-[m
+[31m-            val root = mapper.readTree(json)[m
+[31m-            val data = root.path("data")[m
+[31m-[m
+[31m-            if (!data.isArray) {[m
+[31m-                return errorResult("No data array: ${json.take(120)}")[m
+[32m+[m[32m    private fun urlSafeBase64(value: ByteArray): String {[m
+[32m+[m[32m        return Base64.encodeToString(value, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun encodePipeRequest(payload: JsonNode): String {[m
+[32m+[m[32m        // Miruro's pipe endpoint expects the JSON request payload in the `e` query parameter as URL-safe Base64.[m
+[32m+[m[32m        return urlSafeBase64(mapper.writeValueAsBytes(payload))[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun decodePipeResponse(value: String): JsonNode {[m
+[32m+[m[32m        // Pipe responses are URL-safe Base64 encoded, then GZIP compressed JSON.[m
+[32m+[m[32m        val padded = value + "=".repeat((4 - value.length % 4) % 4)[m
+[32m+[m[32m        val compressed = Base64.decode(padded, Base64.URL_SAFE or Base64.NO_WRAP)[m
+[32m+[m[32m        val decoded = GZIPInputStream(ByteArrayInputStream(compressed)).bufferedReader().use { it.readText() }[m
+[32m+[m[32m        return mapper.readTree(decoded)[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun decodeUrlSafeBase64Text(value: String): String? {[m
+[32m+[m[32m        return runCatching {[m
+[32m+[m[32m            val padded = value + "=".repeat((4 - value.length % 4) % 4)[m
+[32m+[m[32m            String(Base64.decode(padded, Base64.URL_SAFE or Base64.NO_WRAP))[m
+[32m+[m[32m        }.getOrNull()[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun normalizeEpisodeId(value: String): String {[m
+[32m+[m[32m        val decoded = decodeUrlSafeBase64Text(value)[m
+[32m+[m[32m        return if (decoded != null && ":" in decoded) decoded else value[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun firstArray(node: JsonNode, vararg names: String): JsonNode? {[m
+[32m+[m[32m        return names.firstNotNullOfOrNull { name ->[m
+[32m+[m[32m            node.path(name).takeIf { it.isArray }[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun findFirstArray(node: JsonNode, vararg names: String): JsonNode? {[m
+[32m+[m[32m        if (node.isObject) {[m
+[32m+[m[32m            firstArray(node, *names)?.let { return it }[m
+[32m+[m[32m            node.fields().forEach { entry ->[m
+[32m+[m[32m                findFirstArray(entry.value, *names)?.let { return it }[m
+[32m+[m[32m            }[m
+[32m+[m[32m        } else if (node.isArray) {[m
+[32m+[m[32m            node.forEach { child ->[m
+[32m+[m[32m                findFirstArray(child, *names)?.let { return it }[m
+             }[m
+[32m+[m[32m        }[m
+[32m+[m[32m        return null[m
+[32m+[m[32m    }[m
+ [m
+[31m-            val results = data.mapNotNull { item ->[m
+[31m-                val id = textOrNull(item.get("id")) ?: return@mapNotNull null[m
+[31m-                val attr = item.path("attributes")[m
+[32m+[m[32m    private fun firstText(node: JsonNode, vararg names: String): String? {[m
+[32m+[m[32m        return names.firstNotNullOfOrNull { name -> textOrNull(node.get(name)) }[m
+[32m+[m[32m    }[m
+ [m
+[31m-                val titles = attr.path("titles")[m
+[32m+[m[32m    private fun streamUrl(node: JsonNode): String? {[m
+[32m+[m[32m        return firstText(node, "url", "file", "stream")[m
+[32m+[m[32m            ?: node.path("source").takeIf { it.isObject }?.let { firstText(it, "url", "file", "stream") }[m
+[32m+[m[32m    }[m
+ [m
+[31m-                val title = textOrNull(titles.get("en"))[m
+[31m-                    ?: textOrNull(titles.get("en_jp"))[m
+[31m-                    ?: textOrNull(titles.get("ja_jp"))[m
+[31m-                    ?: textOrNull(attr.get("canonicalTitle"))[m
+[31m-                    ?: return@mapNotNull null[m
+[32m+[m[32m    private fun streamType(node: JsonNode): String? {[m
+[32m+[m[32m        return firstText(node, "type", "format")[m
+[32m+[m[32m            ?: node.path("source").takeIf { it.isObject }?.let { firstText(it, "type", "format") }[m
+[32m+[m[32m    }[m
+ [m
+[31m-                val poster = textOrNull([m
+[31m-                    attr.path("posterImage").get("large")[m
+[31m-                ) ?: textOrNull([m
+[31m-                    attr.path("posterImage").get("medium")[m
+[31m-                ) ?: textOrNull([m
+[31m-                    attr.path("posterImage").get("original")[m
+[31m-                )[m
+[32m+[m[32m    private fun streamQuality(node: JsonNode): String {[m
+[32m+[m[32m        return firstText(node, "quality", "label", "resolution")[m
+[32m+[m[32m            ?: node.path("source").takeIf { it.isObject }?.let { firstText(it, "quality", "label", "resolution") }[m
+[32m+[m[32m            ?: "Auto"[m
+[32m+[m[32m    }[m
+ [m
+[31m-                val subtype = textOrNull(attr.get("subtype"))[m
+[31m-                val type = if (subtype == "movie") TvType.AnimeMovie else TvType.Anime[m
+[32m+[m[32m    private fun generatedEpisodeSlug(episodeId: String, number: Int): String {[m
+[32m+[m[32m        val prefix = episodeId.substringBefore(":")[m
+[32m+[m[32m        return "$prefix-$number"[m
+[32m+[m[32m    }[m
+ [m
+[31m-                val dataUrl = "$mainUrl/kitsu/$id/${slugify(title)}"[m
+[32m+[m[32m    private fun episodeNumberFromId(episodeId: String): Int? {[m
+[32m+[m[32m        val slug = episodeId.substringAfterLast("/")[m
+[32m+[m[32m        return Regex("""(?:^|[-_])(\d+)$""")[m
+[32m+[m[32m            .find(slug)[m
+[32m+[m[32m            ?.groupValues[m
+[32m+[m[32m            ?.getOrNull(1)[m
+[32m+[m[32m            ?.toIntOrNull()[m
+[32m+[m[32m            ?.takeIf { it > 0 }[m
+[32m+[m[32m    }[m
+ [m
+[31m-                newAnimeSearchResponse(title, dataUrl, type) {[m
+[31m-                    posterUrl = poster[m
+[32m+[m[32m    private fun watchPath(provider: String, anilistId: Int, category: String, episodeId: String, number: Int): String {[m
+[32m+[m[32m        return "watch/$provider/$anilistId/$category/${generatedEpisodeSlug(episodeId, number)}"[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private suspend fun anilistQuery(query: String, variables: Map<String, Any?>): JsonNode {[m
+[32m+[m[32m        val body = mapper.createObjectNode().apply {[m
+[32m+[m[32m            put("query", query)[m
+[32m+[m[32m            set<JsonNode>("variables", mapper.valueToTree(variables))[m
+[32m+[m[32m        }[m
+[32m+[m[32m        val json = app.post([m
+[32m+[m[32m            anilistUrl,[m
+[32m+[m[32m            json = JsonAsString(mapper.writeValueAsString(body)),[m
+[32m+[m[32m            headers = anilistHeaders[m
+[32m+[m[32m        ).text[m
+[32m+[m[32m        return mapper.readTree(json).path("data")[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private suspend fun fetchRawEpisodes(anilistId: Int): JsonNode {[m
+[32m+[m[32m        val payload = mapper.createObjectNode().apply {[m
+[32m+[m[32m            put("path", "episodes")[m
+[32m+[m[32m            put("method", "GET")[m
+[32m+[m[32m            set<JsonNode>("query", mapper.createObjectNode().apply { put("anilistId", anilistId) })[m
+[32m+[m[32m            putNull("body")[m
+[32m+[m[32m            put("version", "0.1.0")[m
+[32m+[m[32m        }[m
+[32m+[m[32m        val encoded = encodePipeRequest(payload)[m
+[32m+[m[32m        val response = app.get("$pipeUrl?e=${encodeUrl(encoded)}", headers = requestHeaders).text.trim()[m
+[32m+[m[32m        return decodePipeResponse(response)[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private suspend fun resolveSourceEpisodeId([m
+[32m+[m[32m        episodeId: String,[m
+[32m+[m[32m        provider: String,[m
+[32m+[m[32m        anilistId: Int,[m
+[32m+[m[32m        category: String[m
+[32m+[m[32m    ): String {[m
+[32m+[m[32m        if (!episodeId.startsWith("watch/")) return episodeId[m
+[32m+[m[32m        val slug = episodeId.substringAfterLast("/")[m
+[32m+[m[32m        val episodes = fetchRawEpisodes(anilistId)[m
+[32m+[m[32m            .path("providers")[m
+[32m+[m[32m            .path(provider)[m
+[32m+[m[32m            .path("episodes")[m
+[32m+[m[32m            .path(category)[m
+[32m+[m[32m        if (!episodes.isArray) return episodeId[m
+[32m+[m[32m        episodes.forEach { ep ->[m
+[32m+[m[32m            val rawId = normalizeEpisodeId(textOrNull(ep.get("id")) ?: return@forEach)[m
+[32m+[m[32m            val number = ep.path("number").asInt(0)[m
+[32m+[m[32m            if (number > 0 && generatedEpisodeSlug(rawId, number) == slug) return rawId[m
+[32m+[m[32m        }[m
+[32m+[m[32m        return episodeId[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private suspend fun pipeGet(path: String, query: JsonNode? = null): JsonNode {[m
+[32m+[m[32m        val payload = mapper.createObjectNode().apply {[m
+[32m+[m[32m            put("path", path)[m
+[32m+[m[32m            put("method", "GET")[m
+[32m+[m[32m            if (query == null) {[m
+[32m+[m[32m                putNull("query")[m
+[32m+[m[32m            } else {[m
+[32m+[m[32m                set<JsonNode>("query", query)[m
+[32m+[m[32m            }[m
+[32m+[m[32m            putNull("body")[m
+[32m+[m[32m            put("version", "0.1.0")[m
+[32m+[m[32m        }[m
+[32m+[m[32m        val encoded = encodePipeRequest(payload)[m
+[32m+[m[32m        val response = app.get("$pipeUrl?e=${encodeUrl(encoded)}", headers = requestHeaders).text.trim()[m
+[32m+[m[32m        return decodePipeResponse(response)[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun hasPlayableStreams(node: JsonNode): Boolean {[m
+[32m+[m[32m        return findFirstArray(node, "streams", "sources")?.any { streamUrl(it) != null } == true[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private suspend fun fetchSources([m
+[32m+[m[32m        episodeId: String,[m
+[32m+[m[32m        provider: String,[m
+[32m+[m[32m        anilistId: Int,[m
+[32m+[m[32m        category: String[m
+[32m+[m[32m    ): JsonNode {[m
+[32m+[m[32m        if (episodeId.startsWith("watch/")) {[m
+[32m+[m[32m            val directSources = runCatching { pipeGet(episodeId) }.getOrNull()[m
+[32m+[m[32m            if (directSources != null && hasPlayableStreams(directSources)) return directSources[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        val sourceEpisodeId = resolveSourceEpisodeId(episodeId, provider, anilistId, category)[m
+[32m+[m[32m        val encodedEpisodeId = urlSafeBase64(sourceEpisodeId.toByteArray())[m
+[32m+[m[32m        return pipeGet([m
+[32m+[m[32m            "sources",[m
+[32m+[m[32m            mapper.createObjectNode().apply {[m
+[32m+[m[32m                put("episodeId", encodedEpisodeId)[m
+[32m+[m[32m                put("provider", provider)[m
+[32m+[m[32m                put("category", category)[m
+[32m+[m[32m                put("anilistId", anilistId)[m
+[32m+[m[32m            }[m
+[32m+[m[32m        )[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m
+[32m+[m[32m    private data class SourceCandidate([m
+[32m+[m[32m        val provider: String,[m
+[32m+[m[32m        val episodeId: String[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    private suspend fun sourceCandidates([m
+[32m+[m[32m        selectedProvider: String,[m
+[32m+[m[32m        anilistId: Int,[m
+[32m+[m[32m        category: String,[m
+[32m+[m[32m        selectedEpisodeId: String,[m
+[32m+[m[32m        episodeNumber: Int?[m
+[32m+[m[32m    ): List<SourceCandidate> {[m
+[32m+[m[32m        val candidates = mutableListOf(SourceCandidate(selectedProvider, selectedEpisodeId))[m
+[32m+[m[32m        val rawEpisodes = runCatching { fetchRawEpisodes(anilistId) }.getOrNull()[m
+[32m+[m[32m            ?.path("providers")[m
+[32m+[m[32m            ?: return candidates[m
+[32m+[m[32m        if (!rawEpisodes.isObject) return candidates[m
+[32m+[m
+[32m+[m[32m        val normalizedSelectedId = normalizeEpisodeId(selectedEpisodeId)[m
+[32m+[m[32m        rawEpisodes.fields().forEach { providerEntry ->[m
+[32m+[m[32m            val provider = providerEntry.key[m
+[32m+[m[32m            val episodes = providerEntry.value.path("episodes").path(category)[m
+[32m+[m[32m            if (!episodes.isArray) return@forEach[m
+[32m+[m
+[32m+[m[32m            episodes.forEach { ep ->[m
+[32m+[m[32m                val rawEpisodeId = textOrNull(ep.get("id")) ?: return@forEach[m
+[32m+[m[32m                val sourceEpisodeId = if (rawEpisodeId.startsWith("watch/")) {[m
+[32m+[m[32m                    rawEpisodeId[m
+[32m+[m[32m                } else {[m
+[32m+[m[32m                    normalizeEpisodeId(rawEpisodeId)[m
+[32m+[m[32m                }[m
+[32m+[m[32m                val number = ep.path("number").asInt(0).takeIf { it > 0 }[m
+[32m+[m[32m                val sameEpisode = when {[m
+[32m+[m[32m                    episodeNumber != null && number == episodeNumber -> true[m
+[32m+[m[32m                    sourceEpisodeId == selectedEpisodeId -> true[m
+[32m+[m[32m                    sourceEpisodeId == normalizedSelectedId -> true[m
+[32m+[m[32m                    else -> false[m
+[32m+[m[32m                }[m
+[32m+[m[32m                if (sameEpisode) {[m
+[32m+[m[32m                    candidates.add(SourceCandidate(provider, sourceEpisodeId))[m
+                 }[m
+             }[m
+[32m+[m[32m        }[m
+ [m
+[31m-            if (results.isEmpty()) {[m
+[31m-                errorResult("Kitsu returned 0 results for $query")[m
+[31m-            } else {[m
+[31m-                results[m
+[32m+[m[32m        return candidates[m
+[32m+[m[32m            .distinct()[m
+[32m+[m[32m            .sortedBy { providerRank(it.provider) }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun preferredTitle(titleNode: JsonNode): String? {[m
+[32m+[m[32m        return textOrNull(titleNode.get("english"))[m
+[32m+[m[32m            ?: textOrNull(titleNode.get("romaji"))[m
+[32m+[m[32m            ?: textOrNull(titleNode.get("native"))[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun tvTypeFromFormat(format: String?): TvType {[m
+[32m+[m[32m        return if (format == "MOVIE") TvType.AnimeMovie else TvType.Anime[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun providerRank(provider: String): Int {[m
+[32m+[m[32m        val index = providerPriority.indexOf(provider.lowercase(Locale.ROOT))[m
+[32m+[m[32m        return if (index == -1) providerPriority.size else index[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun runtimeMinutes(value: Int): Int? {[m
+[32m+[m[32m        if (value <= 0) return null[m
+[32m+[m[32m        // AniList durations are already minutes, while Miruro episode payloads often return seconds.[m
+[32m+[m[32m        return if (value > 300) ((value + 59) / 60) else value[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun availabilityLine(subCount: Int, dubCount: Int): String? {[m
+[32m+[m[32m        return when {[m
+[32m+[m[32m            subCount > 0 && dubCount > 0 -> "Sub: $subCount episodes • Dub: $dubCount episodes"[m
+[32m+[m[32m            subCount > 0 -> "Sub only • $subCount episodes"[m
+[32m+[m[32m            dubCount > 0 -> "Dub only • $dubCount episodes"[m
+[32m+[m[32m            else -> null[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private fun mediaSearchResponse(item: JsonNode): SearchResponse? {[m
+[32m+[m[32m        val id = item.path("id").asInt(0).takeIf { it > 0 } ?: return null[m
+[32m+[m[32m        val title = preferredTitle(item.path("title")) ?: return null[m
+[32m+[m[32m        val poster = textOrNull(item.path("coverImage").get("extraLarge"))[m
+[32m+[m[32m            ?: textOrNull(item.path("coverImage").get("large"))[m
+[32m+[m[32m        val type = tvTypeFromFormat(textOrNull(item.get("format")))[m
+[32m+[m[32m        val dataUrl = "$mainUrl/anilist/$id/${slugify(title)}"[m
+[32m+[m
+[32m+[m[32m        return newAnimeSearchResponse(title, dataUrl, type) {[m
+[32m+[m[32m            posterUrl = poster[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    private suspend fun anilistMediaPage(sort: String, page: Int, perPage: Int): List<SearchResponse> {[m
+[32m+[m[32m        val gql = """[m
+[32m+[m[32m            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort]) {[m
+[32m+[m[32m                Page(page: ${'$'}page, perPage: ${'$'}perPage) {[m
+[32m+[m[32m                    media(type: ANIME, sort: ${'$'}sort, isAdult: false) {[m
+[32m+[m[32m                        id[m
+[32m+[m[32m                        title { romaji english native }[m
+[32m+[m[32m                        coverImage { large extraLarge }[m
+[32m+[m[32m                        format[m
+[32m+[m[32m                    }[m
+[32m+[m[32m                }[m
+             }[m
+[32m+[m[32m        """.trimIndent()[m
+[32m+[m[32m        return anilistQuery(gql, mapOf("page" to page, "perPage" to perPage, "sort" to listOf(sort)))[m
+[32m+[m[32m            .path("Page")[m
+[32m+[m[32m            .path("media")[m
+[32m+[m[32m            .takeIf { it.isArray }[m
+[32m+[m[32m            ?.mapNotNull { mediaSearchResponse(it) }[m
+[32m+[m[32m            ?: emptyList()[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {[m
+[32m+[m[32m        val results = anilistMediaPage(request.data, page, 20)[m
+[32m+[m[32m        return newHomePageResponse(request.name, results, hasNext = results.isNotEmpty())[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)[m
+[32m+[m
+[32m+[m[32m    override suspend fun search(query: String): List<SearchResponse> {[m
+[32m+[m[32m        return try {[m
+[32m+[m[32m            val gql = """[m
+[32m+[m[32m                query (${'$'}search: String, ${'$'}page: Int, ${'$'}perPage: Int) {[m
+[32m+[m[32m                    Page(page: ${'$'}page, perPage: ${'$'}perPage) {[m
+[32m+[m[32m                        media(search: ${'$'}search, type: ANIME, sort: SEARCH_MATCH) {[m
+[32m+[m[32m                            id[m
+[32m+[m[32m                            title { romaji english native }[m
+[32m+[m[32m                            coverImage { large extraLarge }[m
+[32m+[m[32m                            format[m
+[32m+[m[32m                        }[m
+[32m+[m[32m                    }[m
+[32m+[m[32m                }[m
+[32m+[m[32m            """.trimIndent()[m
+[32m+[m[32m            val media = anilistQuery(gql, mapOf("search" to query, "page" to 1, "perPage" to 20))[m
+[32m+[m[32m                .path("Page")[m
+[32m+[m[32m                .path("media")[m
+[32m+[m
+[32m+[m[32m            if (!media.isArray) return errorResult("AniList returned no media array")[m
+[32m+[m
+[32m+[m[32m            val results = media.mapNotNull { item -> mediaSearchResponse(item) }[m
+[32m+[m
+[32m+[m[32m            results.ifEmpty { errorResult("AniList returned 0 results for $query") }[m
+         } catch (e: Exception) {[m
+             errorResult("${e::class.java.simpleName}: ${e.message ?: "unknown"}")[m
+         }[m
+     }[m
+ [m
+     override suspend fun load(url: String): LoadResponse? {[m
+[31m-        val id = extractKitsuId(url) ?: return null[m
+[32m+[m[32m        val anilistId = extractAniListId(url) ?: return null[m
+ [m
+         return try {[m
+[31m-            val apiUrl = "https://kitsu.io/api/edge/anime/$id"[m
+[31m-[m
+[31m-            val json = app.get([m
+[31m-                apiUrl,[m
+[31m-                headers = mapOf([m
+[31m-                    "Accept" to "application/vnd.api+json",[m
+[31m-                    "User-Agent" to "Mozilla/5.0"[m
+[31m-                )[m
+[31m-            ).text[m
+[31m-[m
+[31m-            val item = mapper.readTree(json).path("data")[m
+[31m-            val attr = item.path("attributes")[m
+[31m-[m
+[31m-            val titles = attr.path("titles")[m
+[31m-[m
+[31m-            val title = textOrNull(titles.get("en"))[m
+[31m-                ?: textOrNull(titles.get("en_jp"))[m
+[31m-                ?: textOrNull(titles.get("ja_jp"))[m
+[31m-                ?: textOrNull(attr.get("canonicalTitle"))[m
+[31m-                ?: return null[m
+[31m-[m
+[31m-            val poster = textOrNull([m
+[31m-                attr.path("posterImage").get("large")[m
+[31m-            ) ?: textOrNull([m
+[31m-                attr.path("posterImage").get("medium")[m
+[31m-            ) ?: textOrNull([m
+[31m-                attr.path("posterImage").get("original")[m
+[31m-            )[m
+[31m-[m
+[31m-            val description = cleanDescription(textOrNull(attr.get("synopsis")))[m
+[31m-            val subtype = textOrNull(attr.get("subtype"))[m
+[31m-            val type = if (subtype == "movie") TvType.AnimeMovie else TvType.Anime[m
+[31m-[m
+[31m-            if (type == TvType.AnimeMovie) {[m
+[31m-                return newMovieLoadResponse(title, url, type, url) {[m
+[31m-                    posterUrl = poster[m
+[31m-                    plot = description[m
+[32m+[m[32m            val gql = """[m
+[32m+[m[32m                query (${'$'}id: Int) {[m
+[32m+[m[32m                    Media(id: ${'$'}id, type: ANIME) {[m
+[32m+[m[32m                        id[m
+[32m+[m[32m                        title { romaji english native }[m
+[32m+[m[32m                        description(asHtml: false)[m
+[32m+[m[32m                        coverImage { large extraLarge }[m
+[32m+[m[32m                        format[m
+[32m+[m[32m                        episodes[m
+[32m+[m[32m                        duration[m
+[32m+[m[32m                        averageScore[m
+[32m+[m[32m                        genres[m
+[32m+[m[32m                        status[m
+[32m+[m[32m                        seasonYear[m
+[32m+[m[32m                    }[m
+[32m+[m[32m                }[m
+[32m+[m[32m            """.trimIndent()[m
+[32m+[m[32m            val media = anilistQuery(gql, mapOf("id" to anilistId)).path("Media")[m
+[32m+[m[32m            val title = preferredTitle(media.path("title")) ?: return null[m
+[32m+[m[32m            val poster = textOrNull(media.path("coverImage").get("extraLarge"))[m
+[32m+[m[32m                ?: textOrNull(media.path("coverImage").get("large"))[m
+[32m+[m[32m            val description = cleanDescription(textOrNull(media.get("description")))[m
+[32m+[m[32m            val tags = listOfNotNull([m
+[32m+[m[32m                textOrNull(media.get("status"))[m
+[32m+[m[32m                    ?.lowercase(Locale.ROOT)[m
+[32m+[m[32m                    ?.replace('_', ' ')[m
+[32m+[m[32m                    ?.replaceFirstChar { it.titlecase(Locale.ROOT) },[m
+[32m+[m[32m                media.path("seasonYear").asInt(0).takeIf { it > 0 }?.toString(),[m
+[32m+[m[32m                media.path("averageScore").asInt(0).takeIf { it > 0 }?.let { "$it% AniList" }[m
+[32m+[m[32m            ) + media.path("genres").takeIf { it.isArray }?.mapNotNull { textOrNull(it) }.orEmpty()[m
+[32m+[m[32m            val enrichedDescription = listOfNotNull([m
+[32m+[m[32m                description,[m
+[32m+[m[32m                tags.takeIf { it.isNotEmpty() }?.joinToString(prefix = "\n\n", separator = " • ")[m
+[32m+[m[32m            ).joinToString("")[m
+[32m+[m[32m            val type = tvTypeFromFormat(textOrNull(media.get("format")))[m
+[32m+[m[32m            val episodeMap = mutableMapOf<DubStatus, MutableList<Episode>>()[m
+[32m+[m[32m            val rawEpisodes = runCatching { fetchRawEpisodes(anilistId) }.getOrNull()[m
+[32m+[m[32m            val providers = rawEpisodes?.path("providers")[m
+[32m+[m[32m            if (providers != null && providers.isObject) {[m
+[32m+[m[32m                providers.fields().forEach { providerEntry ->[m
+[32m+[m[32m                    val provider = providerEntry.key[m
+[32m+[m[32m                    val episodes = providerEntry.value.path("episodes")[m
+[32m+[m[32m                    val categorizedLists = if (episodes.isArray) {[m
+[32m+[m[32m                        listOf(Triple("sub", DubStatus.Subbed, episodes))[m
+[32m+[m[32m                    } else {[m
+[32m+[m[32m                        listOfNotNull([m
+[32m+[m[32m                            episodes.path("sub").takeIf { it.isArray }?.let { Triple("sub", DubStatus.Subbed, it) },[m
+[32m+[m[32m                            episodes.path("dub").takeIf { it.isArray }?.let { Triple("dub", DubStatus.Dubbed, it) }[m
+[32m+[m[32m                        )[m
+[32m+[m[32m                    }[m
+[32m+[m[32m                    categorizedLists.forEach { (category, dubStatus, list) ->[m
+[32m+[m[32m                        if (list.isArray) {[m
+[32m+[m[32m                            val bucket = episodeMap.getOrPut(dubStatus) { mutableListOf() }[m
+[32m+[m[32m                            list.forEach { ep ->[m
+[32m+[m[32m                                val rawEpisodeId = textOrNull(ep.get("id")) ?: return@forEach[m
+[32m+[m[32m                                val sourceEpisodeId = if (rawEpisodeId.startsWith("watch/")) {[m
+[32m+[m[32m                                    rawEpisodeId[m
+[32m+[m[32m                                } else {[m
+[32m+[m[32m                                    normalizeEpisodeId(rawEpisodeId)[m
+[32m+[m[32m                                }[m
+[32m+[m[32m                                val number = ep.path("number").asInt(0).takeIf { it > 0 } ?: return@forEach[m
+[32m+[m[32m                                val episodeId = if (sourceEpisodeId.startsWith("watch/")) {[m
+[32m+[m[32m                                    sourceEpisodeId[m
+[32m+[m[32m                                } else {[m
+[32m+[m[32m                                    watchPath(provider, anilistId, category, sourceEpisodeId, number)[m
+[32m+[m[32m                                }[m
+[32m+[m[32m                                val episodeTitle = textOrNull(ep.get("title")) ?: "Episode $number"[m
+[32m+[m[32m                                val data = listOf(provider, anilistId.toString(), category, number.toString(), episodeId)[m
+[32m+[m[32m                                    .joinToString("|")[m
+[32m+[m[32m                                bucket.add([m
+[32m+[m[32m                                    newEpisode(data) {[m
+[32m+[m[32m                                        name = episodeTitle[m
+[32m+[m[32m                                        episode = number[m
+[32m+[m[32m                                        posterUrl = firstText(ep, "image", "thumbnail", "img")[m
+[32m+[m[32m                                        runTime = runtimeMinutes(ep.path("duration").asInt(0))[m
+[32m+[m[32m                                    }[m
+[32m+[m[32m                                )[m
+[32m+[m[32m                            }[m
+[32m+[m[32m                        }[m
+[32m+[m[32m                    }[m
+                 }[m
+             }[m
+ [m
+[31m-            val episodeCount = attr.path("episodeCount").asInt(0)[m
+[31m-[m
+[31m-            val safeEpisodeCount = when {[m
+[31m-                episodeCount <= 0 -> 1[m
+[31m-                episodeCount > 500 -> 500[m
+[31m-                else -> episodeCount[m
+[32m+[m[32m            val normalizedEpisodes = mutableMapOf<DubStatus, List<Episode>>().apply {[m
+[32m+[m[32m                episodeMap.forEach { (dubStatus, episodeList) ->[m
+[32m+[m[32m                    this[dubStatus] = episodeList.distinctBy { it.data }.sortedBy { it.episode }[m
+[32m+[m[32m                }[m
+             }[m
+[32m+[m[32m            val availability = availabilityLine([m
+[32m+[m[32m                normalizedEpisodes[DubStatus.Subbed].orEmpty().mapNotNull { it.episode }.distinct().size,[m
+[32m+[m[32m                normalizedEpisodes[DubStatus.Dubbed].orEmpty().mapNotNull { it.episode }.distinct().size[m
+[32m+[m[32m            )[m
+[32m+[m[32m            val plotWithAvailability = listOfNotNull(availability, enrichedDescription.ifBlank { description })[m
+[32m+[m[32m                .joinToString("\n\n")[m
+ [m
+[31m-            val episodeList = mutableListOf<Episode>()[m
+[32m+[m[32m            if (type == TvType.AnimeMovie && episodeMap.isEmpty()) {[m
+[32m+[m[32m                return newMovieLoadResponse(title, url, type, "kiwi|$anilistId|sub|1|movie-1") {[m
+[32m+[m[32m                    posterUrl = poster[m
+[32m+[m[32m                    plot = plotWithAvailability[m
+[32m+[m[32m                }[m
+[32m+[m[32m            }[m
+ [m
+[31m-            for (episodeNumber in 1..safeEpisodeCount) {[m
+[31m-                episodeList.add([m
+[31m-                    newEpisode("$url#episode-$episodeNumber") {[m
+[32m+[m[32m            if (episodeMap.isEmpty()) {[m
+[32m+[m[32m                val episodeCount = media.path("episodes").asInt(1).coerceIn(1, 500)[m
+[32m+[m[32m                episodeMap[DubStatus.Subbed] = (1..episodeCount).map { episodeNumber ->[m
+[32m+[m[32m                    newEpisode("kiwi|$anilistId|sub|$episodeNumber|animepahe-$episodeNumber") {[m
+                         name = "Episode $episodeNumber"[m
+                         episode = episodeNumber[m
+                     }[m
+[31m-                )[m
+[32m+[m[32m                }.toMutableList()[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            val finalEpisodes = mutableMapOf<DubStatus, List<Episode>>().apply {[m
+[32m+[m[32m                episodeMap.forEach { (dubStatus, episodeList) ->[m
+[32m+[m[32m                    this[dubStatus] = episodeList.distinctBy { it.data }.sortedBy { it.episode }[m
+[32m+[m[32m                }[m
+             }[m
+[32m+[m[32m            val finalAvailability = availabilityLine([m
+[32m+[m[32m                finalEpisodes[DubStatus.Subbed].orEmpty().mapNotNull { it.episode }.distinct().size,[m
+[32m+[m[32m                finalEpisodes[DubStatus.Dubbed].orEmpty().mapNotNull { it.episode }.distinct().size[m
+[32m+[m[32m            )[m
+[32m+[m[32m            val finalPlot = listOfNotNull(finalAvailability, enrichedDescription.ifBlank { description })[m
+[32m+[m[32m                .joinToString("\n\n")[m
+ [m
+             newAnimeLoadResponse(title, url, type) {[m
+                 posterUrl = poster[m
+[31m-                plot = description[m
+[31m-                episodes[DubStatus.Subbed] = episodeList[m
+[32m+[m[32m                plot = finalPlot[m
+[32m+[m[32m                episodes = finalEpisodes[m
+             }[m
+         } catch (_: Exception) {[m
+             null[m
+[36m@@ -216,6 +592,63 @@[m [mclass MiruroProvider : MainAPI() {[m
+         subtitleCallback: (SubtitleFile) -> Unit,[m
+         callback: (ExtractorLink) -> Unit[m
+     ): Boolean {[m
+[31m-        return false[m
+[32m+[m[32m        return try {[m
+[32m+[m[32m            val parts = data.split("|", limit = 5)[m
+[32m+[m[32m            if (parts.size != 4 && parts.size != 5) return false[m
+[32m+[m[32m            val provider = parts[0][m
+[32m+[m[32m            val anilistId = parts[1].toIntOrNull() ?: return false[m
+[32m+[m[32m            val category = parts[2][m
+[32m+[m[32m            val episodeNumber = if (parts.size == 5) parts[3].toIntOrNull() else null[m
+[32m+[m[32m            val episodeId = if (parts.size == 5) parts[4] else parts[3][m
+[32m+[m[32m            val candidates = sourceCandidates([m
+[32m+[m[32m                provider,[m
+[32m+[m[32m                anilistId,[m
+[32m+[m[32m                category,[m
+[32m+[m[32m                episodeId,[m
+[32m+[m[32m                episodeNumber ?: episodeNumberFromId(episodeId)[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            val subtitleUrls = mutableSetOf<String>()[m
+[32m+[m[32m            val streamUrls = mutableSetOf<String>()[m
+[32m+[m[32m            var found = false[m
+[32m+[m
+[32m+[m[32m            candidates.forEach { candidate ->[m
+[32m+[m[32m                val sources = runCatching {[m
+[32m+[m[32m                    fetchSources(candidate.episodeId, candidate.provider, anilistId, category)[m
+[32m+[m[32m                }.getOrNull() ?: return@forEach[m
+[32m+[m
+[32m+[m[32m                findFirstArray(sources, "subtitles", "tracks")?.forEach { subtitle ->[m
+[32m+[m[32m                    val url = firstText(subtitle, "file", "url") ?: return@forEach[m
+[32m+[m[32m                    if (!subtitleUrls.add(url)) return@forEach[m
+[32m+[m[32m                    val label = firstText(subtitle, "label", "lang", "language") ?: "Subtitle"[m
+[32m+[m[32m                    subtitleCallback(newSubtitleFile(label, url))[m
+[32m+[m[32m                }[m
+[32m+[m
+[32m+[m[32m                findFirstArray(sources, "streams", "sources")?.forEach { stream ->[m
+[32m+[m[32m                    val url = streamUrl(stream) ?: return@forEach[m
+[32m+[m[32m                    if (!streamUrls.add(url)) return@forEach[m
+[32m+[m[32m                    val qualityLabel = streamQuality(stream)[m
+[32m+[m[32m                    val streamType = streamType(stream)?.lowercase(Locale.ROOT)[m
+[32m+[m[32m                    callback([m
+[32m+[m[32m                        newExtractorLink([m
+[32m+[m[32m                            source = name,[m
+[32m+[m[32m                            name = "$name ${candidate.provider.uppercase(Locale.ROOT)} $qualityLabel",[m
+[32m+[m[32m                            url = url,[m
+[32m+[m[32m                            type = if (streamType == "dash" || streamType == "mpd") ExtractorLinkType.DASH else ExtractorLinkType.M3U8[m
+[32m+[m[32m                        ) {[m
+[32m+[m[32m                            referer = mainUrl[m
+[32m+[m[32m                            quality = getQualityFromName(qualityLabel).takeIf { it != Qualities.Unknown.value }[m
+[32m+[m[32m                                ?: Qualities.Unknown.value[m
+[32m+[m[32m                            headers = mapOf("Referer" to "$mainUrl/", "Origin" to mainUrl)[m
+[32m+[m[32m                        }[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    found = true[m
+[32m+[m[32m                }[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m            found[m
+[32m+[m[32m        } catch (_: Exception) {[m
+[32m+[m[32m            false[m
+[32m+[m[32m        }[m
+     }[m
+ }[m
+\ No newline at end of file[m
