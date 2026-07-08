@@ -34,6 +34,8 @@ fun Project.android(configuration: BaseExtension.() -> Unit) {
 }
 
 subprojects {
+    if (name == "MiruroApp") return@subprojects
+
     apply(plugin = "com.android.library")
     apply(plugin = "kotlin-android")
     apply(plugin = "com.lagradost.cloudstream3.gradle")
