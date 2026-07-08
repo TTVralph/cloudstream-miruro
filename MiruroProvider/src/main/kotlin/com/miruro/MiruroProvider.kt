@@ -28,6 +28,7 @@ import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.nicehttp.JsonAsString
 import java.io.ByteArrayInputStream
 import java.net.URLEncoder
+import java.util.Calendar
 import java.util.Locale
 import java.util.zip.GZIPInputStream
 
@@ -45,11 +46,12 @@ class MiruroProvider : MainAPI() {
     override val hasQuickSearch = true
 
     override val mainPage = mainPageOf(
-        "TRENDING_DESC" to "Trending Anime",
-        "POPULARITY_DESC" to "Popular Anime",
-        "SCORE_DESC" to "Top Rated Anime",
-        "START_DATE_DESC" to "Recently Added Anime",
-        "FAVOURITES_DESC" to "Fan Favorites"
+        "TRENDING_DESC" to "Trending Now",
+        "POPULARITY_DESC|CURRENT" to "Popular This Season",
+        "UPDATED_AT_DESC" to "Recently Updated",
+        "SCORE_DESC" to "Top Rated",
+        "START_DATE_DESC|UPCOMING" to "Upcoming Anime",
+        "POPULARITY_DESC|COMPLETED" to "Completed Anime"
     )
     override val hasDownloadSupport = false
 
@@ -359,6 +361,37 @@ class MiruroProvider : MainAPI() {
         return if (index == -1) providerPriority.size else index
     }
 
+    private fun currentAniListSeason(): Pair<String, Int> {
+        val calendar = Calendar.getInstance()
+        val year = calendar.get(Calendar.YEAR)
+        val season = when (calendar.get(Calendar.MONTH)) {
+            Calendar.DECEMBER, Calendar.JANUARY, Calendar.FEBRUARY -> "WINTER"
+            Calendar.MARCH, Calendar.APRIL, Calendar.MAY -> "SPRING"
+            Calendar.JUNE, Calendar.JULY, Calendar.AUGUST -> "SUMMER"
+            else -> "FALL"
+        }
+        return season to year
+    }
+
+    private fun runtimeMinutes(value: Int): Int? {
+        if (value <= 0) return null
+        // AniList durations are already minutes, while Miruro episode payloads often return seconds.
+        return if (value > 300) ((value + 59) / 60) else value
+    }
+
+    private fun episodeDescription(ep: JsonNode): String? {
+        return cleanDescription(
+            firstText(
+                ep,
+                "description",
+                "desc",
+                "overview",
+                "summary",
+                "synopsis"
+            )
+        )
+    }
+
     private fun mediaSearchResponse(item: JsonNode): SearchResponse? {
         val id = item.path("id").asInt(0).takeIf { it > 0 } ?: return null
         val title = preferredTitle(item.path("title")) ?: return null
@@ -372,11 +405,33 @@ class MiruroProvider : MainAPI() {
         }
     }
 
-    private suspend fun anilistMediaPage(sort: String, page: Int, perPage: Int): List<SearchResponse> {
+    private suspend fun anilistMediaPage(data: String, page: Int, perPage: Int): List<SearchResponse> {
+        val parts = data.split("|")
+        val sort = parts.firstOrNull()?.takeIf { it.isNotBlank() } ?: "TRENDING_DESC"
+        val filter = parts.getOrNull(1)
+        val (season, year) = currentAniListSeason()
+        val variables = mutableMapOf<String, Any?>(
+            "page" to page,
+            "perPage" to perPage,
+            "sort" to listOf(sort),
+            "season" to null,
+            "seasonYear" to null,
+            "status" to null
+        )
+
+        when (filter) {
+            "CURRENT" -> {
+                variables["season"] = season
+                variables["seasonYear"] = year
+            }
+            "UPCOMING" -> variables["status"] = "NOT_YET_RELEASED"
+            "COMPLETED" -> variables["status"] = "FINISHED"
+        }
+
         val gql = """
-            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort]) {
+            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus) {
                 Page(page: ${'$'}page, perPage: ${'$'}perPage) {
-                    media(type: ANIME, sort: ${'$'}sort, isAdult: false) {
+                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, isAdult: false) {
                         id
                         title { romaji english native }
                         coverImage { large extraLarge }
@@ -385,7 +440,7 @@ class MiruroProvider : MainAPI() {
                 }
             }
         """.trimIndent()
-        return anilistQuery(gql, mapOf("page" to page, "perPage" to perPage, "sort" to listOf(sort)))
+        return anilistQuery(gql, variables)
             .path("Page")
             .path("media")
             .takeIf { it.isArray }
@@ -394,7 +449,7 @@ class MiruroProvider : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val results = anilistMediaPage(request.data, page, 20)
+        val results = anilistMediaPage(request.data, page, 24)
         return newHomePageResponse(request.name, results, hasNext = results.isNotEmpty())
     }
 
@@ -495,8 +550,9 @@ class MiruroProvider : MainAPI() {
                                     newEpisode(data) {
                                         name = episodeTitle
                                         episode = number
-                                        posterUrl = textOrNull(ep.get("image"))
-                                        runTime = ep.path("duration").asInt(0).takeIf { it > 0 }
+                                        posterUrl = firstText(ep, "image", "thumbnail", "img")
+                                        description = episodeDescription(ep)
+                                        runTime = runtimeMinutes(ep.path("duration").asInt(0))
                                     }
                                 )
                             }

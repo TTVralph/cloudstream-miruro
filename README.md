@@ -6,8 +6,8 @@ A Cloudstream extension for browsing and watching anime through Miruro-backed so
 
 - Search anime and anime movies with AniList titles and posters.
 - Quick search support inside Cloudstream.
-- Browse homepage rows for trending, popular, top-rated, recently added, and fan-favorite anime.
-- Load anime details with posters, descriptions, status/year/score/genre metadata, sub/dub episode lists, episode thumbnails, and runtimes when available.
+- Browse homepage rows modeled after Miruro, including trending, current-season popular, recently updated, top-rated, upcoming, and completed anime.
+- Load anime details with posters, descriptions, status/year/score/genre metadata, sub/dub episode lists, episode thumbnails, episode descriptions, and corrected runtimes when available.
 - Resolve Miruro pipe sources into Cloudstream HLS/DASH links.
 - Load subtitles/tracks exposed by the source payload.
 - Try equivalent episodes across available providers, with a preferred provider order to reduce broken-link fallbacks.
