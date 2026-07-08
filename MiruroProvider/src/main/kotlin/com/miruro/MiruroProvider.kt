@@ -46,10 +46,14 @@ class MiruroProvider : MainAPI() {
     private val pipeUrl = "$mainUrl/api/secure/pipe"
     private val requestHeaders = mapOf(
         "Accept" to "application/json, text/plain, */*",
+        "Accept-Language" to "en-US,en;q=0.9",
         "Content-Type" to "application/json",
         "Origin" to mainUrl,
         "Referer" to "$mainUrl/",
-        "User-Agent" to "Mozilla/5.0"
+        "Sec-Fetch-Dest" to "empty",
+        "Sec-Fetch-Mode" to "cors",
+        "Sec-Fetch-Site" to "same-origin",
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
     )
 
     private fun encodeUrl(value: String): String {
@@ -109,6 +113,24 @@ class MiruroProvider : MainAPI() {
         val compressed = Base64.decode(padded, Base64.URL_SAFE or Base64.NO_WRAP)
         val decoded = GZIPInputStream(ByteArrayInputStream(compressed)).bufferedReader().use { it.readText() }
         return mapper.readTree(decoded)
+    }
+
+    private fun decodeUrlSafeBase64Text(value: String): String? {
+        return runCatching {
+            val padded = value + "=".repeat((4 - value.length % 4) % 4)
+            String(Base64.decode(padded, Base64.URL_SAFE or Base64.NO_WRAP))
+        }.getOrNull()
+    }
+
+    private fun normalizeEpisodeId(value: String): String {
+        val decoded = decodeUrlSafeBase64Text(value)
+        return if (decoded != null && ":" in decoded) decoded else value
+    }
+
+    private fun firstArray(node: JsonNode, vararg names: String): JsonNode? {
+        return names.firstNotNullOfOrNull { name ->
+            node.path(name).takeIf { it.isArray }
+        }
     }
 
     private suspend fun anilistQuery(query: String, variables: Map<String, Any?>): JsonNode {
@@ -244,7 +266,7 @@ class MiruroProvider : MainAPI() {
                         if (list.isArray) {
                             val bucket = episodeMap.getOrPut(dubStatus) { mutableListOf() }
                             list.forEach { ep ->
-                                val episodeId = textOrNull(ep.get("id")) ?: return@forEach
+                                val episodeId = normalizeEpisodeId(textOrNull(ep.get("id")) ?: return@forEach)
                                 val number = ep.path("number").asInt(0).takeIf { it > 0 } ?: return@forEach
                                 val episodeTitle = textOrNull(ep.get("title")) ?: "Episode $number"
                                 val data = listOf(provider, anilistId.toString(), category, episodeId)
@@ -309,14 +331,14 @@ class MiruroProvider : MainAPI() {
             val episodeId = parts[3]
             val sources = fetchSources(episodeId, provider, anilistId, category)
 
-            sources.path("subtitles").takeIf { it.isArray }?.forEach { subtitle ->
+            firstArray(sources, "subtitles", "tracks")?.forEach { subtitle ->
                 val url = textOrNull(subtitle.get("file")) ?: textOrNull(subtitle.get("url")) ?: return@forEach
                 val label = textOrNull(subtitle.get("label")) ?: textOrNull(subtitle.get("lang")) ?: "Subtitle"
                 subtitleCallback(newSubtitleFile(label, url))
             }
 
             var found = false
-            sources.path("streams").takeIf { it.isArray }?.forEach { stream ->
+            firstArray(sources, "streams", "sources")?.forEach { stream ->
                 val url = textOrNull(stream.get("url")) ?: return@forEach
                 val qualityLabel = textOrNull(stream.get("quality")) ?: "Auto"
                 val streamType = textOrNull(stream.get("type"))?.lowercase(Locale.ROOT)
