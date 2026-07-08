@@ -625,13 +625,11 @@ class MiruroProvider : MainAPI() {
     )
 
     private fun bestProviderEpisodeList(candidates: List<ProviderEpisodeList>): ProviderEpisodeList? {
-        return candidates
-            .filter { it.episodes.isArray && it.episodes.size() > 0 }
-            .sortedWith(
-                compareByDescending<ProviderEpisodeList> { it.episodes.size() }
-                    .thenBy { providerRank(it.provider) }
-            )
-            .firstOrNull()
+        val available = candidates.filter { it.episodes.isArray && it.episodes.size() > 0 }
+        return available
+            .filter { providerRank(it.provider) < providerPriority.size }
+            .minByOrNull { providerRank(it.provider) }
+            ?: available.maxByOrNull { it.episodes.size() }
     }
 
     private suspend fun addSeasonEpisodes(
