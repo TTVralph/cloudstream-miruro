@@ -1,0 +1,22 @@
+[
+    {
+        "fileHash": "sha256-b2968231371ca2e790891431e40bfdd941d52c004ee9bb1571305ec348005493",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/TTVralph/cloudstream-miruro",
+        "fileSize": 39620,
+        "status": 1,
+        "language": "en",
+        "authors": [
+            "Miruro"
+        ],
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie"
+        ],
+        "version": 99,
+        "internalName": "MiruroProvider",
+        "description": "Cloudstream extension for Miruro anime browsing and playback",
+        "url": "https://raw.githubusercontent.com/TTVralph/cloudstream-miruro/builds/MiruroProvider.cs3",
+        "name": "MiruroProvider"
+    }
+]

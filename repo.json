@@ -1,0 +1,9 @@
+{
+  "iconUrl": null,
+  "name": "Miruro",
+  "description": "Cloudstream extension repo for Miruro",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/TTVralph/cloudstream-miruro/builds/plugins.json"
+  ]
+}
