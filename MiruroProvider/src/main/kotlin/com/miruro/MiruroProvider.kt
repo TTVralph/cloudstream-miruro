@@ -379,18 +379,6 @@ class MiruroProvider : MainAPI() {
         return if (value > 300) ((value + 59) / 60) else value
     }
 
-    private fun episodeDescription(ep: JsonNode): String? {
-        return cleanDescription(
-            firstText(
-                ep,
-                "description",
-                "desc",
-                "overview",
-                "summary",
-                "synopsis"
-            )
-        )
-    }
 
     private fun mediaSearchResponse(item: JsonNode): SearchResponse? {
         val id = item.path("id").asInt(0).takeIf { it > 0 } ?: return null
@@ -551,7 +539,6 @@ class MiruroProvider : MainAPI() {
                                         name = episodeTitle
                                         episode = number
                                         posterUrl = firstText(ep, "image", "thumbnail", "img")
-                                        description = episodeDescription(ep)
                                         runTime = runtimeMinutes(ep.path("duration").asInt(0))
                                     }
                                 )
