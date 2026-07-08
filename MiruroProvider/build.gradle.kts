@@ -1,7 +1,7 @@
-version = 1
+version = 2
 
 cloudstream {
-    description = "CloudStream extension for Miruro anime metadata"
+    description = "Cloudstream extension for Miruro anime browsing and playback"
     authors = listOf("Miruro")
     status = 1
     tvTypes = listOf("Anime", "AnimeMovie")

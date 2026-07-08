@@ -5,15 +5,19 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.Episode
+import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.newAnimeLoadResponse
 import com.lagradost.cloudstream3.newAnimeSearchResponse
 import com.lagradost.cloudstream3.newEpisode
+import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -37,13 +41,22 @@ class MiruroProvider : MainAPI() {
         TvType.AnimeMovie
     )
 
-    override val hasMainPage = false
-    override val hasQuickSearch = false
+    override val hasMainPage = true
+    override val hasQuickSearch = true
+
+    override val mainPage = mainPageOf(
+        "TRENDING_DESC" to "Trending Anime",
+        "POPULARITY_DESC" to "Popular Anime",
+        "SCORE_DESC" to "Top Rated Anime",
+        "START_DATE_DESC" to "Recently Added Anime",
+        "FAVOURITES_DESC" to "Fan Favorites"
+    )
     override val hasDownloadSupport = false
 
     private val mapper = jacksonObjectMapper()
     private val anilistUrl = "https://graphql.anilist.co"
     private val pipeUrl = "$mainUrl/api/secure/pipe"
+    private val providerPriority = listOf("zoro", "animepahe", "gogoanime", "kiwi")
     private val requestHeaders = mapOf(
         "Accept" to "application/json, text/plain, */*",
         "Accept-Language" to "en-US,en;q=0.9",
@@ -105,10 +118,12 @@ class MiruroProvider : MainAPI() {
     }
 
     private fun encodePipeRequest(payload: JsonNode): String {
+        // Miruro's pipe endpoint expects the JSON request payload in the `e` query parameter as URL-safe Base64.
         return urlSafeBase64(mapper.writeValueAsBytes(payload))
     }
 
     private fun decodePipeResponse(value: String): JsonNode {
+        // Pipe responses are URL-safe Base64 encoded, then GZIP compressed JSON.
         val padded = value + "=".repeat((4 - value.length % 4) % 4)
         val compressed = Base64.decode(padded, Base64.URL_SAFE or Base64.NO_WRAP)
         val decoded = GZIPInputStream(ByteArrayInputStream(compressed)).bufferedReader().use { it.readText() }
@@ -324,7 +339,9 @@ class MiruroProvider : MainAPI() {
             }
         }
 
-        return candidates.distinct()
+        return candidates
+            .distinct()
+            .sortedBy { providerRank(it.provider) }
     }
 
     private fun preferredTitle(titleNode: JsonNode): String? {
@@ -336,6 +353,52 @@ class MiruroProvider : MainAPI() {
     private fun tvTypeFromFormat(format: String?): TvType {
         return if (format == "MOVIE") TvType.AnimeMovie else TvType.Anime
     }
+
+    private fun providerRank(provider: String): Int {
+        val index = providerPriority.indexOf(provider.lowercase(Locale.ROOT))
+        return if (index == -1) providerPriority.size else index
+    }
+
+    private fun mediaSearchResponse(item: JsonNode): SearchResponse? {
+        val id = item.path("id").asInt(0).takeIf { it > 0 } ?: return null
+        val title = preferredTitle(item.path("title")) ?: return null
+        val poster = textOrNull(item.path("coverImage").get("extraLarge"))
+            ?: textOrNull(item.path("coverImage").get("large"))
+        val type = tvTypeFromFormat(textOrNull(item.get("format")))
+        val dataUrl = "$mainUrl/anilist/$id/${slugify(title)}"
+
+        return newAnimeSearchResponse(title, dataUrl, type) {
+            posterUrl = poster
+        }
+    }
+
+    private suspend fun anilistMediaPage(sort: String, page: Int, perPage: Int): List<SearchResponse> {
+        val gql = """
+            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort]) {
+                Page(page: ${'$'}page, perPage: ${'$'}perPage) {
+                    media(type: ANIME, sort: ${'$'}sort, isAdult: false) {
+                        id
+                        title { romaji english native }
+                        coverImage { large extraLarge }
+                        format
+                    }
+                }
+            }
+        """.trimIndent()
+        return anilistQuery(gql, mapOf("page" to page, "perPage" to perPage, "sort" to listOf(sort)))
+            .path("Page")
+            .path("media")
+            .takeIf { it.isArray }
+            ?.mapNotNull { mediaSearchResponse(it) }
+            ?: emptyList()
+    }
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val results = anilistMediaPage(request.data, page, 20)
+        return newHomePageResponse(request.name, results, hasNext = results.isNotEmpty())
+    }
+
+    override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
         return try {
@@ -357,18 +420,7 @@ class MiruroProvider : MainAPI() {
 
             if (!media.isArray) return errorResult("AniList returned no media array")
 
-            val results = media.mapNotNull { item ->
-                val id = item.path("id").asInt(0).takeIf { it > 0 } ?: return@mapNotNull null
-                val title = preferredTitle(item.path("title")) ?: return@mapNotNull null
-                val poster = textOrNull(item.path("coverImage").get("extraLarge"))
-                    ?: textOrNull(item.path("coverImage").get("large"))
-                val type = tvTypeFromFormat(textOrNull(item.get("format")))
-                val dataUrl = "$mainUrl/anilist/$id/${slugify(title)}"
-
-                newAnimeSearchResponse(title, dataUrl, type) {
-                    posterUrl = poster
-                }
-            }
+            val results = media.mapNotNull { item -> mediaSearchResponse(item) }
 
             results.ifEmpty { errorResult("AniList returned 0 results for $query") }
         } catch (e: Exception) {
@@ -389,6 +441,11 @@ class MiruroProvider : MainAPI() {
                         coverImage { large extraLarge }
                         format
                         episodes
+                        duration
+                        averageScore
+                        genres
+                        status
+                        seasonYear
                     }
                 }
             """.trimIndent()
@@ -397,6 +454,15 @@ class MiruroProvider : MainAPI() {
             val poster = textOrNull(media.path("coverImage").get("extraLarge"))
                 ?: textOrNull(media.path("coverImage").get("large"))
             val description = cleanDescription(textOrNull(media.get("description")))
+            val tags = listOfNotNull(
+                textOrNull(media.get("status"))?.lowercase(Locale.ROOT)?.replaceFirstChar { it.titlecase(Locale.ROOT) },
+                media.path("seasonYear").asInt(0).takeIf { it > 0 }?.toString(),
+                media.path("averageScore").asInt(0).takeIf { it > 0 }?.let { "$it% AniList" }
+            ) + media.path("genres").takeIf { it.isArray }?.mapNotNull { textOrNull(it) }.orEmpty()
+            val enrichedDescription = listOfNotNull(
+                description,
+                tags.takeIf { it.isNotEmpty() }?.joinToString(prefix = "\n\n", separator = " • ")
+            ).joinToString("")
             val type = tvTypeFromFormat(textOrNull(media.get("format")))
             val episodeMap = mutableMapOf<DubStatus, MutableList<Episode>>()
             val rawEpisodes = runCatching { fetchRawEpisodes(anilistId) }.getOrNull()
@@ -442,7 +508,7 @@ class MiruroProvider : MainAPI() {
             if (type == TvType.AnimeMovie && episodeMap.isEmpty()) {
                 return newMovieLoadResponse(title, url, type, "kiwi|$anilistId|sub|1|movie-1") {
                     posterUrl = poster
-                    plot = description
+                    plot = enrichedDescription.ifBlank { description }
                 }
             }
 
@@ -458,7 +524,7 @@ class MiruroProvider : MainAPI() {
 
             newAnimeLoadResponse(title, url, type) {
                 posterUrl = poster
-                plot = description
+                plot = enrichedDescription.ifBlank { description }
                 episodes = mutableMapOf<DubStatus, List<Episode>>().apply {
                     episodeMap.forEach { (dubStatus, episodeList) ->
                         this[dubStatus] = episodeList.distinctBy { it.data }.sortedBy { it.episode }
