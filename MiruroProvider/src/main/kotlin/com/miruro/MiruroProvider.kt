@@ -47,11 +47,13 @@ class MiruroProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "TRENDING_DESC" to "Trending Now",
-        "POPULARITY_DESC|CURRENT" to "Popular This Season",
-        "UPDATED_AT_DESC" to "Recently Updated",
-        "SCORE_DESC" to "Top Rated",
-        "START_DATE_DESC|UPCOMING" to "Upcoming Anime",
-        "POPULARITY_DESC|COMPLETED" to "Completed Anime"
+        "POPULARITY_DESC|CURRENT|TV,TV_SHORT,ONA" to "Airing This Season",
+        "SCORE_DESC|CURRENT|TV,TV_SHORT,ONA" to "Best Airing Anime",
+        "POPULARITY_DESC|MOVIE" to "Popular Anime Movies",
+        "SCORE_DESC|COMPLETED|TV,TV_SHORT,ONA,OVA,SPECIAL" to "All-Time Favorites",
+        "POPULARITY_DESC|UPCOMING|TV,TV_SHORT,ONA,MOVIE" to "Coming Soon",
+        "POPULARITY_DESC|Action,Adventure" to "Action & Adventure",
+        "POPULARITY_DESC|Comedy,Slice of Life" to "Easy Watching"
     )
     override val hasDownloadSupport = false
 
@@ -393,10 +395,20 @@ class MiruroProvider : MainAPI() {
         }
     }
 
+    private fun enumList(value: String?): List<String>? {
+        return value
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?.takeIf { it.isNotEmpty() }
+    }
+
     private suspend fun anilistMediaPage(data: String, page: Int, perPage: Int): List<SearchResponse> {
         val parts = data.split("|")
         val sort = parts.firstOrNull()?.takeIf { it.isNotBlank() } ?: "TRENDING_DESC"
         val filter = parts.getOrNull(1)
+        val formats = enumList(parts.getOrNull(2))
+        val genres = enumList(filter)
         val (season, year) = currentAniListSeason()
         val variables = mutableMapOf<String, Any?>(
             "page" to page,
@@ -404,22 +416,37 @@ class MiruroProvider : MainAPI() {
             "sort" to listOf(sort),
             "season" to null,
             "seasonYear" to null,
-            "status" to null
+            "status" to null,
+            "format" to null,
+            "formatIn" to formats,
+            "genreIn" to genres
         )
 
         when (filter) {
             "CURRENT" -> {
                 variables["season"] = season
                 variables["seasonYear"] = year
+                variables["genreIn"] = null
             }
-            "UPCOMING" -> variables["status"] = "NOT_YET_RELEASED"
-            "COMPLETED" -> variables["status"] = "FINISHED"
+            "UPCOMING" -> {
+                variables["status"] = "NOT_YET_RELEASED"
+                variables["genreIn"] = null
+            }
+            "COMPLETED" -> {
+                variables["status"] = "FINISHED"
+                variables["genreIn"] = null
+            }
+            "MOVIE" -> {
+                variables["format"] = "MOVIE"
+                variables["formatIn"] = null
+                variables["genreIn"] = null
+            }
         }
 
         val gql = """
-            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus) {
+            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus, ${'$'}format: MediaFormat, ${'$'}formatIn: [MediaFormat], ${'$'}genreIn: [String]) {
                 Page(page: ${'$'}page, perPage: ${'$'}perPage) {
-                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, isAdult: false) {
+                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, format: ${'$'}format, format_in: ${'$'}formatIn, genre_in: ${'$'}genreIn, isAdult: false) {
                         id
                         title { romaji english native }
                         coverImage { large extraLarge }
@@ -433,12 +460,13 @@ class MiruroProvider : MainAPI() {
             .path("media")
             .takeIf { it.isArray }
             ?.mapNotNull { mediaSearchResponse(it) }
+            ?.distinctBy { it.url }
             ?: emptyList()
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val results = anilistMediaPage(request.data, page, 24)
-        return newHomePageResponse(request.name, results, hasNext = results.isNotEmpty())
+        val results = anilistMediaPage(request.data, page, 18)
+        return newHomePageResponse(request.name, results, hasNext = results.size >= 18)
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
