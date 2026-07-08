@@ -1,6 +1,6 @@
 package com.ttvralph.miruroapp
 
-import android.app.Activity
+import androidx.activity.ComponentActivity
 import android.os.Bundle
 import android.view.Gravity
 import android.view.inputmethod.EditorInfo
@@ -10,7 +10,7 @@ import com.ttvralph.miruroapp.data.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class MainActivity : Activity() {
+class MainActivity : ComponentActivity() {
     private val repo = AniListRepository()
     private lateinit var store: WatchlistStore
     private lateinit var root: LinearLayout
