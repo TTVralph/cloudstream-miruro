@@ -625,7 +625,7 @@ class MiruroProvider : MainAPI() {
                         newEpisode(data) {
                             name = episodeTitle
                             episode = number
-                            season = seasonNumber
+                            this.season = seasonNumber
                             posterUrl = firstText(ep, "image", "thumbnail", "img")
                             runTime = runtimeMinutes(ep.path("duration").asInt(0))
                         }
