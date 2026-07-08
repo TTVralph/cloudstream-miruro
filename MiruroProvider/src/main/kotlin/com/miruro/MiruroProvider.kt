@@ -172,6 +172,10 @@ class MiruroProvider : MainAPI() {
         return "$prefix-$number"
     }
 
+    private fun watchPath(provider: String, anilistId: Int, category: String, episodeId: String, number: Int): String {
+        return "watch/$provider/$anilistId/$category/${generatedEpisodeSlug(episodeId, number)}"
+    }
+
     private suspend fun anilistQuery(query: String, variables: Map<String, Any?>): JsonNode {
         val body = mapper.createObjectNode().apply {
             put("query", query)
@@ -349,12 +353,17 @@ class MiruroProvider : MainAPI() {
                             val bucket = episodeMap.getOrPut(dubStatus) { mutableListOf() }
                             list.forEach { ep ->
                                 val rawEpisodeId = textOrNull(ep.get("id")) ?: return@forEach
-                                val episodeId = if (rawEpisodeId.startsWith("watch/")) {
+                                val sourceEpisodeId = if (rawEpisodeId.startsWith("watch/")) {
                                     rawEpisodeId
                                 } else {
                                     normalizeEpisodeId(rawEpisodeId)
                                 }
                                 val number = ep.path("number").asInt(0).takeIf { it > 0 } ?: return@forEach
+                                val episodeId = if (sourceEpisodeId.startsWith("watch/")) {
+                                    sourceEpisodeId
+                                } else {
+                                    watchPath(provider, anilistId, category, sourceEpisodeId, number)
+                                }
                                 val episodeTitle = textOrNull(ep.get("title")) ?: "Episode $number"
                                 val data = listOf(provider, anilistId.toString(), category, episodeId)
                                     .joinToString("|")
