@@ -47,11 +47,12 @@ class MiruroProvider : MainAPI() {
     override val hasQuickSearch = true
 
     override val mainPage = mainPageOf(
-        "TRENDING_DESC|ANIME|TV,TV_SHORT,ONA" to "Trending Now",
-        "POPULARITY_DESC|CURRENT|TV,TV_SHORT,ONA" to "Currently Airing",
-        "POPULARITY_DESC|SEASON|TV,TV_SHORT,ONA" to "Popular This Season",
-        "SCORE_DESC|COMPLETED|TV,TV_SHORT,ONA,OVA,SPECIAL" to "Top Rated Anime",
-        "POPULARITY_DESC|MOVIE|MOVIE" to "Anime Movies"
+        "TRENDING_DESC" to "Trending Now",
+        "POPULARITY_DESC|CURRENT" to "Popular This Season",
+        "UPDATED_AT_DESC" to "Recently Updated",
+        "SCORE_DESC" to "Top Rated",
+        "START_DATE_DESC|UPCOMING" to "Upcoming Anime",
+        "POPULARITY_DESC|COMPLETED" to "Completed Anime"
     )
     override val hasDownloadSupport = false
 
