@@ -12,6 +12,7 @@ import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.addDubStatus
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.newAnimeLoadResponse
@@ -46,11 +47,11 @@ class MiruroProvider : MainAPI() {
     override val hasQuickSearch = true
 
     override val mainPage = mainPageOf(
-        "TRENDING_DESC" to "Trending Now",
+        "TRENDING_DESC|ANIME|TV,TV_SHORT,ONA" to "Trending Now",
         "POPULARITY_DESC|CURRENT|TV,TV_SHORT,ONA" to "Currently Airing",
         "POPULARITY_DESC|SEASON|TV,TV_SHORT,ONA" to "Popular This Season",
         "SCORE_DESC|COMPLETED|TV,TV_SHORT,ONA,OVA,SPECIAL" to "Top Rated Anime",
-        "POPULARITY_DESC|MOVIE" to "Anime Movies"
+        "POPULARITY_DESC|MOVIE|MOVIE" to "Anime Movies"
     )
     override val hasDownloadSupport = false
 
@@ -400,6 +401,37 @@ class MiruroProvider : MainAPI() {
         }
     }
 
+    private fun episodeCount(list: JsonNode?): Int? {
+        return list
+            ?.takeIf { it.isArray }
+            ?.mapNotNull { ep -> ep.path("number").asInt(0).takeIf { number -> number > 0 } }
+            ?.distinct()
+            ?.maxOrNull()
+    }
+
+    private suspend fun addHomePageDubStatus(response: SearchResponse): SearchResponse {
+        val animeResponse = response as? com.lagradost.cloudstream3.AnimeSearchResponse ?: return response
+        val anilistId = extractAniListId(response.url) ?: return response
+        val providers = runCatching { fetchRawEpisodes(anilistId).path("providers") }.getOrNull() ?: return response
+        if (!providers.isObject) return response
+
+        var subCount: Int? = null
+        var dubCount: Int? = null
+        providers.fields().forEach { providerEntry ->
+            val episodes = providerEntry.value.path("episodes")
+            if (episodes.isArray) {
+                subCount = maxOf(subCount ?: 0, episodeCount(episodes) ?: 0).takeIf { it > 0 } ?: subCount
+            } else {
+                subCount = maxOf(subCount ?: 0, episodeCount(episodes.path("sub")) ?: 0).takeIf { it > 0 } ?: subCount
+                dubCount = maxOf(dubCount ?: 0, episodeCount(episodes.path("dub")) ?: 0).takeIf { it > 0 } ?: dubCount
+            }
+        }
+
+        if (subCount != null) animeResponse.addDubStatus(DubStatus.Subbed, subCount)
+        if (dubCount != null) animeResponse.addDubStatus(DubStatus.Dubbed, dubCount)
+        return animeResponse
+    }
+
     private fun enumList(value: String?): List<String>? {
         return value
             ?.split(",")
@@ -413,7 +445,7 @@ class MiruroProvider : MainAPI() {
         val sort = parts.firstOrNull()?.takeIf { it.isNotBlank() } ?: "TRENDING_DESC"
         val filter = parts.getOrNull(1)
         val formats = enumList(parts.getOrNull(2))
-        val genres = enumList(filter)
+        val genres = if (filter == "ANIME") null else enumList(filter)
         val (season, year) = currentAniListSeason()
         val variables = mutableMapOf<String, Any?>(
             "page" to page,
@@ -425,7 +457,8 @@ class MiruroProvider : MainAPI() {
             "statusNot" to "NOT_YET_RELEASED",
             "format" to null,
             "formatIn" to formats,
-            "genreIn" to genres
+            "genreIn" to genres,
+            "countryOfOrigin" to "JP"
         )
 
         when (filter) {
@@ -457,9 +490,9 @@ class MiruroProvider : MainAPI() {
         }
 
         val gql = """
-            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus, ${'$'}statusNot: MediaStatus, ${'$'}format: MediaFormat, ${'$'}formatIn: [MediaFormat], ${'$'}genreIn: [String]) {
+            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus, ${'$'}statusNot: MediaStatus, ${'$'}format: MediaFormat, ${'$'}formatIn: [MediaFormat], ${'$'}genreIn: [String], ${'$'}countryOfOrigin: CountryCode) {
                 Page(page: ${'$'}page, perPage: ${'$'}perPage) {
-                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, status_not: ${'$'}statusNot, format: ${'$'}format, format_in: ${'$'}formatIn, genre_in: ${'$'}genreIn, isAdult: false) {
+                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, status_not: ${'$'}statusNot, format: ${'$'}format, format_in: ${'$'}formatIn, genre_in: ${'$'}genreIn, countryOfOrigin: ${'$'}countryOfOrigin, isAdult: false) {
                         id
                         title { romaji english native }
                         coverImage { large extraLarge }
@@ -481,6 +514,7 @@ class MiruroProvider : MainAPI() {
         val parts = data.split("|")
         val sort = parts.firstOrNull()?.takeIf { it.isNotBlank() } ?: "TRENDING_DESC"
         val filter = parts.getOrNull(1)
+        val formats = enumList(parts.getOrNull(2))
         val (season, year) = currentAniListSeason()
         val variables = mutableMapOf<String, Any?>(
             "page" to page,
@@ -489,7 +523,10 @@ class MiruroProvider : MainAPI() {
             "season" to null,
             "seasonYear" to null,
             "status" to null,
-            "statusNot" to "NOT_YET_RELEASED"
+            "statusNot" to "NOT_YET_RELEASED",
+            "format" to null,
+            "formatIn" to formats,
+            "countryOfOrigin" to "JP"
         )
 
         when (filter) {
@@ -507,12 +544,16 @@ class MiruroProvider : MainAPI() {
                 variables["statusNot"] = null
             }
             "COMPLETED" -> variables["status"] = "FINISHED"
+            "MOVIE" -> {
+                variables["format"] = "MOVIE"
+                variables["formatIn"] = null
+            }
         }
 
         val gql = """
-            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus, ${'$'}statusNot: MediaStatus) {
+            query (${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}season: MediaSeason, ${'$'}seasonYear: Int, ${'$'}status: MediaStatus, ${'$'}statusNot: MediaStatus, ${'$'}format: MediaFormat, ${'$'}formatIn: [MediaFormat], ${'$'}countryOfOrigin: CountryCode) {
                 Page(page: ${'$'}page, perPage: ${'$'}perPage) {
-                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, status_not: ${'$'}statusNot, isAdult: false) {
+                    media(type: ANIME, sort: ${'$'}sort, season: ${'$'}season, seasonYear: ${'$'}seasonYear, status: ${'$'}status, status_not: ${'$'}statusNot, format: ${'$'}format, format_in: ${'$'}formatIn, countryOfOrigin: ${'$'}countryOfOrigin, isAdult: false) {
                         id
                         title { romaji english native }
                         coverImage { large extraLarge }
@@ -545,7 +586,8 @@ class MiruroProvider : MainAPI() {
                         .getOrDefault(emptyList())
                 }
             }
-        return newHomePageResponse(request.name, results, hasNext = results.isNotEmpty())
+        val enrichedResults = results.map { result -> addHomePageDubStatus(result) }
+        return newHomePageResponse(request.name, enrichedResults, hasNext = enrichedResults.isNotEmpty())
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
