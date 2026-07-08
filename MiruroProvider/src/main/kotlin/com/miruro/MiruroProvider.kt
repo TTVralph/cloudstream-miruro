@@ -12,6 +12,7 @@ import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.addDate
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.newAnimeLoadResponse
@@ -28,7 +29,10 @@ import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.nicehttp.JsonAsString
 import java.io.ByteArrayInputStream
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.zip.GZIPInputStream
 
 class MiruroProvider : MainAPI() {
@@ -73,6 +77,7 @@ class MiruroProvider : MainAPI() {
         "Content-Type" to "application/json",
         "User-Agent" to requestHeaders.getValue("User-Agent")
     )
+    private val anilistEpisodeDateCache = mutableMapOf<Int, Map<Int, String>>()
 
     private fun encodeUrl(value: String): String {
         return URLEncoder.encode(value, "UTF-8")
@@ -89,6 +94,45 @@ class MiruroProvider : MainAPI() {
     private fun textOrNull(node: JsonNode?): String? {
         val value = node?.asText() ?: return null
         return value.takeIf { it.isNotBlank() && it != "null" }
+    }
+
+    private fun releaseDateFromText(value: String?): String? {
+        val date = value?.trim()?.takeIf { it.isNotBlank() && it != "null" } ?: return null
+        return date.takeIf { Regex("""^\d{4}-\d{2}-\d{2}(?:[T ].*)?$""").matches(it) }
+    }
+
+    private fun releaseDateFromNode(node: JsonNode?): String? {
+        if (node == null || node.isNull || node.isMissingNode) return null
+        if (node.isTextual) return releaseDateFromText(node.asText())
+
+        val year = node.path("year").asInt(0).takeIf { it > 0 }
+        val month = node.path("month").asInt(0).takeIf { it in 1..12 }
+        val day = node.path("day").asInt(0).takeIf { it in 1..31 }
+        if (year != null && month != null && day != null) {
+            return "%04d-%02d-%02d".format(Locale.ROOT, year, month, day)
+        }
+
+        return firstText(node, "date", "iso", "value")?.let { releaseDateFromText(it) }
+    }
+
+    private fun episodeReleaseDate(episode: JsonNode): String? {
+        val directDate = listOf("airDate", "airedAt", "releaseDate", "released", "date")
+            .firstNotNullOfOrNull { field -> releaseDateFromNode(episode.get(field)) }
+        if (directDate != null) return directDate
+
+        val createdAtContext = firstText(episode, "createdAtType", "createdAtKind", "dateType")
+            ?.lowercase(Locale.ROOT)
+        return if (createdAtContext?.contains(Regex("release|air|premiere|broadcast")) == true) {
+            releaseDateFromNode(episode.get("createdAt"))
+        } else {
+            null
+        }
+    }
+
+    private fun anilistDateString(epochSeconds: Long): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date(epochSeconds * 1000))
     }
 
     private fun cleanDescription(value: String?): String? {
@@ -435,6 +479,35 @@ class MiruroProvider : MainAPI() {
         )
     }
 
+    private suspend fun fetchAniListEpisodeAirDates(anilistId: Int): Map<Int, String> {
+        anilistEpisodeDateCache[anilistId]?.let { return it }
+        val gql = """
+            query (${ '$' }mediaId: Int) {
+                Page(page: 1, perPage: 200) {
+                    airingSchedules(mediaId: ${ '$' }mediaId, sort: EPISODE) {
+                        episode
+                        airingAt
+                    }
+                }
+            }
+        """.trimIndent()
+        val dates = runCatching {
+            anilistQuery(gql, mapOf("mediaId" to anilistId))
+                .path("Page")
+                .path("airingSchedules")
+                .takeIf { it.isArray }
+                ?.mapNotNull { item ->
+                    val episode = item.path("episode").asInt(0).takeIf { it > 0 } ?: return@mapNotNull null
+                    val airingAt = item.path("airingAt").asLong(0).takeIf { it > 0 } ?: return@mapNotNull null
+                    episode to anilistDateString(airingAt)
+                }
+                ?.toMap()
+                ?: emptyMap()
+        }.getOrDefault(emptyMap())
+        anilistEpisodeDateCache[anilistId] = dates
+        return dates
+    }
+
     private suspend fun fetchSeasonEntry(anilistId: Int): MediaSeasonEntry? {
         val gql = """
             query (${ '$' }id: Int) {
@@ -706,6 +779,7 @@ class MiruroProvider : MainAPI() {
                 candidates.filter { it.dubStatus == dubStatus && it.category == category },
                 season.episodes
             ) ?: return@forEach
+            val episodeDateFallbacks = fetchAniListEpisodeAirDates(season.id)
             val bucket = episodeMap.getOrPut(dubStatus) { mutableListOf() }
             val seenKeys = bucket.mapNotNull { episode ->
                 val number = episode.episode ?: return@mapNotNull null
@@ -737,6 +811,7 @@ class MiruroProvider : MainAPI() {
                         this.season = seasonNumber
                         posterUrl = firstText(ep, "image", "thumbnail", "img")
                         runTime = runtimeMinutes(ep.path("duration").asInt(0))
+                        addDate(episodeReleaseDate(ep) ?: episodeDateFallbacks[number])
                     }
                 )
             }
