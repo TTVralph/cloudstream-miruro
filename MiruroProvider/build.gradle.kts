@@ -1,4 +1,4 @@
-version = 4
+version = 5
 
 cloudstream {
     description = "Cloudstream extension for Miruro anime browsing and playback"
