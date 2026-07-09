@@ -54,7 +54,6 @@ import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeSearchFilters
 import com.ttvralph.miruroapp.data.AnimeSort
 import com.ttvralph.miruroapp.data.PosterGridDensity
-import com.ttvralph.miruroapp.data.ThemeMode
 import com.ttvralph.miruroapp.data.AudioType
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.data.WatchlistSort
@@ -546,7 +545,7 @@ fun SettingsScreen(viewModel: MiruroViewModel? = null) {
         SectionTitle("Playback preferences")
         FilterRow("Audio", listOf("SUB" as String? to "Sub", "DUB" as String? to "Dub"), settings.preferredAudio.name) { it?.let { v -> viewModel?.updatePreferredAudio(AudioType.valueOf(v)) } }
         FilterRow("Provider", listOf("Auto" as String? to "Auto", "zoro" as String? to "Zoro", "animepahe" as String? to "AnimePahe", "gogoanime" as String? to "Gogo", "kiwi" as String? to "Kiwi"), settings.preferredProvider) { viewModel?.updatePreferredProvider(it ?: "Auto") }
-        FilterRow("Theme", ThemeMode.values().map { it.name as String? to it.name.lowercase(Locale.ROOT).replaceFirstChar { c -> c.titlecase(Locale.ROOT) } }, settings.themeMode.name) { it?.let { v -> viewModel?.updateThemeMode(ThemeMode.valueOf(v)) } }
+        StateMessage("AniStream TV uses a dark-only interface, so light/system theme choices are hidden to keep settings consistent with the UI.")
         FilterRow("Grid", PosterGridDensity.values().map { it.name as String? to it.name.lowercase(Locale.ROOT).replaceFirstChar { c -> c.titlecase(Locale.ROOT) } }, settings.posterGridDensity.name) { it?.let { v -> viewModel?.updatePosterGridDensity(PosterGridDensity.valueOf(v)) } }
         FilterRow("Autoplay", listOf("true" as String? to "On", "false" as String? to "Off"), settings.autoPlayNext.toString()) { viewModel?.updateAutoPlayNext(it == "true") }
         FilterRow("Resume", listOf("true" as String? to "On", "false" as String? to "Off"), settings.resumePlayback.toString()) { viewModel?.updateResumePlayback(it == "true") }
@@ -562,6 +561,7 @@ fun SettingsScreen(viewModel: MiruroViewModel? = null) {
 fun DetailsScreen(
     viewModel: MiruroViewModel,
     animeId: Int,
+    onBack: (() -> Unit)? = null,
     onOpenEpisode: (Int, Int, AudioType) -> Unit,
     onPlayEpisode: (Int, Int, AudioType) -> Unit
 ) {
@@ -591,7 +591,8 @@ fun DetailsScreen(
                         inList = details.id in favorites,
                         playLabel = firstPlayable?.let { (season, ep) -> "Play S$season E${ep.episodeNumber}" },
                         onPlay = firstPlayable?.let { (season, ep) -> { onPlayEpisode(season, ep.episodeNumber, ep.audioType) } },
-                        onToggleList = { viewModel.toggleFavorite(details.id) }
+                        onToggleList = { viewModel.toggleFavorite(details.id) },
+                        onBack = onBack
                     )
                 }
                 if (details.seasons.isEmpty()) {
@@ -658,7 +659,8 @@ private fun DetailsHero(
     inList: Boolean,
     playLabel: String?,
     onPlay: (() -> Unit)?,
-    onToggleList: () -> Unit
+    onToggleList: () -> Unit,
+    onBack: (() -> Unit)? = null
 ) {
     Box(
         modifier = Modifier
@@ -699,6 +701,13 @@ private fun DetailsHero(
                     )
                 )
         )
+        onBack?.let { back ->
+            SecondaryButton(
+                "Back",
+                modifier = Modifier.align(Alignment.TopStart).padding(36.dp).width(120.dp),
+                onClick = back
+            )
+        }
         Column(modifier = Modifier.align(Alignment.BottomStart).padding(36.dp).width(720.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 details.rating?.let {
