@@ -6,18 +6,24 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,20 +46,20 @@ import com.ttvralph.miruroapp.data.AnimeItem
 fun FocusableSurface(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    shape: RoundedCornerShape = RoundedCornerShape(10.dp),
+    shape: RoundedCornerShape = RoundedCornerShape(6.dp),
     unfocusedBackground: Color = MiruroColors.Card,
     focusedBackground: Color = MiruroColors.Focused,
     content: @Composable (focused: Boolean) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.05f else 1f, label = "focusScale")
+    val scale by animateFloatAsState(if (focused) 1.08f else 1f, label = "focusScale")
     Box(
         modifier = modifier
             .scale(scale)
             .clip(shape)
             .background(if (focused) focusedBackground else unfocusedBackground, shape)
-            .border(if (focused) 2.dp else 1.dp, if (focused) MiruroColors.Accent else MiruroColors.Border, shape)
+            .border(if (focused) 3.dp else 1.dp, if (focused) Color.White else MiruroColors.Border, shape)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
     ) {
         content(focused)
@@ -64,12 +71,12 @@ fun PrimaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> Un
     FocusableSurface(
         onClick = onClick,
         modifier = modifier.height(52.dp),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(4.dp),
         unfocusedBackground = MiruroColors.Card,
-        focusedBackground = MiruroColors.Accent
+        focusedBackground = Color.White
     ) { focused ->
         Box(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
-            Text(text, color = if (focused) Color.White else MiruroColors.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(text, color = if (focused) Color.Black else MiruroColors.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -96,9 +103,9 @@ fun StateMessage(message: String, color: Color = MiruroColors.Text) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 24.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MiruroColors.Panel, RoundedCornerShape(12.dp))
-            .border(1.dp, MiruroColors.Border, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(8.dp))
+            .background(MiruroColors.Panel, RoundedCornerShape(8.dp))
+            .border(1.dp, MiruroColors.Border, RoundedCornerShape(8.dp))
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -156,54 +163,51 @@ fun PosterCard(item: AnimeItem, onClick: () -> Unit) {
 }
 
 @Composable
-fun TopNavBar(
+fun NavRail(
     current: String,
     onHome: () -> Unit,
     onSearch: () -> Unit,
     onFavorites: () -> Unit,
     onSettings: () -> Unit
 ) {
-    Row(
+    Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .background(MiruroColors.Panel.copy(alpha = 0.9f), RoundedCornerShape(28.dp))
-            .border(1.dp, MiruroColors.Border, RoundedCornerShape(28.dp))
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .fillMaxHeight()
+            .width(96.dp)
+            .background(MiruroColors.Panel),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Tanji", color = MiruroColors.Accent, fontSize = 24.sp, fontWeight = FontWeight.Black)
-        Spacer(Modifier.width(28.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            NavButton("Home", current == "Home", onHome)
-            NavButton("Search", current == "Search", onSearch)
-            NavButton("My List", current == "Favorites", onFavorites)
-            NavButton("Settings", current == "Settings", onSettings)
-        }
+        Spacer(Modifier.height(28.dp))
+        Text("T", color = MiruroColors.Accent, fontSize = 32.sp, fontWeight = FontWeight.Black)
+        Spacer(Modifier.height(36.dp))
+        RailItem(Icons.Filled.Home, "Home", current == "Home", onHome)
+        RailItem(Icons.Filled.Search, "Search", current == "Search", onSearch)
+        RailItem(Icons.Filled.Favorite, "My List", current == "Favorites", onFavorites)
+        Spacer(Modifier.weight(1f))
+        RailItem(Icons.Filled.Settings, "Settings", current == "Settings", onSettings)
+        Spacer(Modifier.height(24.dp))
     }
 }
 
 @Composable
-private fun NavButton(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun RailItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
-    val active = focused || selected
-    val shape = RoundedCornerShape(18.dp)
-    Box(
+    val tint = if (focused || selected) Color.White else MiruroColors.Subtle
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
+            .padding(vertical = 6.dp)
+            .width(76.dp)
             .clip(shape)
-            .background(if (active) MiruroColors.Accent else Color.Transparent, shape)
-            .border(if (selected && !focused) 1.dp else 0.dp, MiruroColors.Accent2, shape)
+            .background(if (focused) MiruroColors.Focused else Color.Transparent, shape)
+            .border(if (selected) 2.dp else 0.dp, MiruroColors.Accent, shape)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center
+            .padding(vertical = 10.dp)
     ) {
-        Text(
-            label,
-            color = if (active) Color.White else MiruroColors.Subtle,
-            fontSize = 14.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-            maxLines = 1
-        )
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(label, color = tint, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
     }
 }
