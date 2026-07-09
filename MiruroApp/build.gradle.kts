@@ -55,6 +55,5 @@ dependencies {
     implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.navigation:navigation-compose:2.8.5")
-    implementation("androidx.tv:tv-foundation:1.0.0-alpha12")
     implementation("io.coil-kt:coil-compose:2.7.0")
 }
