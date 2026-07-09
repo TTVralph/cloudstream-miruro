@@ -1,27 +1,28 @@
 package com.ttvralph.miruroapp.ui
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.Color
 import com.ttvralph.miruroapp.data.ThemeMode
 
 object MiruroColors {
-    val Background = Color(0xFF050505)
-    val Surface = Color(0xFF131313)
-    val Panel = Color(0xFF0E0E0E)        // surface-container-lowest, sidebar/cards base
-    val Card = Color(0xFF1C1B1B)         // surface-container-low
-    val CardHigh = Color(0xFF2A2A2A)     // surface-container-high
-    val Focused = Color(0xFF353534)      // surface-variant
-    val Text = Color(0xFFE5E2E1)         // on-background
-    val Subtle = Color(0xFFE3BDC2)       // on-surface-variant (warm pink-grey)
-    val Accent = Color(0xFFD81E5B)       // primary-container crimson
-    val AccentSoft = Color(0xFFFFB2BD)   // primary (soft pink, for small labels)
-    val Accent2 = Color(0xFFE9C349)      // secondary gold
+    val Background = Color(0xFF07090D)
+    val Surface = Color(0xFF0D1118)
+    val Panel = Color(0xFF12171F)
+    val Card = Color(0xFF1F242E)
+    val CardHigh = Color(0xFF2B313D)
+    val Focused = Color(0xFF333A46)
+    val Text = Color(0xFFFFFFFF)
+    val Muted = Color(0xFF9FB0BD)
+    val Subtle = Color(0xFF637380)
+    val Accent = Color(0xFFF40612)
+    val AccentSoft = Color(0xFFFF2838)
+    val Accent2 = Color(0xFFFFD235)
     val Danger = Color(0xFFFFB4AB)
-    val Border = Color(0x1AFFFFFF)       // white @ 10%
+    val Border = Color(0x1AFFFFFF)
 }
 
 private val MiruroDarkColorScheme = darkColorScheme(

@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
@@ -22,11 +22,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.ttvralph.miruroapp.data.AudioType
 import com.ttvralph.miruroapp.data.AnimeEpisode
+import com.ttvralph.miruroapp.data.AudioType
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.MiruroTheme
-import com.ttvralph.miruroapp.ui.SideNav
+import com.ttvralph.miruroapp.ui.TopBar
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MiruroViewModel by viewModels()
@@ -77,10 +77,10 @@ private fun NavHostController.navigateTopLevel(route: String) {
 private fun navLabelFor(route: String?): String = when (route) {
     Routes.Home.route -> "Home"
     Routes.Search.route -> "Search"
-    Routes.Favorites.route -> "Favorites"
+    Routes.Favorites.route -> "My List"
     Routes.Movies.route -> "Movies"
-    Routes.Series.route -> "Series"
-    Routes.Genres.route -> "Genres"
+    Routes.Series.route -> "Anime"
+    Routes.Genres.route -> "New & Popular"
     Routes.Settings.route -> "Settings"
     else -> ""
 }
@@ -90,23 +90,23 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val showChrome = currentRoute != Routes.Player.route
+    val fullScreenRoute = currentRoute == Routes.Player.route || currentRoute == Routes.Details.route
 
     Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MiruroColors.Background)
         ) {
-            if (showChrome) {
-                SideNav(
+            if (!fullScreenRoute) {
+                TopBar(
                     current = navLabelFor(currentRoute),
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
-                    onSearch = { navController.navigateTopLevel(Routes.Search.route) },
-                    onLibrary = { navController.navigateTopLevel(Routes.Favorites.route) },
+                    onAnime = { navController.navigateTopLevel(Routes.Series.route) },
                     onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
-                    onSeries = { navController.navigateTopLevel(Routes.Series.route) },
-                    onGenres = { navController.navigateTopLevel(Routes.Genres.route) },
+                    onNewPopular = { navController.navigateTopLevel(Routes.Genres.route) },
+                    onMyList = { navController.navigateTopLevel(Routes.Favorites.route) },
+                    onSearch = { navController.navigateTopLevel(Routes.Search.route) },
                     onSettings = { navController.navigateTopLevel(Routes.Settings.route) }
                 )
             }
@@ -114,9 +114,11 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 navController = navController,
                 startDestination = Routes.Home.route,
                 modifier = Modifier
-                    .weight(1f)
                     .fillMaxSize()
-                    .padding(horizontal = if (showChrome) 36.dp else 0.dp, vertical = if (showChrome) 20.dp else 0.dp)
+                    .padding(
+                        horizontal = if (fullScreenRoute) 0.dp else 58.dp,
+                        vertical = if (fullScreenRoute) 0.dp else 8.dp
+                    )
             ) {
                 composable(Routes.Home.route) {
                     HomeScreen(
@@ -149,6 +151,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     DetailsScreen(
                         viewModel = viewModel,
                         animeId = id,
+                        onBack = { navController.popBackStack() },
                         onOpenEpisode = { season, episode, audio -> navController.navigate(Routes.Episode.path(id, season, episode, audio)) },
                         onPlayEpisode = { season, episode, audio -> navController.navigate(Routes.Player.path(id, season, episode, audio)) }
                     )
@@ -185,7 +188,12 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     val episodeNumber = entry.arguments?.getInt(Args.EPISODE) ?: return@composable
                     val audio = entry.arguments?.getString(Args.AUDIO)?.let { runCatching { AudioType.valueOf(it) }.getOrNull() } ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
-                    PlayerScreen(viewModel, episode, onBack = { navController.popBackStack() }, onNextEpisode = { findNextEpisode(viewModel, id, season, episodeNumber, audio)?.let { next -> navController.navigate(Routes.Player.path(id, next.seasonNumber, next.episodeNumber, next.audioType)) } })
+                    PlayerScreen(
+                        viewModel = viewModel,
+                        episode = episode,
+                        onBack = { navController.popBackStack() },
+                        onNextEpisode = { findNextEpisode(viewModel, id, season, episodeNumber, audio)?.let { next -> navController.navigate(Routes.Player.path(id, next.seasonNumber, next.episodeNumber, next.audioType)) } }
+                    )
                 }
             }
         }
@@ -198,8 +206,6 @@ private fun findEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, e
         ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
         ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.sourceCandidates.isNotEmpty() }
 }
-
-
 
 private fun findNextEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType) =
     viewModel.cachedDetails(animeId)
