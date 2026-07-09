@@ -8,9 +8,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -24,6 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AudioType
+import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.MiruroTheme
 import com.ttvralph.miruroapp.ui.TopBar
 
@@ -33,7 +34,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MiruroTheme { MiruroApp(viewModel) }
+            val settings by viewModel.settings.collectAsState()
+            MiruroTheme(settings.themeMode) { MiruroApp(viewModel) }
         }
     }
 }
@@ -89,12 +91,16 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val fullScreenRoute = currentRoute == Routes.Player.route || currentRoute == Routes.Details.route
+    val horizontalPadding = when (currentRoute) {
+        Routes.Home.route -> 0.dp
+        else -> if (fullScreenRoute) 0.dp else 58.dp
+    }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(MiruroColors.Background)
         ) {
             if (!fullScreenRoute) {
                 TopBar(
@@ -113,10 +119,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 startDestination = Routes.Home.route,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(
-                        horizontal = if (fullScreenRoute) 0.dp else 58.dp,
-                        vertical = if (fullScreenRoute) 0.dp else 8.dp
-                    )
+                    .padding(horizontal = horizontalPadding, vertical = if (fullScreenRoute) 0.dp else 8.dp)
             ) {
                 composable(Routes.Home.route) {
                     HomeScreen(
@@ -200,8 +203,8 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
 
 private fun findEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType): AnimeEpisode? {
     val episodes = viewModel.cachedDetails(animeId)?.seasons?.firstOrNull { it.seasonNumber == season }?.episodes.orEmpty()
-    return episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
-        ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == viewModel.settings.value.preferredAudio }
+    return episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == viewModel.settings.value.preferredAudio }
+        ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
         ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.sourceCandidates.isNotEmpty() }
 }
 
