@@ -25,3 +25,8 @@ data class SubtitleTrack(
 
 enum class AudioType { SUB, DUB }
 data class HomeRow(val title: String, val items: List<AnimeItem>)
+
+sealed interface SourceResolution {
+    data class Found(val source: PlaybackSource) : SourceResolution
+    data class NotFound(val reason: String) : SourceResolution
+}
