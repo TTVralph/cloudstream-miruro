@@ -22,9 +22,13 @@ class MiruroRepository {
     private val mapper = jacksonObjectMapper()
     private val headers = mapOf(
         "Accept" to "application/json, text/plain, */*",
+        "Accept-Language" to "en-US,en;q=0.9",
         "Content-Type" to "application/json",
         "Origin" to MIRURO_URL,
         "Referer" to "$MIRURO_URL/",
+        "Sec-Fetch-Dest" to "empty",
+        "Sec-Fetch-Mode" to "cors",
+        "Sec-Fetch-Site" to "same-origin",
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
     )
 
@@ -60,17 +64,7 @@ class MiruroRepository {
 
     suspend fun resolveSource(anilistId: Int, candidates: List<EpisodeSourceCandidate>): PlaybackSource? = withContext(Dispatchers.IO) {
         candidates.forEach { candidate ->
-            val sources = runCatching {
-                pipeGet(
-                    "sources",
-                    mapper.createObjectNode().apply {
-                        put("episodeId", urlSafeBase64(candidate.episodeId.toByteArray()))
-                        put("provider", candidate.provider)
-                        put("category", candidate.category)
-                        put("anilistId", anilistId)
-                    }
-                )
-            }.getOrNull() ?: return@forEach
+            val sources = runCatching { fetchSources(candidate, anilistId) }.getOrNull() ?: return@forEach
 
             val streamsNode = findFirstArray(sources, "streams", "sources") ?: return@forEach
             val best = streamsNode.maxByOrNull { qualityRank(streamQuality(it)) } ?: return@forEach
@@ -84,13 +78,51 @@ class MiruroRepository {
             return@withContext PlaybackSource(
                 url = url,
                 label = "${candidate.provider.uppercase(Locale.ROOT)} ${streamQuality(best)}",
-                type = if (typeStr == "dash" || typeStr == "mpd") PlaybackType.DASH else PlaybackType.HLS,
-                headers = mapOf("Referer" to "$MIRURO_URL/", "Origin" to MIRURO_URL),
+                type = playbackType(typeStr, url),
+                headers = playbackHeaders(candidate.provider),
                 subtitleTracks = subtitles
             )
         }
         null
     }
+
+    private fun fetchSources(candidate: EpisodeSourceCandidate, anilistId: Int): JsonNode {
+        if (candidate.episodeId.startsWith("watch/")) {
+            val direct = runCatching { pipeGet(candidate.episodeId) }.getOrNull()
+            if (direct != null && hasPlayableStreams(direct)) return direct
+        }
+
+        val sourceEpisodeId = resolveSourceEpisodeId(candidate, anilistId)
+        return pipeGet(
+            "sources",
+            mapper.createObjectNode().apply {
+                put("episodeId", urlSafeBase64(sourceEpisodeId.toByteArray()))
+                put("provider", candidate.provider)
+                put("category", candidate.category)
+                put("anilistId", anilistId)
+            }
+        )
+    }
+
+    private fun resolveSourceEpisodeId(candidate: EpisodeSourceCandidate, anilistId: Int): String {
+        if (!candidate.episodeId.startsWith("watch/")) return candidate.episodeId
+        val slug = candidate.episodeId.substringAfterLast("/")
+        val episodes = fetchRawEpisodes(anilistId)
+            .path("providers")
+            .path(candidate.provider)
+            .path("episodes")
+            .path(candidate.category)
+        if (!episodes.isArray) return candidate.episodeId
+        episodes.forEach { ep ->
+            val rawId = normalizeEpisodeId(text(ep, "id") ?: return@forEach)
+            val number = ep.path("number").asInt(0)
+            if (number > 0 && generatedEpisodeSlug(rawId, number) == slug) return rawId
+        }
+        return candidate.episodeId
+    }
+
+    private fun hasPlayableStreams(node: JsonNode): Boolean =
+        findFirstArray(node, "streams", "sources")?.any { streamUrl(it) != null } == true
 
     private fun fetchRawEpisodes(anilistId: Int): JsonNode =
         pipeGet("episodes", mapper.createObjectNode().apply { put("anilistId", anilistId) })
@@ -133,6 +165,11 @@ class MiruroRepository {
         return if (decoded != null && ":" in decoded) decoded else value
     }
 
+    private fun generatedEpisodeSlug(episodeId: String, number: Int): String {
+        val prefix = episodeId.substringBefore(":")
+        return "$prefix-$number"
+    }
+
     private fun text(node: JsonNode, vararg names: String): String? =
         names.firstNotNullOfOrNull { name -> node.get(name)?.asText()?.takeIf { it.isNotBlank() && it != "null" } }
 
@@ -163,6 +200,30 @@ class MiruroRepository {
             ?: "Auto"
 
     private fun qualityRank(label: String): Int = Regex("""(\d{3,4})""").find(label)?.value?.toIntOrNull() ?: 0
+
+    private fun playbackType(type: String?, url: String): PlaybackType {
+        val normalized = type?.lowercase(Locale.ROOT)
+        val path = url.substringBefore('?').lowercase(Locale.ROOT)
+        return when {
+            normalized in setOf("dash", "mpd") || path.endsWith(".mpd") -> PlaybackType.DASH
+            normalized in setOf("mp4", "file") || path.endsWith(".mp4") -> PlaybackType.MP4
+            normalized in setOf("hls", "m3u8") || path.endsWith(".m3u8") -> PlaybackType.HLS
+            else -> PlaybackType.UNKNOWN
+        }
+    }
+
+    private fun playbackHeaders(provider: String): Map<String, String> {
+        val providerReferer = when (provider.lowercase(Locale.ROOT)) {
+            "animepahe" -> "https://kwik.si/"
+            "gogoanime" -> "https://gogocdn.net/"
+            else -> "$MIRURO_URL/"
+        }
+        return mapOf(
+            "Referer" to providerReferer,
+            "Origin" to providerReferer.trimEnd('/'),
+            "User-Agent" to headers.getValue("User-Agent")
+        )
+    }
 
     private fun providerRank(provider: String): Int {
         val index = PROVIDER_PRIORITY.indexOf(provider.lowercase(Locale.ROOT))
