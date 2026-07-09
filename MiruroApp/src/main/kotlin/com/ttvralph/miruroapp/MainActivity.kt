@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -32,7 +33,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MiruroTheme { MiruroApp(viewModel) } }
+        setContent {
+            val settings by viewModel.settings.collectAsState()
+            MiruroTheme(settings.themeMode) { MiruroApp(viewModel) }
+        }
     }
 }
 
@@ -184,18 +188,19 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     }
 }
 
-private fun findEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType) =
-    viewModel.cachedDetails(animeId)
-        ?.seasons
-        ?.firstOrNull { it.seasonNumber == season }
-        ?.episodes
-        ?.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
+private fun findEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType): AnimeEpisode? {
+    val episodes = viewModel.cachedDetails(animeId)?.seasons?.firstOrNull { it.seasonNumber == season }?.episodes.orEmpty()
+    return episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == viewModel.settings.value.preferredAudio }
+        ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
+        ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.sourceCandidates.isNotEmpty() }
+}
+
 
 
 private fun findNextEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType) =
     viewModel.cachedDetails(animeId)
         ?.seasons
         ?.flatMap { it.episodes }
-        ?.filter { it.audioType == audio && it.sourceCandidates.isNotEmpty() }
-        ?.sortedWith(compareBy<AnimeEpisode> { it.seasonNumber }.thenBy { it.episodeNumber })
+        ?.filter { it.sourceCandidates.isNotEmpty() }
+        ?.sortedWith(compareBy<AnimeEpisode> { it.seasonNumber }.thenBy { it.episodeNumber }.thenBy { if (it.audioType == audio) 0 else 1 })
         ?.firstOrNull { it.seasonNumber > season || (it.seasonNumber == season && it.episodeNumber > episodeNumber) }

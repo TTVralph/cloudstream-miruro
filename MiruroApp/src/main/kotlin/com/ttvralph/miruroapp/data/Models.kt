@@ -18,7 +18,7 @@ data class AnimeSearchFilters(
     val query: String = "",
     val format: String? = null,
     val year: Int? = null,
-    val genre: String? = null,
+    val genres: List<String> = emptyList(),
     val status: String? = null,
     val sort: AnimeSort = AnimeSort.SEARCH_MATCH,
     val page: Int = 1
