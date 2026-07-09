@@ -45,6 +45,7 @@ import com.ttvralph.miruroapp.data.AnimeDetails
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeSeason
+import com.ttvralph.miruroapp.data.AudioType
 import com.ttvralph.miruroapp.ui.Badge
 import com.ttvralph.miruroapp.ui.BodyText
 import com.ttvralph.miruroapp.ui.ErrorState
@@ -238,8 +239,8 @@ fun SettingsScreen() {
 fun DetailsScreen(
     viewModel: MiruroViewModel,
     animeId: Int,
-    onOpenEpisode: (Int, Int) -> Unit,
-    onPlayEpisode: (Int, Int) -> Unit
+    onOpenEpisode: (Int, Int, AudioType) -> Unit,
+    onPlayEpisode: (Int, Int, AudioType) -> Unit
 ) {
     LaunchedEffect(animeId) { viewModel.loadDetails(animeId) }
     val state by viewModel.details.collectAsState()
@@ -260,7 +261,7 @@ fun DetailsScreen(
                         details = details,
                         favorite = favorite,
                         onToggleFavorite = { viewModel.toggleFavorite(details.id) },
-                        onPlay = firstPlayable?.let { (season, ep) -> { onPlayEpisode(season, ep.episodeNumber) } }
+                        onPlay = firstPlayable?.let { (season, ep) -> { onPlayEpisode(season, ep.episodeNumber, ep.audioType) } }
                     )
                 }
                 if (details.seasons.isEmpty()) {
@@ -268,10 +269,10 @@ fun DetailsScreen(
                 } else {
                     details.seasons.forEach { season ->
                         item { SeasonHeader(season) }
-                        items(season.episodes, key = { "${season.seasonNumber}-${it.episodeNumber}" }) { ep ->
+                        items(season.episodes, key = { "${season.seasonNumber}-${it.episodeNumber}-${it.audioType}" }) { ep ->
                             EpisodeRow(ep) {
-                                if (ep.sourceCandidates.isNotEmpty()) onPlayEpisode(season.seasonNumber, ep.episodeNumber)
-                                else onOpenEpisode(season.seasonNumber, ep.episodeNumber)
+                                if (ep.sourceCandidates.isNotEmpty()) onPlayEpisode(season.seasonNumber, ep.episodeNumber, ep.audioType)
+                                else onOpenEpisode(season.seasonNumber, ep.episodeNumber, ep.audioType)
                             }
                         }
                     }
@@ -333,7 +334,7 @@ private fun EpisodeRow(ep: AnimeEpisode, onClick: () -> Unit) {
     FocusableSurface(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp).height(64.dp)) {
         Row(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "${ep.episodeNumber}. ${ep.title ?: "Episode ${ep.episodeNumber}"}",
+                "${ep.episodeNumber}. ${ep.title ?: "Episode ${ep.episodeNumber}"} (${ep.audioType.name})",
                 color = Color.White,
                 fontSize = 16.sp,
                 modifier = Modifier.weight(1f)

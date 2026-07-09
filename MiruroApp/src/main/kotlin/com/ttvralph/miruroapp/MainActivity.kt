@@ -22,6 +22,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ttvralph.miruroapp.ui.MiruroColors
+import com.ttvralph.miruroapp.data.AudioType
 import com.ttvralph.miruroapp.ui.MiruroTheme
 import com.ttvralph.miruroapp.ui.TopNavBar
 
@@ -38,6 +39,7 @@ private object Args {
     const val ID = "id"
     const val SEASON = "season"
     const val EPISODE = "episode"
+    const val AUDIO = "audio"
 }
 
 private sealed class Routes(val route: String) {
@@ -48,11 +50,11 @@ private sealed class Routes(val route: String) {
     data object Details : Routes("details/{${Args.ID}}") {
         fun path(id: Int) = "details/$id"
     }
-    data object Episode : Routes("episode/{${Args.ID}}/{${Args.SEASON}}/{${Args.EPISODE}}") {
-        fun path(id: Int, season: Int, episode: Int) = "episode/$id/$season/$episode"
+    data object Episode : Routes("episode/{${Args.ID}}/{${Args.SEASON}}/{${Args.EPISODE}}/{${Args.AUDIO}}") {
+        fun path(id: Int, season: Int, episode: Int, audio: AudioType) = "episode/$id/$season/$episode/${audio.name}"
     }
-    data object Player : Routes("player/{${Args.ID}}/{${Args.SEASON}}/{${Args.EPISODE}}") {
-        fun path(id: Int, season: Int, episode: Int) = "player/$id/$season/$episode"
+    data object Player : Routes("player/{${Args.ID}}/{${Args.SEASON}}/{${Args.EPISODE}}/{${Args.AUDIO}}") {
+        fun path(id: Int, season: Int, episode: Int, audio: AudioType) = "player/$id/$season/$episode/${audio.name}"
     }
 }
 
@@ -120,8 +122,8 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     DetailsScreen(
                         viewModel = viewModel,
                         animeId = id,
-                        onOpenEpisode = { season, episode -> navController.navigate(Routes.Episode.path(id, season, episode)) },
-                        onPlayEpisode = { season, episode -> navController.navigate(Routes.Player.path(id, season, episode)) }
+                        onOpenEpisode = { season, episode, audio -> navController.navigate(Routes.Episode.path(id, season, episode, audio)) },
+                        onPlayEpisode = { season, episode, audio -> navController.navigate(Routes.Player.path(id, season, episode, audio)) }
                     )
                 }
                 composable(
@@ -129,15 +131,17 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     arguments = listOf(
                         navArgument(Args.ID) { type = NavType.IntType },
                         navArgument(Args.SEASON) { type = NavType.IntType },
-                        navArgument(Args.EPISODE) { type = NavType.IntType }
+                        navArgument(Args.EPISODE) { type = NavType.IntType },
+                        navArgument(Args.AUDIO) { type = NavType.StringType }
                     )
                 ) { entry ->
                     val id = entry.arguments?.getInt(Args.ID) ?: return@composable
                     val season = entry.arguments?.getInt(Args.SEASON) ?: return@composable
                     val episodeNumber = entry.arguments?.getInt(Args.EPISODE) ?: return@composable
-                    val episode = findEpisode(viewModel, id, season, episodeNumber)
+                    val audio = entry.arguments?.getString(Args.AUDIO)?.let { runCatching { AudioType.valueOf(it) }.getOrNull() } ?: AudioType.SUB
+                    val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
                     EpisodeDetailsScreen(episode) {
-                        navController.navigate(Routes.Player.path(id, season, episodeNumber))
+                        navController.navigate(Routes.Player.path(id, season, episodeNumber, audio))
                     }
                 }
                 composable(
@@ -145,13 +149,15 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     arguments = listOf(
                         navArgument(Args.ID) { type = NavType.IntType },
                         navArgument(Args.SEASON) { type = NavType.IntType },
-                        navArgument(Args.EPISODE) { type = NavType.IntType }
+                        navArgument(Args.EPISODE) { type = NavType.IntType },
+                        navArgument(Args.AUDIO) { type = NavType.StringType }
                     )
                 ) { entry ->
                     val id = entry.arguments?.getInt(Args.ID) ?: return@composable
                     val season = entry.arguments?.getInt(Args.SEASON) ?: return@composable
                     val episodeNumber = entry.arguments?.getInt(Args.EPISODE) ?: return@composable
-                    val episode = findEpisode(viewModel, id, season, episodeNumber)
+                    val audio = entry.arguments?.getString(Args.AUDIO)?.let { runCatching { AudioType.valueOf(it) }.getOrNull() } ?: AudioType.SUB
+                    val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
                     PlayerScreen(viewModel, episode) { navController.popBackStack() }
                 }
             }
@@ -159,9 +165,9 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     }
 }
 
-private fun findEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int) =
+private fun findEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType) =
     viewModel.cachedDetails(animeId)
         ?.seasons
         ?.firstOrNull { it.seasonNumber == season }
         ?.episodes
-        ?.firstOrNull { it.episodeNumber == episodeNumber }
+        ?.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
