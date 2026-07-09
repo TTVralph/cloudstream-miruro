@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -293,7 +294,7 @@ private fun CloudstreamPlayerOverlay(
 }
 
 @Composable
-private fun PlayerMenu(title: String, modifier: Modifier = Modifier, content: @Composable Column.() -> Unit) {
+private fun PlayerMenu(title: String, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(modifier.width(360.dp).background(Color(0xEE111111)).padding(16.dp)) {
         Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp))
