@@ -6,6 +6,7 @@ import android.graphics.Color as AndroidColor
 import android.media.AudioManager
 import android.net.Uri
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -109,7 +110,27 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
     var locked by remember(source) { mutableStateOf(false) }
     var gestureMessage by remember(source) { mutableStateOf<String?>(null) }
     var nextCountdown by remember(source) { mutableIntStateOf(0) }
+    var lastBackPressMs by remember(source) { mutableLongStateOf(0L) }
     val audioManager = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+
+    BackHandler {
+        if (!controlsVisible) {
+            controlsVisible = true
+            gestureMessage = "Controls shown"
+        } else if (sourceMenuVisible || subtitleMenuVisible || speedMenuVisible) {
+            sourceMenuVisible = false
+            subtitleMenuVisible = false
+            speedMenuVisible = false
+        } else {
+            val now = System.currentTimeMillis()
+            if (now - lastBackPressMs < 2_000L) {
+                onBack()
+            } else {
+                lastBackPressMs = now
+                gestureMessage = "Press Back again to exit video"
+            }
+        }
+    }
 
     val player = remember(activeSource, subtitleIndex) {
         Log.d(TAG, "preparing player label=${activeSource.label} type=${activeSource.type}")

@@ -41,8 +41,8 @@ class AniListRepository {
         )
     )
 
-    suspend fun browse(format: String): List<AnimeItem> =
-        mediaPage(mapOf("format" to format, "page" to 1, "perPage" to 30, "sort" to listOf("POPULARITY_DESC")))
+    suspend fun browse(format: String, page: Int = 1): List<AnimeItem> =
+        mediaPage(mapOf("format" to format, "page" to page, "perPage" to 30, "sort" to listOf("POPULARITY_DESC")))
 
     suspend fun browseGenre(genres: List<String>, format: String? = null, page: Int = 1, sort: AnimeSort = AnimeSort.POPULARITY, status: String? = null, year: Int? = null): List<AnimeItem> =
         mediaPage(mapOf("genreIn" to genres.takeIf { it.isNotEmpty() }, "format" to format, "page" to page, "perPage" to 30, "sort" to listOf(sort.aniList), "status" to status, "seasonYear" to year))
