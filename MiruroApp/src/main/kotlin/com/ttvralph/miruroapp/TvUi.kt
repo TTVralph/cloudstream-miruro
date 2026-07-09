@@ -9,6 +9,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.ttvralph.miruroapp.data.AnimeItem
 
@@ -25,20 +27,19 @@ class TvUi(private val context: Context) {
         setPadding(context.dp(38), context.dp(24), context.dp(38), context.dp(36))
         setBackgroundColor(TvTheme.BG)
         isFocusable = false
+        descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
     }
 
-    fun shell(content: LinearLayout) = ScrollView(context).apply {
-        setBackgroundColor(TvTheme.BG)
-        isFillViewport = true
-        descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-        addView(content, ScrollView.LayoutParams(-1, -2))
-    }
+    fun shell(content: LinearLayout) = content.apply { setBackgroundColor(TvTheme.BG) }
 
     fun nav(current: String, onHome: () -> Unit, onSearch: () -> Unit, onFav: () -> Unit, onSettings: () -> Unit) = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         addView(label("Miruro", 32f, Color.WHITE, true), LinearLayout.LayoutParams(0, context.dp(58), 1f))
         listOf("Home" to onHome, "Search" to onSearch, "Favorites" to onFav, "Settings" to onSettings).forEach { (name, click) ->
-            addView(button(if (name == current) "● $name" else name, click), LinearLayout.LayoutParams(context.dp(170), context.dp(52)).apply { marginStart = context.dp(10) })
+            addView(button(if (name == current) "● $name" else name, click).apply {
+                nextFocusUpId = View.NO_ID
+            }, LinearLayout.LayoutParams(context.dp(170), context.dp(52)).apply { marginStart = context.dp(10) })
         }
     }
 
@@ -69,7 +70,7 @@ class TvUi(private val context: Context) {
     }
 
     fun card(item: AnimeItem, click: () -> Unit) = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL; isFocusable = true; isClickable = true
+        orientation = LinearLayout.VERTICAL; isFocusable = true; isFocusableInTouchMode = false; isClickable = true
         background = rounded(TvTheme.CARD, context.dp(20), 0, 0)
         setPadding(context.dp(8), context.dp(8), context.dp(8), context.dp(8))
         addView(poster(item.posterUrl), LinearLayout.LayoutParams(-1, context.dp(252)))
@@ -79,10 +80,19 @@ class TvUi(private val context: Context) {
     }
 
     fun row(title: String, items: List<AnimeItem>, click: (AnimeItem) -> Unit) = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL; addView(this@TvUi.title(title))
-        addView(HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false; descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-            addView(LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; items.forEach { addView(card(it) { click(it) }, LinearLayout.LayoutParams(context.dp(190), context.dp(350)).apply { marginEnd = context.dp(18) }) } })
+        orientation = LinearLayout.VERTICAL
+        isFocusable = false
+        addView(this@TvUi.title(title))
+        addView(RecyclerView(context).apply {
+            id = View.generateViewId()
+            isFocusable = false
+            clipToPadding = false
+            clipChildren = false
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            overScrollMode = View.OVER_SCROLL_NEVER
+            isHorizontalScrollBarEnabled = false
+            layoutManager = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
+            adapter = PosterRowAdapter(items, click)
         }, LinearLayout.LayoutParams(-1, context.dp(370)))
     }
 
@@ -94,5 +104,42 @@ class TvUi(private val context: Context) {
 
     fun rounded(color: Int, radius: Int, strokeColor: Int, stroke: Int) = GradientDrawable().apply {
         setColor(color); cornerRadius = radius.toFloat(); if (stroke > 0) setStroke(stroke, strokeColor)
+    }
+
+    private inner class PosterRowAdapter(private val items: List<AnimeItem>, private val click: (AnimeItem) -> Unit) : RecyclerView.Adapter<PosterRowAdapter.Holder>() {
+        inner class Holder(cardView: LinearLayout) : RecyclerView.ViewHolder(cardView) {
+            val image = cardView.getChildAt(0) as ImageView
+            val name = cardView.getChildAt(1) as TextView
+            val meta = cardView.getChildAt(2) as TextView
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
+            val view = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                isFocusable = true
+                isFocusableInTouchMode = false
+                isClickable = true
+                clipToOutline = false
+                background = rounded(TvTheme.CARD, context.dp(20), 0, 0)
+                setPadding(context.dp(8), context.dp(8), context.dp(8), context.dp(8))
+                addView(poster(null), LinearLayout.LayoutParams(-1, context.dp(252)))
+                addView(label("", 16f, Color.WHITE, true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(-1, context.dp(52)))
+                addView(label("", 13f, TvTheme.SUBTLE, false))
+                focusFx()
+                layoutParams = RecyclerView.LayoutParams(context.dp(190), context.dp(350)).apply { marginEnd = context.dp(18) }
+            }
+            return Holder(view)
+        }
+
+        override fun onBindViewHolder(holder: Holder, position: Int) {
+            val item = items[position]
+            holder.image.load(item.posterUrl) { crossfade(true); placeholder(android.R.color.darker_gray); error(android.R.color.darker_gray) }
+            holder.name.text = item.title
+            holder.meta.text = listOfNotNull(item.year?.toString(), item.type.name).joinToString(" • ")
+            holder.itemView.contentDescription = item.title
+            holder.itemView.setOnClickListener { click(item) }
+        }
+
+        override fun getItemCount() = items.size
     }
 }
