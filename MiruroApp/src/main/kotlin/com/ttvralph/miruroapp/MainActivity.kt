@@ -5,9 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,7 +24,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.MiruroTheme
-import com.ttvralph.miruroapp.ui.TopNavBar
+import com.ttvralph.miruroapp.ui.NavRail
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MiruroViewModel by viewModels()
@@ -80,14 +81,13 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     val showChrome = currentRoute != Routes.Player.route
 
     Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MiruroColors.Background)
-                .padding(horizontal = if (showChrome) 36.dp else 0.dp, vertical = if (showChrome) 22.dp else 0.dp)
         ) {
             if (showChrome) {
-                TopNavBar(
+                NavRail(
                     current = navLabelFor(currentRoute),
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
                     onSearch = { navController.navigateTopLevel(Routes.Search.route) },
@@ -98,7 +98,10 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
             NavHost(
                 navController = navController,
                 startDestination = Routes.Home.route,
-                modifier = Modifier.fillMaxSize().padding(top = if (showChrome) 16.dp else 0.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
+                    .padding(horizontal = if (showChrome) 32.dp else 0.dp, vertical = if (showChrome) 20.dp else 0.dp)
             ) {
                 composable(Routes.Home.route) {
                     HomeScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
