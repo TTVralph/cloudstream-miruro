@@ -33,7 +33,7 @@ class TvUi(private val context: Context) {
     fun shell(content: LinearLayout) = ScrollView(context).apply {
         setBackgroundColor(TvTheme.BG)
         isFillViewport = true
-        addView(content, ScrollView.LayoutParams(-1, -2))
+        addView(content, FrameLayout.LayoutParams(-1, -2))
     }
 
     fun nav(current: String, onHome: () -> Unit, onSearch: () -> Unit, onFav: () -> Unit, onSettings: () -> Unit) = LinearLayout(context).apply {
@@ -59,7 +59,7 @@ class TvUi(private val context: Context) {
 
     fun title(text: String) = label(text, 25f, Color.WHITE, true).apply { setPadding(0, context.dp(28), 0, context.dp(12)) }
 
-    fun body(text: String) = label(text, 18f, TvTheme.TEXT, false).apply { lineSpacingMultiplier = 1.12f }
+    fun body(text: String) = label(text, 18f, TvTheme.TEXT, false).apply { setLineSpacing(0f, 1.12f) }
 
     fun state(message: String, color: Int = TvTheme.TEXT) = FrameLayout(context).apply {
         background = rounded(TvTheme.PANEL, context.dp(24), 0x1fffffff, context.dp(1))
