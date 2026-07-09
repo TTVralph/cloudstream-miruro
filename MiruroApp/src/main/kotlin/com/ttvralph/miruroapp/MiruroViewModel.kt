@@ -1,6 +1,7 @@
 package com.ttvralph.miruroapp
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ttvralph.miruroapp.data.AniListRepository
@@ -9,6 +10,7 @@ import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.HomeRow
 import com.ttvralph.miruroapp.data.PlaybackSource
+import com.ttvralph.miruroapp.data.SourceResolution
 import com.ttvralph.miruroapp.data.WatchlistStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -95,8 +97,15 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     fun resolvePlayback(episode: AnimeEpisode) {
         viewModelScope.launch {
             _playback.value = UiState.Loading
-            val source = runCatching { repo.resolveEpisodeSource(episode) }.getOrNull()
-            _playback.value = if (source != null) UiState.Success(source) else UiState.Error("No playable source found.")
+            val result = runCatching { repo.resolveEpisodeSource(episode) }
+                .getOrElse { e ->
+                    Log.w("MiruroViewModel", "resolvePlayback failed for anilistId=${episode.anilistId} ep=${episode.episodeNumber}", e)
+                    SourceResolution.NotFound(e.message ?: "Unexpected error: ${e::class.simpleName}")
+                }
+            _playback.value = when (result) {
+                is SourceResolution.Found -> UiState.Success(result.source)
+                is SourceResolution.NotFound -> UiState.Error(result.reason)
+            }
         }
     }
 

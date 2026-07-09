@@ -1,6 +1,7 @@
 package com.ttvralph.miruroapp.data
 
 import android.util.Base64
+import android.util.Log
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import kotlinx.coroutines.Dispatchers
@@ -8,13 +9,22 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayInputStream
+import java.io.IOException
 import java.net.URLEncoder
 import java.util.Locale
 import java.util.zip.GZIPInputStream
 
+private const val TAG = "MiruroRepository"
 private const val MIRURO_URL = "https://www.miruro.tv"
 private const val PIPE_URL = "$MIRURO_URL/api/secure/pipe"
 private val PROVIDER_PRIORITY = listOf("zoro", "animepahe", "gogoanime", "kiwi")
+
+// Stream/subtitle array key names to search for, recursively, anywhere in a pipe "sources" response.
+// "streams"/"sources" and "subtitles"/"tracks" match MiruroProvider.kt (the known-good Cloudstream
+// extension); the rest are defensive fallbacks in case the live payload shape has drifted since.
+private val STREAM_ARRAY_KEYS = arrayOf("streams", "sources", "playlist")
+private val SUBTITLE_ARRAY_KEYS = arrayOf("subtitles", "tracks", "captions")
+private val STREAM_URL_KEYS = arrayOf("url", "file", "stream", "link")
 
 // Reimplements MiruroProvider's pipe protocol locally since this module doesn't depend on Cloudstream.
 class MiruroRepository {
@@ -33,7 +43,9 @@ class MiruroRepository {
     )
 
     suspend fun episodeCandidates(anilistId: Int): Map<Int, List<EpisodeSourceCandidate>> = withContext(Dispatchers.IO) {
-        val providers = runCatching { fetchRawEpisodes(anilistId) }.getOrNull()?.path("providers")
+        val providers = runCatching { fetchRawEpisodes(anilistId) }
+            .onFailure { e -> Log.w(TAG, "episodeCandidates: fetchRawEpisodes failed for anilistId=$anilistId", e) }
+            .getOrNull()?.path("providers")
             ?: return@withContext emptyMap()
         if (!providers.isObject) return@withContext emptyMap()
 
@@ -62,28 +74,57 @@ class MiruroRepository {
         byEpisode.mapValues { (_, list) -> list.sortedBy { providerRank(it.provider) } }
     }
 
-    suspend fun resolveSource(anilistId: Int, candidates: List<EpisodeSourceCandidate>): PlaybackSource? = withContext(Dispatchers.IO) {
-        candidates.forEach { candidate ->
-            val sources = runCatching { fetchSources(candidate, anilistId) }.getOrNull() ?: return@forEach
+    suspend fun resolveSource(anilistId: Int, candidates: List<EpisodeSourceCandidate>): SourceResolution = withContext(Dispatchers.IO) {
+        if (candidates.isEmpty()) {
+            return@withContext SourceResolution.NotFound("This episode has no known sources from Miruro.")
+        }
 
-            val streamsNode = findFirstArray(sources, "streams", "sources") ?: return@forEach
-            val best = streamsNode.maxByOrNull { qualityRank(streamQuality(it)) } ?: return@forEach
-            val url = streamUrl(best) ?: return@forEach
-            val typeStr = streamType(best)?.lowercase(Locale.ROOT)
-            val subtitles = findFirstArray(sources, "subtitles", "tracks")?.mapNotNull { sub ->
-                val subUrl = text(sub, "file", "url") ?: return@mapNotNull null
+        var lastReason = "No playable stream found for this episode."
+        candidates.forEach { candidate ->
+            val sources = runCatching { fetchSources(candidate, anilistId) }
+                .onFailure { e ->
+                    lastReason = "${candidate.provider}: ${e.message ?: e::class.simpleName}"
+                    Log.w(TAG, "resolveSource: fetchSources failed for provider=${candidate.provider} episodeId=${candidate.episodeId}", e)
+                }
+                .getOrNull() ?: return@forEach
+
+            val streamsNode = findFirstArray(sources, *STREAM_ARRAY_KEYS)
+            if (streamsNode == null) {
+                lastReason = "${candidate.provider}: response had no stream list."
+                Log.w(TAG, "resolveSource: no stream array for provider=${candidate.provider} (keys=${topLevelKeys(sources)})")
+                return@forEach
+            }
+
+            val subtitles = findFirstArray(sources, *SUBTITLE_ARRAY_KEYS)?.mapNotNull { sub ->
+                val subUrl = text(sub, *STREAM_URL_KEYS)?.let(::normalizeStreamUrl)?.takeIf(::isValidStreamUrl) ?: return@mapNotNull null
                 SubtitleTrack(subUrl, text(sub, "label", "lang", "language") ?: "Subtitle", text(sub, "lang", "language"))
             }.orEmpty()
 
-            return@withContext PlaybackSource(
-                url = url,
-                label = "${candidate.provider.uppercase(Locale.ROOT)} ${streamQuality(best)}",
-                type = playbackType(typeStr, url),
-                headers = playbackHeaders(candidate.provider),
-                subtitleTracks = subtitles
-            )
+            val ranked = streamsNode.sortedByDescending { streamRank(it) }
+            for (stream in ranked) {
+                val rawUrl = streamUrl(stream) ?: continue
+                if (!isValidStreamUrl(rawUrl)) continue
+                val typeStr = streamType(stream)?.lowercase(Locale.ROOT)
+                val type = playbackType(typeStr, rawUrl)
+                Log.d(
+                    TAG,
+                    "resolveSource: selected provider=${candidate.provider} type=$type quality=${streamQuality(stream)} " +
+                        "subtitles=${subtitles.size}"
+                )
+                return@withContext SourceResolution.Found(
+                    PlaybackSource(
+                        url = rawUrl,
+                        label = "${candidate.provider.uppercase(Locale.ROOT)} ${streamQuality(stream)}",
+                        type = type,
+                        headers = playbackHeaders(),
+                        subtitleTracks = subtitles
+                    )
+                )
+            }
+            lastReason = "${candidate.provider}: no valid stream URL in response."
+            Log.w(TAG, "resolveSource: no valid stream URL for provider=${candidate.provider}")
         }
-        null
+        SourceResolution.NotFound(lastReason)
     }
 
     private fun fetchSources(candidate: EpisodeSourceCandidate, anilistId: Int): JsonNode {
@@ -122,7 +163,7 @@ class MiruroRepository {
     }
 
     private fun hasPlayableStreams(node: JsonNode): Boolean =
-        findFirstArray(node, "streams", "sources")?.any { streamUrl(it) != null } == true
+        findFirstArray(node, *STREAM_ARRAY_KEYS)?.any { streamUrl(it)?.let(::isValidStreamUrl) == true } == true
 
     private fun fetchRawEpisodes(anilistId: Int): JsonNode =
         pipeGet("episodes", mapper.createObjectNode().apply { put("anilistId", anilistId) })
@@ -139,7 +180,12 @@ class MiruroRepository {
         val request = Request.Builder().url("$PIPE_URL?e=$encoded").apply {
             headers.forEach { (key, value) -> addHeader(key, value) }
         }.build()
-        val body = client.newCall(request).execute().use { it.body?.string().orEmpty() }.trim()
+        val body = client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Miruro pipe request for \"$path\" failed: HTTP ${response.code}")
+            }
+            response.body?.string().orEmpty()
+        }.trim()
         return decodePipeResponse(body)
     }
 
@@ -173,6 +219,8 @@ class MiruroRepository {
     private fun text(node: JsonNode, vararg names: String): String? =
         names.firstNotNullOfOrNull { name -> node.get(name)?.asText()?.takeIf { it.isNotBlank() && it != "null" } }
 
+    private fun topLevelKeys(node: JsonNode): List<String> = if (node.isObject) node.fieldNames().asSequence().toList() else emptyList()
+
     private fun firstArray(node: JsonNode, vararg names: String): JsonNode? =
         names.firstNotNullOfOrNull { name -> node.path(name).takeIf { it.isArray } }
 
@@ -187,14 +235,15 @@ class MiruroRepository {
     }
 
     private fun streamUrl(node: JsonNode): String? =
-        (text(node, "url", "file", "stream")
-            ?: node.path("source").takeIf { it.isObject }?.let { text(it, "url", "file", "stream") })
+        (text(node, *STREAM_URL_KEYS)
+            ?: node.path("source").takeIf { it.isObject }?.let { text(it, *STREAM_URL_KEYS) })
             ?.let(::normalizeStreamUrl)
 
-    private fun normalizeStreamUrl(url: String): String = when {
-        url.startsWith("//") -> "https:$url"
-        url.startsWith("http://") || url.startsWith("https://") -> url
-        else -> url
+    private fun normalizeStreamUrl(url: String): String = if (url.startsWith("//")) "https:$url" else url
+
+    private fun isValidStreamUrl(url: String): Boolean {
+        if (url.isBlank() || url.equals("null", ignoreCase = true) || url.equals("undefined", ignoreCase = true)) return false
+        return url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)
     }
 
     private fun streamType(node: JsonNode): String? =
@@ -213,24 +262,32 @@ class MiruroRepository {
         val path = url.substringBefore('?').lowercase(Locale.ROOT)
         return when {
             normalized in setOf("dash", "mpd") || path.endsWith(".mpd") -> PlaybackType.DASH
-            normalized in setOf("mp4", "file") || path.endsWith(".mp4") -> PlaybackType.MP4
             normalized in setOf("hls", "m3u8") || path.endsWith(".m3u8") -> PlaybackType.HLS
+            normalized in setOf("mp4", "file") || path.endsWith(".mp4") -> PlaybackType.MP4
             else -> PlaybackType.UNKNOWN
         }
     }
 
-    private fun playbackHeaders(provider: String): Map<String, String> {
-        val providerReferer = when (provider.lowercase(Locale.ROOT)) {
-            "animepahe" -> "https://kwik.si/"
-            "gogoanime" -> "https://gogocdn.net/"
-            else -> "$MIRURO_URL/"
+    // Streams Media3 can actually play (HLS/DASH) outrank progressive/unknown ones regardless of
+    // resolution label, then higher-resolution streams within the same tier are preferred.
+    private fun streamRank(node: JsonNode): Int {
+        val url = streamUrl(node) ?: return -1
+        val type = playbackType(streamType(node)?.lowercase(Locale.ROOT), url)
+        val formatScore = when (type) {
+            PlaybackType.HLS, PlaybackType.DASH -> 1_000
+            PlaybackType.MP4 -> 500
+            PlaybackType.UNKNOWN -> 0
         }
-        return mapOf(
-            "Referer" to providerReferer,
-            "Origin" to providerReferer.trimEnd('/'),
-            "User-Agent" to headers.getValue("User-Agent")
-        )
+        return formatScore + qualityRank(streamQuality(node))
     }
+
+    // Matches MiruroProvider.kt (the known-good Cloudstream extension): always Miruro's own
+    // Referer/Origin, regardless of which upstream provider served the stream.
+    private fun playbackHeaders(): Map<String, String> = mapOf(
+        "Referer" to "$MIRURO_URL/",
+        "Origin" to MIRURO_URL,
+        "User-Agent" to headers.getValue("User-Agent")
+    )
 
     private fun providerRank(provider: String): Int {
         val index = PROVIDER_PRIORITY.indexOf(provider.lowercase(Locale.ROOT))

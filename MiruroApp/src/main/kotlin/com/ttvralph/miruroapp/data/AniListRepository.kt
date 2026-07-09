@@ -30,7 +30,7 @@ class AniListRepository {
 
     suspend fun search(query: String): List<AnimeItem> = mediaPage(mapOf("search" to query, "page" to 1, "perPage" to 30, "sort" to listOf("SEARCH_MATCH")))
 
-    suspend fun resolveEpisodeSource(episode: AnimeEpisode): PlaybackSource? =
+    suspend fun resolveEpisodeSource(episode: AnimeEpisode): SourceResolution =
         miruro.resolveSource(episode.anilistId, episode.sourceCandidates)
 
     suspend fun details(id: Int): AnimeDetails = withContext(Dispatchers.IO) {
