@@ -8,10 +8,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -24,7 +23,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AudioType
-import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.MiruroTheme
 import com.ttvralph.miruroapp.ui.TopBar
 
@@ -34,8 +32,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            val settings by viewModel.settings.collectAsState()
-            MiruroTheme(settings.themeMode) { MiruroApp(viewModel) }
+            MiruroTheme { MiruroApp(viewModel) }
         }
     }
 }
@@ -92,11 +89,11 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     val currentRoute = backStackEntry?.destination?.route
     val fullScreenRoute = currentRoute == Routes.Player.route || currentRoute == Routes.Details.route
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MiruroColors.Background)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             if (!fullScreenRoute) {
                 TopBar(
@@ -202,8 +199,8 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
 
 private fun findEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType): AnimeEpisode? {
     val episodes = viewModel.cachedDetails(animeId)?.seasons?.firstOrNull { it.seasonNumber == season }?.episodes.orEmpty()
-    return episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == viewModel.settings.value.preferredAudio }
-        ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
+    return episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
+        ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == viewModel.settings.value.preferredAudio }
         ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.sourceCandidates.isNotEmpty() }
 }
 

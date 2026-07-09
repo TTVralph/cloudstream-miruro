@@ -1,6 +1,7 @@
 package com.ttvralph.miruroapp.ui
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +19,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -57,18 +60,20 @@ fun FocusableSurface(
     shape: RoundedCornerShape = RoundedCornerShape(10.dp),
     unfocusedBackground: Color = MiruroColors.Card,
     focusedBackground: Color = MiruroColors.Focused,
+    showClickIndication: Boolean = true,
     content: @Composable (focused: Boolean) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.045f else 1f, label = "focusScale")
+    val clickIndication = if (showClickIndication) LocalIndication.current else null
     Box(
         modifier = modifier
             .scale(scale)
             .clip(shape)
             .background(if (focused) focusedBackground else unfocusedBackground, shape)
             .border(if (focused) 3.dp else 1.dp, if (focused) MiruroColors.Accent else MiruroColors.Border, shape)
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .clickable(interactionSource = interactionSource, indication = clickIndication, onClick = onClick)
     ) {
         content(focused)
     }
@@ -134,16 +139,22 @@ fun TopBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Logo()
-        Spacer(Modifier.width(42.dp))
-        NavPill("Home", current == "Home", onHome)
-        NavPill("Anime", current == "Anime", onAnime)
-        NavPill("Movies", current == "Movies", onMovies)
-        NavPill("New & Popular", current == "New & Popular", onNewPopular)
-        NavPill("My List", current == "My List", onMyList)
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(32.dp))
+        Row(
+            modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            NavPill("Home", current == "Home", onHome)
+            NavPill("Anime", current == "Anime", onAnime)
+            NavPill("Movies", current == "Movies", onMovies)
+            NavPill("New & Popular", current == "New & Popular", onNewPopular)
+            NavPill("My List", current == "My List", onMyList)
+        }
+        Spacer(Modifier.width(18.dp))
         HeaderIcon(Icons.Filled.Search, "Search", selected = current == "Search", onClick = onSearch)
         Spacer(Modifier.width(14.dp))
-        HeaderBadge("•")
+        HeaderSeparator()
         Spacer(Modifier.width(14.dp))
         HeaderIcon(Icons.Filled.Settings, "Settings", selected = current == "Settings", onClick = onSettings)
         Spacer(Modifier.width(16.dp))
@@ -173,7 +184,7 @@ fun Logo(modifier: Modifier = Modifier) {
 private fun NavPill(label: String, selected: Boolean, onClick: () -> Unit) {
     FocusableSurface(
         onClick = onClick,
-        modifier = Modifier.height(48.dp).width(if (label.length > 8) 154.dp else 92.dp),
+        modifier = Modifier.height(48.dp).width((label.length * 11 + 46).coerceIn(92, 170).dp),
         shape = RoundedCornerShape(999.dp),
         unfocusedBackground = Color.Transparent,
         focusedBackground = Color.White.copy(alpha = 0.10f)
@@ -202,9 +213,9 @@ private fun HeaderIcon(icon: ImageVector, label: String, selected: Boolean = fal
 }
 
 @Composable
-private fun HeaderBadge(text: String) {
-    Box(Modifier.size(42.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.04f)), contentAlignment = Alignment.Center) {
-        Text(text, color = MiruroColors.AccentSoft, fontSize = 28.sp, fontWeight = FontWeight.Black)
+private fun HeaderSeparator() {
+    Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(6.dp).clip(CircleShape).background(MiruroColors.AccentSoft))
     }
 }
 
