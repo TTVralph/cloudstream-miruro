@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -71,6 +72,8 @@ import com.ttvralph.miruroapp.ui.SectionTitle
 import com.ttvralph.miruroapp.ui.StateMessage
 import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 
 private const val EPISODE_GRID_COLUMNS = 3
 
@@ -376,7 +379,7 @@ fun MoviesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     LaunchedEffect(Unit) { viewModel.loadMovies() }
     val state by viewModel.movies.collectAsState()
     val settings by viewModel.settings.collectAsState()
-    BrowseScreen("Movies", state, onRetry = { viewModel.loadMovies(force = true) }, onOpenDetails = onOpenDetails, gridDensity = settings.posterGridDensity)
+    BrowseScreen("Movies", state, onRetry = { viewModel.loadMovies(force = true) }, onLoadMore = { viewModel.loadMovies(nextPage = true) }, onOpenDetails = onOpenDetails, gridDensity = settings.posterGridDensity)
 }
 
 @Composable
@@ -384,7 +387,7 @@ fun SeriesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     LaunchedEffect(Unit) { viewModel.loadSeries() }
     val state by viewModel.series.collectAsState()
     val settings by viewModel.settings.collectAsState()
-    BrowseScreen("Series", state, onRetry = { viewModel.loadSeries(force = true) }, onOpenDetails = onOpenDetails, gridDensity = settings.posterGridDensity)
+    BrowseScreen("Series", state, onRetry = { viewModel.loadSeries(force = true) }, onLoadMore = { viewModel.loadSeries(nextPage = true) }, onOpenDetails = onOpenDetails, gridDensity = settings.posterGridDensity)
 }
 
 @Composable
@@ -392,6 +395,7 @@ private fun BrowseScreen(
     title: String,
     state: UiState<List<AnimeItem>>,
     onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
     onOpenDetails: (Int) -> Unit,
     gridDensity: PosterGridDensity
 ) {
@@ -402,7 +406,10 @@ private fun BrowseScreen(
             is UiState.Error -> ErrorState(state.message, onRetry)
             is UiState.Success ->
                 if (state.data.isEmpty()) StateMessage("Nothing found.")
-                else PosterGrid(state.data, onOpenDetails, gridDensity = gridDensity, modifier = Modifier.weight(1f))
+                else {
+                    PosterGrid(state.data, onOpenDetails, gridDensity = gridDensity, modifier = Modifier.weight(1f))
+                    SecondaryButton("Load more $title", modifier = Modifier.width(220.dp), onClick = onLoadMore)
+                }
         }
     }
 }
@@ -537,16 +544,21 @@ fun DetailsScreen(
     val favorites by viewModel.favoriteIds.collectAsState()
     val progress by viewModel.watchProgress.collectAsState()
     val settings by viewModel.settings.collectAsState()
+    var audioFilter by remember(animeId, settings.preferredAudio) { mutableStateOf<AudioType?>(settings.preferredAudio) }
+    val detailsListState = rememberLazyListState()
+    val detailsScope = rememberCoroutineScope()
 
     when (val s = state) {
         is UiState.Loading -> LoadingState("Loading details…")
         is UiState.Error -> ErrorState(s.message) { viewModel.loadDetails(animeId) }
         is UiState.Success -> {
             val details = s.data
-            val firstPlayable = details.seasons
+            val playableEpisodes = details.seasons
                 .flatMap { season -> season.episodes.map { season.seasonNumber to it } }
-                .firstOrNull { (_, ep) -> ep.sourceCandidates.isNotEmpty() }
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                .filter { (_, ep) -> ep.sourceCandidates.isNotEmpty() }
+            val firstPlayable = playableEpisodes.firstOrNull { (_, ep) -> ep.audioType == settings.preferredAudio }
+                ?: playableEpisodes.firstOrNull()
+            LazyColumn(state = detailsListState, modifier = Modifier.fillMaxSize()) {
                 item {
                     DetailsHero(
                         details = details,
@@ -559,7 +571,19 @@ fun DetailsScreen(
                 if (details.seasons.isEmpty()) {
                     item { StateMessage("No episodes available.") }
                 } else {
-                    item { SectionTitle("Episodes", "${progressForAnime(progress, details.id)}% COMPLETE") }
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SectionTitle("Episodes", "${progressForAnime(progress, details.id)}% COMPLETE")
+                            Spacer(Modifier.width(12.dp))
+                            SecondaryButton(if (audioFilter == null) "✓ All" else "All", modifier = Modifier.width(110.dp), onClick = { audioFilter = null })
+                            Spacer(Modifier.width(8.dp))
+                            SecondaryButton(if (audioFilter == AudioType.SUB) "✓ Sub" else "Sub", modifier = Modifier.width(110.dp), onClick = { audioFilter = AudioType.SUB })
+                            Spacer(Modifier.width(8.dp))
+                            SecondaryButton(if (audioFilter == AudioType.DUB) "✓ Dub" else "Dub", modifier = Modifier.width(110.dp), onClick = { audioFilter = AudioType.DUB })
+                            Spacer(Modifier.width(8.dp))
+                            SecondaryButton("Top", modifier = Modifier.width(100.dp), onClick = { detailsScope.launch { detailsListState.animateScrollToItem(0) } })
+                        }
+                    }
                     details.seasons.forEach { season ->
                         if (details.seasons.size > 1) {
                             item {
@@ -573,7 +597,7 @@ fun DetailsScreen(
                             }
                         }
                         items(
-                            season.episodes.filter { ep -> !settings.hideWatchedEpisodes || progress.none { it.animeId == ep.anilistId && it.seasonNumber == season.seasonNumber && it.episodeNumber == ep.episodeNumber && it.audioType == ep.audioType && it.watched } }.chunked(EPISODE_GRID_COLUMNS),
+                            season.episodes.filter { ep -> (audioFilter == null || ep.audioType == audioFilter) && (!settings.hideWatchedEpisodes || progress.none { it.animeId == ep.anilistId && it.seasonNumber == season.seasonNumber && it.episodeNumber == ep.episodeNumber && it.audioType == ep.audioType && it.watched }) }.chunked(EPISODE_GRID_COLUMNS),
                             key = { row -> row.first().let { "${season.seasonNumber}-${it.episodeNumber}-${it.audioType}" } }
                         ) { rowEpisodes ->
                             Row(

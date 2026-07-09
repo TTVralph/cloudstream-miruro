@@ -65,6 +65,8 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     val series: StateFlow<UiState<List<AnimeItem>>> = _series.asStateFlow()
 
     private val _genreResults = MutableStateFlow<UiState<List<AnimeItem>>?>(null)
+    private var moviesPage = 0
+    private var seriesPage = 0
     val genreResults: StateFlow<UiState<List<AnimeItem>>?> = _genreResults.asStateFlow()
 
     val watchProgress: StateFlow<List<WatchProgress>> =
@@ -118,22 +120,34 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         _searchResults.value = null
     }
 
-    fun loadMovies(force: Boolean = false) {
-        if (!force && _movies.value is UiState.Success) return
+    fun loadMovies(force: Boolean = false, nextPage: Boolean = false) {
+        if (!force && !nextPage && _movies.value is UiState.Success) return
         viewModelScope.launch {
+            val previous = (_movies.value as? UiState.Success)?.data.orEmpty().takeIf { nextPage }.orEmpty()
+            val page = if (nextPage) moviesPage + 1 else 1
             _movies.value = UiState.Loading
-            runCatching { repo.browse("MOVIE") }
-                .onSuccess { rememberItems(it); _movies.value = UiState.Success(it) }
+            runCatching { repo.browse("MOVIE", page) }
+                .onSuccess { items ->
+                    moviesPage = page
+                    rememberItems(items)
+                    _movies.value = UiState.Success((previous + items).distinctBy { it.id })
+                }
                 .onFailure { _movies.value = UiState.Error("Could not load movies.") }
         }
     }
 
-    fun loadSeries(force: Boolean = false) {
-        if (!force && _series.value is UiState.Success) return
+    fun loadSeries(force: Boolean = false, nextPage: Boolean = false) {
+        if (!force && !nextPage && _series.value is UiState.Success) return
         viewModelScope.launch {
+            val previous = (_series.value as? UiState.Success)?.data.orEmpty().takeIf { nextPage }.orEmpty()
+            val page = if (nextPage) seriesPage + 1 else 1
             _series.value = UiState.Loading
-            runCatching { repo.browse("TV") }
-                .onSuccess { rememberItems(it); _series.value = UiState.Success(it) }
+            runCatching { repo.browse("TV", page) }
+                .onSuccess { items ->
+                    seriesPage = page
+                    rememberItems(items)
+                    _series.value = UiState.Success((previous + items).distinctBy { it.id })
+                }
                 .onFailure { _series.value = UiState.Error("Could not load series.") }
         }
     }
