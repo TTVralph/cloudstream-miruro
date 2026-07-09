@@ -282,11 +282,11 @@ fun DetailsScreen(
 }
 
 @Composable
-private fun DetailsHeader(d: AnimeDetails, favorite: Boolean, onToggleFavorite: () -> Unit, onPlay: (() -> Unit)?) {
+private fun DetailsHeader(details: AnimeDetails, favorite: Boolean, onToggleFavorite: () -> Unit, onPlay: (() -> Unit)?) {
     Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
         AsyncImage(
-            model = d.posterUrl,
-            contentDescription = d.title,
+            model = details.posterUrl,
+            contentDescription = details.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .width(210.dp)
@@ -295,15 +295,15 @@ private fun DetailsHeader(d: AnimeDetails, favorite: Boolean, onToggleFavorite: 
                 .background(MiruroColors.Card)
         )
         Column(modifier = Modifier.padding(start = 24.dp)) {
-            Text(d.title, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+            Text(details.title, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
             Text(
-                listOfNotNull(d.year?.toString(), d.status, d.rating, d.genres.takeIf { it.isNotEmpty() }?.joinToString())
+                listOfNotNull(details.year?.toString(), details.status, details.rating, details.genres.takeIf { it.isNotEmpty() }?.joinToString())
                     .joinToString(" • "),
                 color = MiruroColors.Accent,
                 fontSize = 15.sp
             )
             Spacer(Modifier.height(10.dp))
-            BodyText(d.description ?: "No synopsis available.", modifier = Modifier.width(520.dp))
+            BodyText(details.description ?: "No synopsis available.", modifier = Modifier.width(520.dp))
             Spacer(Modifier.height(16.dp))
             Row {
                 if (onPlay != null) {
