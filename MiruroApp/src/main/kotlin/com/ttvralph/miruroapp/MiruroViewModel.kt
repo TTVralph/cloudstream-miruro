@@ -42,6 +42,12 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     private val _playback = MutableStateFlow<UiState<PlaybackSource>?>(null)
     val playback: StateFlow<UiState<PlaybackSource>?> = _playback.asStateFlow()
 
+    private val _movies = MutableStateFlow<UiState<List<AnimeItem>>>(UiState.Loading)
+    val movies: StateFlow<UiState<List<AnimeItem>>> = _movies.asStateFlow()
+
+    private val _series = MutableStateFlow<UiState<List<AnimeItem>>>(UiState.Loading)
+    val series: StateFlow<UiState<List<AnimeItem>>> = _series.asStateFlow()
+
     val favoriteIds: StateFlow<Set<Int>> =
         store.favoriteIds.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
@@ -76,6 +82,26 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearSearch() {
         _searchResults.value = null
+    }
+
+    fun loadMovies(force: Boolean = false) {
+        if (!force && _movies.value is UiState.Success) return
+        viewModelScope.launch {
+            _movies.value = UiState.Loading
+            runCatching { repo.browse("MOVIE") }
+                .onSuccess { _movies.value = UiState.Success(it) }
+                .onFailure { _movies.value = UiState.Error("Could not load movies.") }
+        }
+    }
+
+    fun loadSeries(force: Boolean = false) {
+        if (!force && _series.value is UiState.Success) return
+        viewModelScope.launch {
+            _series.value = UiState.Loading
+            runCatching { repo.browse("TV") }
+                .onSuccess { _series.value = UiState.Success(it) }
+                .onFailure { _series.value = UiState.Error("Could not load series.") }
+        }
     }
 
     fun loadDetails(id: Int) {
