@@ -6,17 +6,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 object MiruroColors {
-    val Background = Color(0xFF090B12)
-    val BackgroundGradientEnd = Color(0xFF11152A)
-    val Panel = Color(0xFF111827)
-    val Card = Color(0xFF182033)
-    val Focused = Color(0xFF26395F)
-    val Text = Color(0xFFE5EEFC)
-    val Subtle = Color(0xFF9AA8BD)
-    val Accent = Color(0xFF7DD3FC)
-    val Accent2 = Color(0xFFC084FC)
-    val Danger = Color(0xFFFFB4A2)
-    val Border = Color(0x22FFFFFF)
+    val Background = Color(0xFF08080A)
+    val BackgroundGradientEnd = Color(0xFF0F0F13)
+    val Panel = Color(0xFF17171C)
+    val Card = Color(0xFF1C1C22)
+    val Focused = Color(0xFF2A2A32)
+    val Text = Color(0xFFF2F2F5)
+    val Subtle = Color(0xFF9B9BA5)
+    val Accent = Color(0xFFE63946)
+    val Accent2 = Color(0xFFF4B740)
+    val Danger = Color(0xFFFF6B6B)
+    val Border = Color(0x1FFFFFFF)
 }
 
 private val MiruroColorScheme = darkColorScheme(

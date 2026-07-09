@@ -31,6 +31,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -78,32 +79,45 @@ private fun HeroBanner(item: AnimeItem, onOpenDetails: (Int) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(300.dp)
-            .padding(top = 8.dp, bottom = 8.dp)
-            .clip(RoundedCornerShape(28.dp))
+            .height(360.dp)
+            .padding(bottom = 8.dp)
+            .clip(RoundedCornerShape(10.dp))
             .background(MiruroColors.Panel)
     ) {
         AsyncImage(
             model = item.bannerUrl ?: item.posterUrl,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            alpha = 0.42f,
             modifier = Modifier.fillMaxSize()
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to Color.Transparent,
+                            0.55f to Color.Black.copy(alpha = 0.35f),
+                            1f to MiruroColors.Background.copy(alpha = 0.96f)
+                        )
+                    )
+                )
         )
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(32.dp),
         ) {
-            Text(item.title, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+            Text(item.title, color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
             Text(
-                listOfNotNull(item.year?.toString(), item.type.name, "Trending").joinToString(" • "),
-                color = MiruroColors.Accent,
-                fontSize = 16.sp
+                listOfNotNull(item.year?.toString(), item.type.name, "Trending Now").joinToString("  •  "),
+                color = MiruroColors.Accent2,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.height(10.dp))
             BodyText("Discover anime, search AniList metadata, manage your watchlist, and jump into episode playback.")
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(16.dp))
             PrimaryButton("View Details", modifier = Modifier.width(200.dp)) { onOpenDetails(item.id) }
         }
     }
@@ -185,9 +199,8 @@ fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
 @Composable
 fun SettingsScreen() {
     StateMessage(
-        "AniTrack UI has been adapted for Miruro: AniList discovery, search, details, watchlist, and Media3 " +
-            "playback are presented with Jetpack Compose for TV. Stream sources are resolved from Miruro on " +
-            "demand when you press Play."
+        "Tanji brings AniList discovery, search, details, a watchlist, and Media3 playback together in one " +
+            "Jetpack Compose for TV experience. Stream sources are resolved on demand when you press Play."
     )
 }
 
