@@ -11,6 +11,8 @@ import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.HomeRow
 import com.ttvralph.miruroapp.data.PlaybackSource
 import com.ttvralph.miruroapp.data.SourceResolution
+import com.ttvralph.miruroapp.data.WatchProgress
+import com.ttvralph.miruroapp.data.WatchProgressStore
 import com.ttvralph.miruroapp.data.WatchlistStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,7 +30,9 @@ sealed interface UiState<out T> {
 class MiruroViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = AniListRepository()
     private val store = WatchlistStore(application)
+    private val progressStore = WatchProgressStore(application)
     private val detailsCache = linkedMapOf<Int, AnimeDetails>()
+    private val itemCache = linkedMapOf<Int, AnimeItem>()
 
     private val _homeRows = MutableStateFlow<UiState<List<HomeRow>>>(UiState.Loading)
     val homeRows: StateFlow<UiState<List<HomeRow>>> = _homeRows.asStateFlow()
@@ -48,6 +52,12 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     private val _series = MutableStateFlow<UiState<List<AnimeItem>>>(UiState.Loading)
     val series: StateFlow<UiState<List<AnimeItem>>> = _series.asStateFlow()
 
+    private val _genreResults = MutableStateFlow<UiState<List<AnimeItem>>?>(null)
+    val genreResults: StateFlow<UiState<List<AnimeItem>>?> = _genreResults.asStateFlow()
+
+    val watchProgress: StateFlow<List<WatchProgress>> =
+        progressStore.progress.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val favoriteIds: StateFlow<Set<Int>> =
         store.favoriteIds.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
@@ -60,6 +70,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
             _homeRows.value = UiState.Loading
             runCatching { repo.homeRows() }
                 .onSuccess { rows ->
+                    rememberItems(rows.flatMap { it.items })
                     _homeRows.value = if (rows.isEmpty()) UiState.Error("Home rows are empty.") else UiState.Success(rows)
                 }
                 .onFailure { _homeRows.value = UiState.Error("Could not load home rows.") }
@@ -75,7 +86,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _searchResults.value = UiState.Loading
             runCatching { repo.search(trimmed) }
-                .onSuccess { _searchResults.value = UiState.Success(it) }
+                .onSuccess { rememberItems(it); _searchResults.value = UiState.Success(it) }
                 .onFailure { _searchResults.value = UiState.Error("Search failed. Please try again.") }
         }
     }
@@ -89,7 +100,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _movies.value = UiState.Loading
             runCatching { repo.browse("MOVIE") }
-                .onSuccess { _movies.value = UiState.Success(it) }
+                .onSuccess { rememberItems(it); _movies.value = UiState.Success(it) }
                 .onFailure { _movies.value = UiState.Error("Could not load movies.") }
         }
     }
@@ -99,7 +110,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _series.value = UiState.Loading
             runCatching { repo.browse("TV") }
-                .onSuccess { _series.value = UiState.Success(it) }
+                .onSuccess { rememberItems(it); _series.value = UiState.Success(it) }
                 .onFailure { _series.value = UiState.Error("Could not load series.") }
         }
     }
@@ -109,12 +120,43 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _details.value = UiState.Loading
             runCatching { repo.details(id) }
-                .onSuccess { detailsCache[id] = it; _details.value = UiState.Success(it) }
+                .onSuccess { detailsCache[id] = it; rememberItems(listOf(AnimeItem(it.id, it.title, it.posterUrl, it.bannerUrl, com.ttvralph.miruroapp.data.AnimeType.UNKNOWN, it.year))); _details.value = UiState.Success(it) }
                 .onFailure { _details.value = UiState.Error("Could not load details.") }
         }
     }
 
     fun cachedDetails(id: Int): AnimeDetails? = detailsCache[id]
+    fun cachedItem(id: Int): AnimeItem? = itemCache[id]
+
+    fun loadGenre(genre: String, format: String? = null) {
+        viewModelScope.launch {
+            _genreResults.value = UiState.Loading
+            runCatching { repo.browseGenre(genre, format) }
+                .onSuccess { rememberItems(it); _genreResults.value = UiState.Success(it) }
+                .onFailure { _genreResults.value = UiState.Error("Could not load $genre anime.") }
+        }
+    }
+
+    fun saveProgress(episode: AnimeEpisode, positionMs: Long, durationMs: Long) {
+        if (durationMs <= 0L) return
+        viewModelScope.launch {
+            progressStore.save(
+                WatchProgress(
+                    animeId = episode.anilistId,
+                    seasonNumber = episode.seasonNumber,
+                    episodeNumber = episode.episodeNumber,
+                    audioType = episode.audioType,
+                    positionMs = positionMs.coerceIn(0L, durationMs),
+                    durationMs = durationMs,
+                    updatedAtMs = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    fun clearWatchProgress() { viewModelScope.launch { progressStore.clear() } }
+
+    private fun rememberItems(items: List<AnimeItem>) { items.forEach { itemCache[it.id] = it } }
 
     fun toggleFavorite(id: Int) {
         viewModelScope.launch { store.setFavorite(id, id !in favoriteIds.value) }

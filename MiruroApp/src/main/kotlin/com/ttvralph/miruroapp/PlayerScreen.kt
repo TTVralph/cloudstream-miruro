@@ -78,12 +78,12 @@ fun PlayerScreen(viewModel: MiruroViewModel, episode: AnimeEpisode?, onBack: () 
     when (val s = state) {
         null, is UiState.Loading -> LoadingState("Resolving stream…")
         is UiState.Error -> ErrorState(s.message, onBack)
-        is UiState.Success -> VideoPlayer(s.data, episode, onBack)
+        is UiState.Success -> VideoPlayer(s.data, episode, viewModel, onBack)
     }
 }
 
 @Composable
-private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, onBack: () -> Unit) {
+private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel: MiruroViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     val sources = remember(source) { listOf(source.copy(fallbackSources = emptyList())) + source.fallbackSources }
     var sourceIndex by remember(source) { mutableIntStateOf(0) }
@@ -93,6 +93,9 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, onBack: (
     var sourceMenuVisible by remember(source) { mutableStateOf(false) }
     var subtitleMenuVisible by remember(source) { mutableStateOf(false) }
     val activeSource = sources[sourceIndex]
+    val savedProgress = viewModel.watchProgress.collectAsState().value.firstOrNull {
+        it.animeId == episode.anilistId && it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.episodeNumber && it.audioType == episode.audioType
+    }
 
     val player = remember(activeSource, subtitleIndex) {
         Log.d(TAG, "preparing player label=${activeSource.label} type=${activeSource.type}")
@@ -120,9 +123,16 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, onBack: (
             setMediaSource(mediaSource)
             playWhenReady = true
             prepare()
+            savedProgress?.takeIf { !it.watched && it.positionMs > 10_000L }?.let { seekTo(it.positionMs) }
         }
     }
-    DisposableEffect(player) { onDispose { player.release() } }
+    DisposableEffect(player) {
+        onDispose {
+            val duration = player.duration.takeIf { it > 0 } ?: 0L
+            viewModel.saveProgress(episode, player.currentPosition, duration)
+            player.release()
+        }
+    }
 
     val error = playerError
     if (error != null) {
@@ -173,7 +183,8 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, onBack: (
                     onSourceSelected = { sourceIndex = it; sourceMenuVisible = false },
                     onSubtitleMenu = { subtitleMenuVisible = !subtitleMenuVisible; sourceMenuVisible = false },
                     onSubtitleSelected = { subtitleIndex = it; subtitleMenuVisible = false },
-                    onHideControls = { controlsVisible = false }
+                    onHideControls = { controlsVisible = false },
+                    onProgressTick = { position, duration -> viewModel.saveProgress(episode, position, duration) }
                 )
             }
         }
@@ -198,7 +209,8 @@ private fun CloudstreamPlayerOverlay(
     onSourceSelected: (Int) -> Unit,
     onSubtitleMenu: () -> Unit,
     onSubtitleSelected: (Int) -> Unit,
-    onHideControls: () -> Unit
+    onHideControls: () -> Unit,
+    onProgressTick: (Long, Long) -> Unit
 ) {
     var position by remember(player) { mutableLongStateOf(0L) }
     var duration by remember(player) { mutableLongStateOf(0L) }
@@ -211,6 +223,7 @@ private fun CloudstreamPlayerOverlay(
             duration = player.duration.takeIf { it > 0 } ?: 0L
             progress = if (duration > 0L) position.toFloat() / duration.toFloat() else 0f
             isPlaying = player.isPlaying
+            onProgressTick(position, duration)
             delay(500L)
         }
     }
