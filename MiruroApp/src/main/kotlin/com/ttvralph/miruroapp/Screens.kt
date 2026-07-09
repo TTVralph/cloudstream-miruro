@@ -79,7 +79,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 private const val EPISODE_GRID_COLUMNS = 3
 
 @Composable
-fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
+fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit, onPlayProgress: (WatchProgress) -> Unit = { onOpenDetails(it.animeId) }) {
     val state by viewModel.homeRows.collectAsState()
     val favorites by viewModel.favoriteIds.collectAsState()
     val progress by viewModel.watchProgress.collectAsState()
@@ -104,7 +104,7 @@ fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
                 }
                 val unfinished = progress.filter { !it.watched }.take(20)
                 if (unfinished.isNotEmpty()) {
-                    item { ContinueWatchingRow(unfinished, viewModel, onOpenDetails) }
+                    item { ContinueWatchingRow(unfinished, viewModel, onOpenDetails, onPlayProgress) }
                 }
                 items(rows, key = { it.title }) { row ->
                     PosterRow(
@@ -123,7 +123,7 @@ fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
 }
 
 @Composable
-private fun ContinueWatchingRow(progress: List<WatchProgress>, viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
+private fun ContinueWatchingRow(progress: List<WatchProgress>, viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit, onPlayProgress: (WatchProgress) -> Unit) {
     Column {
         SectionTitle("Continue Watching", "RESUME")
         LazyRow(
@@ -133,10 +133,14 @@ private fun ContinueWatchingRow(progress: List<WatchProgress>, viewModel: Miruro
         ) {
             items(progress, key = { it.key }) { item ->
                 val anime = viewModel.cachedItem(item.animeId)
-                FocusableSurface(onClick = { onOpenDetails(item.animeId) }, modifier = Modifier.width(220.dp).height(128.dp)) {
+                FocusableSurface(onClick = { onPlayProgress(item) }, modifier = Modifier.width(250.dp).height(150.dp)) {
                     Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
                         Text(anime?.title ?: "Anime #${item.animeId}", color = MiruroColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text("S${item.seasonNumber} E${item.episodeNumber} • ${(item.percent * 100).toInt()}% watched", color = MiruroColors.Subtle, fontSize = 12.sp)
+                        Column {
+                            Text("Resume S${item.seasonNumber} E${item.episodeNumber}", color = MiruroColors.AccentSoft, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("${formatTimeShort(item.positionMs)} / ${formatTimeShort(item.durationMs)} • ${(item.percent * 100).toInt()}%", color = MiruroColors.Subtle, fontSize = 12.sp)
+                            Text("Open details", color = MiruroColors.Subtle, fontSize = 11.sp, modifier = Modifier.clickable { onOpenDetails(item.animeId) }.padding(top = 4.dp))
+                        }
                     }
                 }
             }
@@ -593,7 +597,7 @@ fun DetailsScreen(
                 } else {
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            SectionTitle("Episodes", "${progressForAnime(progress, details.id)}% COMPLETE")
+                            SectionTitle("Episodes", progressSummary(progress, details))
                             Spacer(Modifier.width(12.dp))
                             SecondaryButton(if (audioFilter == null) "✓ All" else "All", modifier = Modifier.width(110.dp), onClick = { audioFilter = null })
                             Spacer(Modifier.width(8.dp))
@@ -847,8 +851,9 @@ fun EpisodeDetailsScreen(episode: AnimeEpisode?, viewModel: MiruroViewModel? = n
             "Runtime" to (episode.runtimeMinutes?.let { "${it}m" } ?: "Unknown"),
             "Release date" to (episode.releaseDate ?: "Unknown"),
             "Audio type" to episode.audioType.name,
-            "Providers" to episode.sourceCandidates.joinToString { it.provider }.ifBlank { "None" },
-            "Playback" to if (episode.sourceCandidates.isNotEmpty()) "Choose a provider or use Auto before playback." else "No playable source is available for this episode."
+            "Providers" to providerAvailabilityLabel(episode),
+            "Sub/Dub" to episode.sourceCandidates.groupBy { it.category.ifBlank { "unknown" } }.map { (category, candidates) -> "${category.uppercase(Locale.ROOT)} ${candidates.size}" }.joinToString(" • ").ifBlank { "Unknown" },
+            "Playback" to if (episode.sourceCandidates.isNotEmpty()) "Choose a provider or use Auto before playback. Quality and health are checked when the source resolves." else "No playable source is available for this episode."
         ).forEach { (label, value) -> BodyText("$label: $value") }
         if (episode.sourceCandidates.isNotEmpty()) {
             Spacer(Modifier.height(20.dp))
@@ -860,9 +865,32 @@ fun EpisodeDetailsScreen(episode: AnimeEpisode?, viewModel: MiruroViewModel? = n
                 }
             }
             Spacer(Modifier.height(12.dp))
-            PrimaryButton("Play", modifier = Modifier.width(180.dp), onClick = onPlay)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PrimaryButton("Play", modifier = Modifier.width(180.dp), onClick = onPlay)
+                val progress = viewModel?.watchProgress?.collectAsState()?.value?.firstOrNull { it.key == WatchProgress.makeKey(episode.anilistId, episode.seasonNumber, episode.episodeNumber, episode.audioType) }
+                SecondaryButton(if (progress?.watched == true) "Mark unwatched" else "Mark watched", modifier = Modifier.width(210.dp), onClick = { viewModel?.setEpisodeWatched(episode, progress?.watched != true) })
+            }
         }
     }
+}
+
+private fun providerAvailabilityLabel(episode: AnimeEpisode): String = episode.sourceCandidates
+    .groupBy { it.provider }
+    .map { (provider, candidates) -> "$provider (${candidates.map { it.category.uppercase(Locale.ROOT) }.distinct().joinToString("/")})" }
+    .joinToString()
+    .ifBlank { "None" }
+
+private fun progressSummary(progress: List<WatchProgress>, details: AnimeDetails): String {
+    val total = details.seasons.sumOf { it.episodes.size }.coerceAtLeast(1)
+    val watched = progress.count { it.animeId == details.id && it.watched }
+    return "$watched/$total WATCHED • ${progressForAnime(progress, details.id)}% COMPLETE"
+}
+
+private fun formatTimeShort(ms: Long): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format(Locale.US, "%d:%02d", minutes, seconds)
 }
 
 private fun progressForAnime(progress: List<WatchProgress>, animeId: Int): Int {

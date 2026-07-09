@@ -21,6 +21,7 @@ data class AppSettings(
     val resumePlayback: Boolean = true,
     val subtitleLanguage: String = "English",
     val subtitleStyle: String = "Default",
+    val subtitleChoice: String = "Auto",
     val hideWatchedEpisodes: Boolean = false,
     val watchlistSort: WatchlistSort = WatchlistSort.RECENTLY_ADDED
 )
@@ -37,6 +38,7 @@ class SettingsStore(private val context: Context) {
         val resumePlayback = booleanPreferencesKey("resume_playback")
         val subtitleLanguage = stringPreferencesKey("subtitle_language")
         val subtitleStyle = stringPreferencesKey("subtitle_style")
+        val subtitleChoice = stringPreferencesKey("subtitle_choice")
         val hideWatchedEpisodes = booleanPreferencesKey("hide_watched_episodes")
         val watchlistSort = stringPreferencesKey("watchlist_sort")
     }
@@ -51,6 +53,7 @@ class SettingsStore(private val context: Context) {
             resumePlayback = prefs[Keys.resumePlayback] ?: true,
             subtitleLanguage = prefs[Keys.subtitleLanguage] ?: "English",
             subtitleStyle = prefs[Keys.subtitleStyle] ?: "Default",
+            subtitleChoice = prefs[Keys.subtitleChoice] ?: "Auto",
             hideWatchedEpisodes = prefs[Keys.hideWatchedEpisodes] ?: false,
             watchlistSort = prefs[Keys.watchlistSort]?.let { runCatching { WatchlistSort.valueOf(it) }.getOrNull() } ?: WatchlistSort.RECENTLY_ADDED
         )
@@ -64,6 +67,7 @@ class SettingsStore(private val context: Context) {
     suspend fun updateResumePlayback(value: Boolean) { context.settingsDataStore.edit { it[Keys.resumePlayback] = value } }
     suspend fun updateSubtitleLanguage(value: String) { context.settingsDataStore.edit { it[Keys.subtitleLanguage] = value } }
     suspend fun updateSubtitleStyle(value: String) { context.settingsDataStore.edit { it[Keys.subtitleStyle] = value } }
+    suspend fun updateSubtitleChoice(value: String) { context.settingsDataStore.edit { it[Keys.subtitleChoice] = value } }
     suspend fun updateHideWatchedEpisodes(value: Boolean) { context.settingsDataStore.edit { it[Keys.hideWatchedEpisodes] = value } }
     suspend fun updateWatchlistSort(value: WatchlistSort) { context.settingsDataStore.edit { it[Keys.watchlistSort] = value.name } }
 }

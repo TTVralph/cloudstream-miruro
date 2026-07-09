@@ -233,6 +233,26 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearWatchProgress() { viewModelScope.launch { progressStore.clear() } }
 
+    fun setEpisodeWatched(episode: AnimeEpisode, watched: Boolean) {
+        viewModelScope.launch {
+            if (watched) {
+                progressStore.save(
+                    WatchProgress(
+                        animeId = episode.anilistId,
+                        seasonNumber = episode.seasonNumber,
+                        episodeNumber = episode.episodeNumber,
+                        audioType = episode.audioType,
+                        positionMs = 9_000L,
+                        durationMs = 10_000L,
+                        updatedAtMs = System.currentTimeMillis()
+                    )
+                )
+            } else {
+                progressStore.delete(episode.anilistId, episode.seasonNumber, episode.episodeNumber, episode.audioType)
+            }
+        }
+    }
+
     private fun rememberDetails(details: AnimeDetails) {
         detailsCache[details.id] = details
         trimCache(detailsCache, MAX_DETAILS_CACHE_SIZE)
@@ -283,6 +303,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     fun updateResumePlayback(value: Boolean) { viewModelScope.launch { settingsStore.updateResumePlayback(value) } }
     fun updateSubtitleLanguage(value: String) { viewModelScope.launch { settingsStore.updateSubtitleLanguage(value) } }
     fun updateSubtitleStyle(value: String) { viewModelScope.launch { settingsStore.updateSubtitleStyle(value) } }
+    fun updateSubtitleChoice(value: String) { viewModelScope.launch { settingsStore.updateSubtitleChoice(value) } }
     fun updateHideWatchedEpisodes(value: Boolean) { viewModelScope.launch { settingsStore.updateHideWatchedEpisodes(value) } }
     fun updateWatchlistSort(value: WatchlistSort) { viewModelScope.launch { settingsStore.updateWatchlistSort(value) } }
 

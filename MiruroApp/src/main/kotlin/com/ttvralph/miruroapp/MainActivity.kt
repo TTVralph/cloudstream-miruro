@@ -119,7 +119,11 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     .padding(horizontal = if (showChrome) 36.dp else 0.dp, vertical = if (showChrome) 20.dp else 0.dp)
             ) {
                 composable(Routes.Home.route) {
-                    HomeScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    HomeScreen(
+                        viewModel = viewModel,
+                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
+                        onPlayProgress = { progress -> navController.navigate(Routes.Player.path(progress.animeId, progress.seasonNumber, progress.episodeNumber, progress.audioType)) }
+                    )
                 }
                 composable(Routes.Search.route) {
                     SearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
