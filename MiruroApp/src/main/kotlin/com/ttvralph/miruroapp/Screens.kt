@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,8 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -24,11 +27,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,19 +40,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import java.util.Locale
 import com.ttvralph.miruroapp.data.AnimeDetails
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
-import com.ttvralph.miruroapp.data.AnimeSeason
 import com.ttvralph.miruroapp.data.AudioType
 import com.ttvralph.miruroapp.ui.Badge
 import com.ttvralph.miruroapp.ui.BodyText
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.FocusableSurface
+import com.ttvralph.miruroapp.ui.GenreChip
 import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PosterCard
@@ -58,10 +61,14 @@ import com.ttvralph.miruroapp.ui.RatingLabel
 import com.ttvralph.miruroapp.ui.SecondaryButton
 import com.ttvralph.miruroapp.ui.SectionTitle
 import com.ttvralph.miruroapp.ui.StateMessage
+import java.util.Locale
+
+private const val EPISODE_GRID_COLUMNS = 3
 
 @Composable
 fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     val state by viewModel.homeRows.collectAsState()
+    val favorites by viewModel.favoriteIds.collectAsState()
     when (val s = state) {
         is UiState.Loading -> LoadingState("Loading home rows…")
         is UiState.Error -> ErrorState(s.message) { viewModel.loadHome() }
@@ -69,32 +76,37 @@ fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
             val rows = s.data
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 rows.firstOrNull()?.items?.firstOrNull()?.let { hero ->
-                    item { HeroBanner(hero, onOpenDetails) }
+                    item {
+                        HomeHero(
+                            item = hero,
+                            inList = hero.id in favorites,
+                            onWatch = { onOpenDetails(hero.id) },
+                            onToggleList = { viewModel.toggleFavorite(hero.id) }
+                        )
+                    }
                 }
                 items(rows, key = { it.title }) { row ->
                     PosterRow(
                         title = row.title,
                         items = row.items,
                         onClick = onOpenDetails,
-                        badge = if (row.title == "Trending Now") "HOT" else null,
-                        showRank = row.title == "Top Rated Anime"
+                        badge = if (row.title == "Trending Now") "HOT" else null
                     )
                 }
-                item { Spacer(Modifier.height(24.dp)) }
+                item { Spacer(Modifier.height(32.dp)) }
             }
         }
     }
 }
 
 @Composable
-private fun HeroBanner(item: AnimeItem, onOpenDetails: (Int) -> Unit) {
+private fun HomeHero(item: AnimeItem, inList: Boolean, onWatch: () -> Unit, onToggleList: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(420.dp)
-            .padding(bottom = 8.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(MiruroColors.Panel)
+            .height(440.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MiruroColors.Card)
     ) {
         AsyncImage(
             model = item.bannerUrl ?: item.posterUrl,
@@ -109,40 +121,41 @@ private fun HeroBanner(item: AnimeItem, onOpenDetails: (Int) -> Unit) {
                     Brush.verticalGradient(
                         colorStops = arrayOf(
                             0f to Color.Transparent,
-                            0.5f to Color.Transparent,
-                            1f to MiruroColors.Background.copy(alpha = 0.97f)
+                            0.45f to Color.Transparent,
+                            1f to MiruroColors.Background
                         )
                     )
                 )
         )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(32.dp)
-                .width(600.dp)
-        ) {
-            Badge("★ TRENDING NOW")
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(36.dp).width(640.dp)) {
+            Badge("TRENDING", container = MiruroColors.Accent2, content = Color.Black)
             Spacer(Modifier.height(14.dp))
-            Text(item.title, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black, lineHeight = 42.sp)
-            Spacer(Modifier.height(10.dp))
+            Text(
+                item.title.uppercase(Locale.ROOT),
+                color = MiruroColors.Text,
+                fontSize = 42.sp,
+                fontWeight = FontWeight.Black,
+                lineHeight = 46.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 item.score?.let {
                     RatingLabel(String.format(Locale.US, "%.1f", it / 10f))
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(16.dp))
                 }
                 Text(
-                    listOfNotNull(item.year?.toString(), item.type.name).joinToString("  •  "),
+                    listOfNotNull(item.year?.toString(), item.type.name).joinToString("   •   "),
                     color = MiruroColors.Subtle,
-                    fontSize = 14.sp
+                    fontSize = 16.sp
                 )
             }
-            Spacer(Modifier.height(12.dp))
-            BodyText("Discover anime, search AniList metadata, manage your watchlist, and jump into episode playback.")
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
             Row {
-                PrimaryButton("Play Now", modifier = Modifier.width(190.dp)) { onOpenDetails(item.id) }
-                Spacer(Modifier.width(12.dp))
-                SecondaryButton("More Info", modifier = Modifier.width(180.dp)) { onOpenDetails(item.id) }
+                PrimaryButton("Watch Now", modifier = Modifier.width(200.dp), onClick = onWatch)
+                Spacer(Modifier.width(16.dp))
+                SecondaryButton(if (inList) "In My List" else "+ Add to List", modifier = Modifier.width(200.dp), onClick = onToggleList)
             }
         }
     }
@@ -153,18 +166,17 @@ private fun PosterRow(
     title: String,
     items: List<AnimeItem>,
     onClick: (Int) -> Unit,
-    badge: String? = null,
-    showRank: Boolean = false
+    badge: String? = null
 ) {
     Column {
         SectionTitle(title, badge)
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            contentPadding = PaddingValues(vertical = 6.dp, horizontal = 2.dp)
         ) {
-            itemsIndexed(items, key = { _, anime -> anime.id }) { index, anime ->
-                PosterCard(anime, onClick = { onClick(anime.id) }, rank = if (showRank) index + 1 else null)
+            items(items, key = { it.id }) { anime ->
+                PosterCard(anime) { onClick(anime.id) }
             }
         }
     }
@@ -182,8 +194,8 @@ fun SearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
             placeholder = { Text("Search anime by title", color = MiruroColors.Subtle) },
             singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
+                focusedTextColor = MiruroColors.Text,
+                unfocusedTextColor = MiruroColors.Text,
                 focusedBorderColor = MiruroColors.Accent,
                 unfocusedBorderColor = MiruroColors.Border,
                 cursorColor = MiruroColors.Accent
@@ -200,9 +212,7 @@ fun SearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
                 if (s.data.isEmpty()) {
                     StateMessage("No results found.")
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        item { PosterRow("Results", s.data, onOpenDetails) }
-                    }
+                    PosterGrid(s.data, onOpenDetails, modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -210,16 +220,70 @@ fun SearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
 }
 
 @Composable
+fun MoviesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
+    LaunchedEffect(Unit) { viewModel.loadMovies() }
+    val state by viewModel.movies.collectAsState()
+    BrowseScreen("Movies", state, onRetry = { viewModel.loadMovies(force = true) }, onOpenDetails = onOpenDetails)
+}
+
+@Composable
+fun SeriesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
+    LaunchedEffect(Unit) { viewModel.loadSeries() }
+    val state by viewModel.series.collectAsState()
+    BrowseScreen("Series", state, onRetry = { viewModel.loadSeries(force = true) }, onOpenDetails = onOpenDetails)
+}
+
+@Composable
+private fun BrowseScreen(
+    title: String,
+    state: UiState<List<AnimeItem>>,
+    onRetry: () -> Unit,
+    onOpenDetails: (Int) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        SectionTitle(title)
+        when (state) {
+            is UiState.Loading -> LoadingState("Loading $title…")
+            is UiState.Error -> ErrorState(state.message, onRetry)
+            is UiState.Success ->
+                if (state.data.isEmpty()) StateMessage("Nothing found.")
+                else PosterGrid(state.data, onOpenDetails, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun PosterGrid(items: List<AnimeItem>, onOpenDetails: (Int) -> Unit, modifier: Modifier = Modifier) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 160.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        contentPadding = PaddingValues(vertical = 6.dp, horizontal = 2.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        items(items, key = { it.id }) { anime ->
+            PosterCard(anime) { onOpenDetails(anime.id) }
+        }
+    }
+}
+
+@Composable
 fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     val ids by viewModel.favoriteIds.collectAsState()
-    if (ids.isEmpty()) {
-        StateMessage("No favorites yet.")
-    } else {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(ids.toList(), key = { it }) { id ->
-                FocusableSurface(onClick = { onOpenDetails(id) }, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).height(64.dp)) {
-                    Box(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), contentAlignment = Alignment.CenterStart) {
-                        Text("Anime #$id", color = Color.White, fontSize = 17.sp)
+    Column(modifier = Modifier.fillMaxSize()) {
+        SectionTitle("Library")
+        if (ids.isEmpty()) {
+            StateMessage("Your library is empty. Add anime with \"+ Add to List\".")
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(ids.toList(), key = { it }) { id ->
+                    FocusableSurface(
+                        onClick = { onOpenDetails(id) },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).height(64.dp)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), contentAlignment = Alignment.CenterStart) {
+                            Text("Anime #$id", color = MiruroColors.Text, fontSize = 17.sp)
+                        }
                     }
                 }
             }
@@ -229,10 +293,13 @@ fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
 
 @Composable
 fun SettingsScreen() {
-    StateMessage(
-        "Tanji brings AniList discovery, search, details, a watchlist, and Media3 playback together in one " +
-            "Jetpack Compose for TV experience. Stream sources are resolved on demand when you press Play."
-    )
+    Column(modifier = Modifier.fillMaxSize()) {
+        SectionTitle("Settings")
+        StateMessage(
+            "Tanji brings AniList discovery, search, details, a library, and Media3 playback together in one " +
+                "Jetpack Compose for TV experience. Stream sources are resolved on demand when you press Play."
+        )
+    }
 }
 
 @Composable
@@ -251,31 +318,60 @@ fun DetailsScreen(
         is UiState.Error -> ErrorState(s.message) { viewModel.loadDetails(animeId) }
         is UiState.Success -> {
             val details = s.data
-            val favorite = details.id in favorites
             val firstPlayable = details.seasons
                 .flatMap { season -> season.episodes.map { season.seasonNumber to it } }
                 .firstOrNull { (_, ep) -> ep.sourceCandidates.isNotEmpty() }
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 item {
-                    DetailsHeader(
+                    DetailsHero(
                         details = details,
-                        favorite = favorite,
-                        onToggleFavorite = { viewModel.toggleFavorite(details.id) },
-                        onPlay = firstPlayable?.let { (season, ep) -> { onPlayEpisode(season, ep.episodeNumber, ep.audioType) } }
+                        inList = details.id in favorites,
+                        playLabel = firstPlayable?.let { (season, ep) -> "Play S$season E${ep.episodeNumber}" },
+                        onPlay = firstPlayable?.let { (season, ep) -> { onPlayEpisode(season, ep.episodeNumber, ep.audioType) } },
+                        onToggleList = { viewModel.toggleFavorite(details.id) }
                     )
                 }
                 if (details.seasons.isEmpty()) {
                     item { StateMessage("No episodes available.") }
                 } else {
+                    item { SectionTitle("Episodes") }
                     details.seasons.forEach { season ->
-                        item { SeasonHeader(season) }
-                        items(season.episodes, key = { "${season.seasonNumber}-${it.episodeNumber}-${it.audioType}" }) { ep ->
-                            EpisodeRow(ep) {
-                                if (ep.sourceCandidates.isNotEmpty()) onPlayEpisode(season.seasonNumber, ep.episodeNumber, ep.audioType)
-                                else onOpenEpisode(season.seasonNumber, ep.episodeNumber, ep.audioType)
+                        if (details.seasons.size > 1) {
+                            item {
+                                Text(
+                                    "Season ${season.seasonNumber}: ${season.title}",
+                                    color = MiruroColors.Subtle,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 12.dp, bottom = 10.dp)
+                                )
+                            }
+                        }
+                        items(
+                            season.episodes.chunked(EPISODE_GRID_COLUMNS),
+                            key = { row -> row.first().let { "${season.seasonNumber}-${it.episodeNumber}-${it.audioType}" } }
+                        ) { rowEpisodes ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp)
+                            ) {
+                                rowEpisodes.forEach { ep ->
+                                    EpisodeCard(
+                                        ep = ep,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = {
+                                            if (ep.sourceCandidates.isNotEmpty()) onPlayEpisode(season.seasonNumber, ep.episodeNumber, ep.audioType)
+                                            else onOpenEpisode(season.seasonNumber, ep.episodeNumber, ep.audioType)
+                                        }
+                                    )
+                                }
+                                repeat(EPISODE_GRID_COLUMNS - rowEpisodes.size) {
+                                    Spacer(Modifier.weight(1f))
+                                }
                             }
                         }
                     }
+                    item { Spacer(Modifier.height(24.dp)) }
                 }
             }
         }
@@ -283,36 +379,161 @@ fun DetailsScreen(
 }
 
 @Composable
-private fun DetailsHeader(details: AnimeDetails, favorite: Boolean, onToggleFavorite: () -> Unit, onPlay: (() -> Unit)?) {
-    Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+private fun DetailsHero(
+    details: AnimeDetails,
+    inList: Boolean,
+    playLabel: String?,
+    onPlay: (() -> Unit)?,
+    onToggleList: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(460.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MiruroColors.Card)
+    ) {
         AsyncImage(
-            model = details.posterUrl,
-            contentDescription = details.title,
+            model = details.bannerUrl ?: details.posterUrl,
+            contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .width(210.dp)
-                .height(305.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(MiruroColors.Card)
+            modifier = Modifier.fillMaxSize()
         )
-        Column(modifier = Modifier.padding(start = 24.dp)) {
-            Text(details.title, color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to Color.Transparent,
+                            0.4f to MiruroColors.Background.copy(alpha = 0.35f),
+                            1f to MiruroColors.Background
+                        )
+                    )
+                )
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        colorStops = arrayOf(
+                            0f to MiruroColors.Background.copy(alpha = 0.85f),
+                            0.55f to Color.Transparent,
+                            1f to Color.Transparent
+                        )
+                    )
+                )
+        )
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(36.dp).width(720.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                details.rating?.let {
+                    RatingLabel(it)
+                    Spacer(Modifier.width(16.dp))
+                }
+                Text(
+                    listOfNotNull(
+                        details.year?.toString(),
+                        "${details.seasons.size} Season${if (details.seasons.size == 1) "" else "s"}"
+                    ).joinToString("   •   "),
+                    color = MiruroColors.Text,
+                    fontSize = 15.sp
+                )
+                details.status?.let {
+                    Spacer(Modifier.width(16.dp))
+                    Badge(it.uppercase(Locale.ROOT), container = MiruroColors.Focused, content = MiruroColors.Text)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             Text(
-                listOfNotNull(details.year?.toString(), details.status, details.rating, details.genres.takeIf { it.isNotEmpty() }?.joinToString())
-                    .joinToString(" • "),
-                color = MiruroColors.Accent,
-                fontSize = 15.sp
+                details.title,
+                color = MiruroColors.Text,
+                fontSize = 44.sp,
+                fontWeight = FontWeight.Black,
+                lineHeight = 48.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
-            Spacer(Modifier.height(10.dp))
-            BodyText(details.description ?: "No synopsis available.", modifier = Modifier.width(520.dp))
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                details.genres.take(4).forEach { GenreChip(it) }
+            }
+            Spacer(Modifier.height(14.dp))
+            BodyText(details.description ?: "No synopsis available.", maxLines = 3)
+            Spacer(Modifier.height(22.dp))
             Row {
                 if (onPlay != null) {
-                    PrimaryButton("Play", modifier = Modifier.width(160.dp), onClick = onPlay)
-                    Spacer(Modifier.width(12.dp))
+                    PrimaryButton(playLabel ?: "Play", modifier = Modifier.width(220.dp), onClick = onPlay)
+                    Spacer(Modifier.width(16.dp))
                 }
-                SecondaryButton(if (favorite) "Remove My List" else "+ My List", modifier = Modifier.width(190.dp)) {
-                    onToggleFavorite()
+                SecondaryButton(if (inList) "In My List" else "+ Add to List", modifier = Modifier.width(200.dp), onClick = onToggleList)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EpisodeCard(ep: AnimeEpisode, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val categories = ep.sourceCandidates.map { it.category }.toSet()
+    val audioLabel = when {
+        "sub" in categories && "dub" in categories -> "Sub/Dub"
+        "dub" in categories -> "Dub"
+        "sub" in categories -> "Sub"
+        else -> null
+    }
+    FocusableSurface(onClick = onClick, modifier = modifier, unfocusedBackground = MiruroColors.Card) {
+        Column {
+            Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MiruroColors.CardHigh)) {
+                if (ep.thumbnailUrl != null) {
+                    AsyncImage(
+                        model = ep.thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        "${ep.episodeNumber}",
+                        color = Color.White.copy(alpha = 0.12f),
+                        fontSize = 64.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f))
+                            )
+                        )
+                )
+                if (audioLabel != null) {
+                    Box(modifier = Modifier.align(Alignment.TopStart).padding(10.dp)) {
+                        EpisodeBadge(audioLabel)
+                    }
+                }
+                ep.runtimeMinutes?.let {
+                    Box(modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp)) {
+                        EpisodeBadge("${it}m")
+                    }
+                }
+            }
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("E${ep.episodeNumber} • ${ep.audioType.name}", color = MiruroColors.AccentSoft, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    ep.title ?: "Episode ${ep.episodeNumber}",
+                    color = MiruroColors.Text,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                ep.releaseDate?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text(it, color = MiruroColors.Subtle, fontSize = 13.sp)
                 }
             }
         }
@@ -320,27 +541,14 @@ private fun DetailsHeader(details: AnimeDetails, favorite: Boolean, onToggleFavo
 }
 
 @Composable
-private fun SeasonHeader(s: AnimeSeason) {
-    SectionTitle("Season ${s.seasonNumber}: ${s.title}")
-}
-
-@Composable
-private fun EpisodeRow(ep: AnimeEpisode, onClick: () -> Unit) {
-    val status = listOfNotNull(
-        ep.runtimeMinutes?.let { "${it}m" },
-        ep.releaseDate,
-        if (ep.sourceCandidates.isNotEmpty()) "Playable" else "Details"
-    ).joinToString(" • ")
-    FocusableSurface(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp).height(64.dp)) {
-        Row(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "${ep.episodeNumber}. ${ep.title ?: "Episode ${ep.episodeNumber}"} (${ep.audioType.name})",
-                color = Color.White,
-                fontSize = 16.sp,
-                modifier = Modifier.weight(1f)
-            )
-            Text(status, color = MiruroColors.Subtle, fontSize = 13.sp)
-        }
+private fun EpisodeBadge(text: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(text, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -356,7 +564,7 @@ fun EpisodeDetailsScreen(episode: AnimeEpisode?, onPlay: () -> Unit) {
                 model = it,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.width(400.dp).height(230.dp).clip(RoundedCornerShape(16.dp))
+                modifier = Modifier.width(400.dp).height(230.dp).clip(RoundedCornerShape(12.dp))
             )
             Spacer(Modifier.height(16.dp))
         }

@@ -6,17 +6,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 object MiruroColors {
-    val Background = Color(0xFF08080A)
-    val BackgroundGradientEnd = Color(0xFF0F0F13)
-    val Panel = Color(0xFF17171C)
-    val Card = Color(0xFF1C1C22)
-    val Focused = Color(0xFF2A2A32)
-    val Text = Color(0xFFF2F2F5)
-    val Subtle = Color(0xFF9B9BA5)
-    val Accent = Color(0xFFE63946)
-    val Accent2 = Color(0xFFF4B740)
-    val Danger = Color(0xFFFF6B6B)
-    val Border = Color(0x1FFFFFFF)
+    val Background = Color(0xFF050505)
+    val Surface = Color(0xFF131313)
+    val Panel = Color(0xFF0E0E0E)        // surface-container-lowest, sidebar/cards base
+    val Card = Color(0xFF1C1B1B)         // surface-container-low
+    val CardHigh = Color(0xFF2A2A2A)     // surface-container-high
+    val Focused = Color(0xFF353534)      // surface-variant
+    val Text = Color(0xFFE5E2E1)         // on-background
+    val Subtle = Color(0xFFE3BDC2)       // on-surface-variant (warm pink-grey)
+    val Accent = Color(0xFFD81E5B)       // primary-container crimson
+    val AccentSoft = Color(0xFFFFB2BD)   // primary (soft pink, for small labels)
+    val Accent2 = Color(0xFFE9C349)      // secondary gold
+    val Danger = Color(0xFFFFB4AB)
+    val Border = Color(0x1AFFFFFF)       // white @ 10%
 }
 
 private val MiruroColorScheme = darkColorScheme(

@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
@@ -21,10 +21,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.data.AudioType
+import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.MiruroTheme
-import com.ttvralph.miruroapp.ui.TopNavBar
+import com.ttvralph.miruroapp.ui.SideNav
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MiruroViewModel by viewModels()
@@ -46,6 +46,8 @@ private sealed class Routes(val route: String) {
     data object Home : Routes("home")
     data object Search : Routes("search")
     data object Favorites : Routes("favorites")
+    data object Movies : Routes("movies")
+    data object Series : Routes("series")
     data object Settings : Routes("settings")
     data object Details : Routes("details/{${Args.ID}}") {
         fun path(id: Int) = "details/$id"
@@ -66,11 +68,13 @@ private fun NavHostController.navigateTopLevel(route: String) {
     }
 }
 
-private fun navLabelFor(route: String?): String = when {
-    route == Routes.Home.route -> "Home"
-    route == Routes.Search.route -> "Search"
-    route == Routes.Favorites.route -> "Favorites"
-    route == Routes.Settings.route -> "Settings"
+private fun navLabelFor(route: String?): String = when (route) {
+    Routes.Home.route -> "Home"
+    Routes.Search.route -> "Search"
+    Routes.Favorites.route -> "Favorites"
+    Routes.Movies.route -> "Movies"
+    Routes.Series.route -> "Series"
+    Routes.Settings.route -> "Settings"
     else -> ""
 }
 
@@ -82,18 +86,19 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     val showChrome = currentRoute != Routes.Player.route
 
     Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MiruroColors.Background)
-                .padding(horizontal = if (showChrome) 40.dp else 0.dp, vertical = if (showChrome) 20.dp else 0.dp)
         ) {
             if (showChrome) {
-                TopNavBar(
+                SideNav(
                     current = navLabelFor(currentRoute),
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
                     onSearch = { navController.navigateTopLevel(Routes.Search.route) },
-                    onFavorites = { navController.navigateTopLevel(Routes.Favorites.route) },
+                    onLibrary = { navController.navigateTopLevel(Routes.Favorites.route) },
+                    onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
+                    onSeries = { navController.navigateTopLevel(Routes.Series.route) },
                     onSettings = { navController.navigateTopLevel(Routes.Settings.route) }
                 )
             }
@@ -101,8 +106,9 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 navController = navController,
                 startDestination = Routes.Home.route,
                 modifier = Modifier
+                    .weight(1f)
                     .fillMaxSize()
-                    .padding(top = if (showChrome) 20.dp else 0.dp)
+                    .padding(horizontal = if (showChrome) 36.dp else 0.dp, vertical = if (showChrome) 20.dp else 0.dp)
             ) {
                 composable(Routes.Home.route) {
                     HomeScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
@@ -112,6 +118,12 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 }
                 composable(Routes.Favorites.route) {
                     FavoritesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                }
+                composable(Routes.Movies.route) {
+                    MoviesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                }
+                composable(Routes.Series.route) {
+                    SeriesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Settings.route) { SettingsScreen() }
                 composable(
