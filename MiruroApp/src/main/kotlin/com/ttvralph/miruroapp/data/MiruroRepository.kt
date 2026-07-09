@@ -26,6 +26,8 @@ private val STREAM_ARRAY_KEYS = arrayOf("streams", "sources", "playlist")
 private val SUBTITLE_ARRAY_KEYS = arrayOf("subtitles", "tracks", "captions")
 private val STREAM_URL_KEYS = arrayOf("url", "file", "stream", "link")
 
+data class EpisodeMetadataWithSources(val metadata: EpisodeMetadata, val candidates: List<EpisodeSourceCandidate>)
+
 // Reimplements MiruroProvider's pipe protocol locally since this module doesn't depend on Cloudstream.
 class MiruroRepository {
     private val client = OkHttpClient()
@@ -42,7 +44,9 @@ class MiruroRepository {
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
     )
 
-    suspend fun episodeCandidates(anilistId: Int): Map<Int, List<EpisodeSourceCandidate>> = withContext(Dispatchers.IO) {
+    suspend fun episodeCandidates(anilistId: Int): Map<Int, List<EpisodeSourceCandidate>> = episodeData(anilistId).mapValues { it.value.candidates }
+
+    suspend fun episodeData(anilistId: Int): Map<Int, EpisodeMetadataWithSources> = withContext(Dispatchers.IO) {
         val providers = runCatching { fetchRawEpisodes(anilistId) }
             .onFailure { e -> Log.w(TAG, "episodeCandidates: fetchRawEpisodes failed for anilistId=$anilistId", e) }
             .getOrNull()?.path("providers")
@@ -50,6 +54,7 @@ class MiruroRepository {
         if (!providers.isObject) return@withContext emptyMap()
 
         val byEpisode = mutableMapOf<Int, MutableList<EpisodeSourceCandidate>>()
+        val metadataByEpisode = mutableMapOf<Int, EpisodeMetadata>()
         providers.fields().forEach { providerEntry ->
             val provider = providerEntry.key
             val episodesNode = providerEntry.value.path("episodes")
@@ -68,10 +73,24 @@ class MiruroRepository {
                     if (number <= 0) return@forEach
                     val episodeId = normalizeEpisodeId(rawId)
                     byEpisode.getOrPut(number) { mutableListOf() }.add(EpisodeSourceCandidate(provider, episodeId, category))
+                    val title = text(ep, "title", "name")?.takeUnless { it.equals("Episode $number", ignoreCase = true) }
+                    val thumbnail = text(ep, "thumbnail", "thumbnailUrl", "image", "img", "poster")
+                    if (title != null || thumbnail != null) {
+                        val current = metadataByEpisode[number]
+                        metadataByEpisode[number] = EpisodeMetadata(
+                            title = current?.title ?: title,
+                            thumbnailUrl = current?.thumbnailUrl ?: thumbnail
+                        )
+                    }
                 }
             }
         }
-        byEpisode.mapValues { (_, list) -> list.sortedBy { providerRank(it.provider) } }
+        byEpisode.mapValues { (number, list) ->
+            EpisodeMetadataWithSources(
+                metadata = metadataByEpisode[number] ?: EpisodeMetadata(),
+                candidates = list.sortedBy { providerRank(it.provider) }
+            )
+        }
     }
 
     suspend fun resolveSource(anilistId: Int, candidates: List<EpisodeSourceCandidate>): SourceResolution = withContext(Dispatchers.IO) {

@@ -57,17 +57,19 @@ class AniListRepository {
         val chain = runCatching { findSeasonChain(root) }.getOrDefault(listOf(root)).ifEmpty { listOf(root) }
         val seasons = chain.mapIndexed { index, entry ->
             val dates = episodeAirDates(entry.id)
-            val candidates = runCatching { miruro.episodeCandidates(entry.id) }.getOrDefault(emptyMap())
+            val episodeData = runCatching { miruro.episodeData(entry.id) }.getOrDefault(emptyMap())
             val episodes = (1..(entry.episodes ?: 0).coerceAtMost(2000)).flatMap { ep ->
-                val epCandidates = candidates[ep].orEmpty()
+                val metadata = episodeData[ep]?.metadata ?: EpisodeMetadata()
+                val epCandidates = episodeData[ep]?.candidates.orEmpty()
+                val episodeTitle = metadata.title ?: "Episode $ep"
                 val grouped = epCandidates.groupBy { it.category.lowercase(Locale.ROOT) }
                 when {
-                    grouped.isEmpty() -> listOf(AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.SUB, entry.id))
+                    grouped.isEmpty() -> listOf(AnimeEpisode(index + 1, ep, episodeTitle, metadata.thumbnailUrl, entry.duration, dates[ep], AudioType.SUB, entry.id))
                     else -> listOfNotNull(
-                        grouped["sub"]?.let { AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.SUB, entry.id, it) },
-                        grouped["dub"]?.let { AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.DUB, entry.id, it) }
+                        grouped["sub"]?.let { AnimeEpisode(index + 1, ep, episodeTitle, metadata.thumbnailUrl, entry.duration, dates[ep], AudioType.SUB, entry.id, it) },
+                        grouped["dub"]?.let { AnimeEpisode(index + 1, ep, episodeTitle, metadata.thumbnailUrl, entry.duration, dates[ep], AudioType.DUB, entry.id, it) }
                     ).ifEmpty {
-                        listOf(AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.SUB, entry.id, epCandidates))
+                        listOf(AnimeEpisode(index + 1, ep, episodeTitle, metadata.thumbnailUrl, entry.duration, dates[ep], AudioType.SUB, entry.id, epCandidates))
                     }
                 }
             }

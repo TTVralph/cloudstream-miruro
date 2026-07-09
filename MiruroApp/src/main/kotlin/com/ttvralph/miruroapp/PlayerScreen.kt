@@ -38,7 +38,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -111,6 +119,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
     var gestureMessage by remember(source) { mutableStateOf<String?>(null) }
     var nextCountdown by remember(source) { mutableIntStateOf(0) }
     var lastBackPressMs by remember(source) { mutableLongStateOf(0L) }
+    val playerFocusRequester = remember { FocusRequester() }
     val audioManager = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     BackHandler {
@@ -173,6 +182,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
         }
     }
 
+    LaunchedEffect(source) { playerFocusRequester.requestFocus() }
     LaunchedEffect(gestureMessage) { if (gestureMessage != null) { delay(1_200L); gestureMessage = null } }
     LaunchedEffect(nextCountdown) {
         if (nextCountdown > 0) {
@@ -192,6 +202,41 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
+                .focusRequester(playerFocusRequester)
+                .focusable()
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.MediaPlayPause -> {
+                            controlsVisible = true
+                            if (!locked) player.playWhenReady = !player.playWhenReady
+                            true
+                        }
+                        Key.DirectionLeft, Key.MediaRewind -> {
+                            controlsVisible = true
+                            if (!locked) {
+                                player.seekTo((player.currentPosition - SEEK_INCREMENT_MS).coerceAtLeast(0L))
+                                gestureMessage = "Rewind 10s"
+                            }
+                            true
+                        }
+                        Key.DirectionRight, Key.MediaFastForward -> {
+                            controlsVisible = true
+                            if (!locked) {
+                                player.seekTo(player.currentPosition + SEEK_INCREMENT_MS)
+                                gestureMessage = "Forward 10s"
+                            }
+                            true
+                        }
+                        Key.DirectionUp, Key.DirectionDown, Key.MediaPlay, Key.MediaPause -> {
+                            controlsVisible = true
+                            if (!locked && event.key == Key.MediaPlay) player.play()
+                            if (!locked && event.key == Key.MediaPause) player.pause()
+                            true
+                        }
+                        else -> false
+                    }
+                }
                 .pointerInput(player, controlsVisible, locked) {
                     detectTapGestures(
                         onTap = { controlsVisible = !controlsVisible },
