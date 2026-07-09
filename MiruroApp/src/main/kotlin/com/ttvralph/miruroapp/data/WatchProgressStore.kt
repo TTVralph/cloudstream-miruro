@@ -57,5 +57,12 @@ class WatchProgressStore(private val context: Context) {
         }
     }
 
+    suspend fun delete(animeId: Int, seasonNumber: Int, episodeNumber: Int, audioType: AudioType) {
+        val deleteKey = WatchProgress.makeKey(animeId, seasonNumber, episodeNumber, audioType)
+        context.watchProgressDataStore.edit { prefs ->
+            prefs[key] = prefs[key].orEmpty().mapNotNull(WatchProgress::decode).filterNot { it.key == deleteKey }.map { it.encoded() }.toSet()
+        }
+    }
+
     suspend fun clear() { context.watchProgressDataStore.edit { it.remove(key) } }
 }

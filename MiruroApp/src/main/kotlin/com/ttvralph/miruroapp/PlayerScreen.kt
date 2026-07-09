@@ -110,8 +110,11 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
     var speedMenuVisible by remember(source) { mutableStateOf(false) }
     val activeSource = sources[sourceIndex]
     val settings = viewModel.settings.collectAsState().value
-    val preferredSubtitleIndex = remember(activeSource, settings.subtitleLanguage) {
+    val autoSubtitleIndex = remember(activeSource, settings.subtitleLanguage) {
         preferredSubtitleIndex(activeSource.subtitleTracks, settings.subtitleLanguage)
+    }
+    val preferredSubtitleIndex = remember(activeSource, settings.subtitleChoice, autoSubtitleIndex) {
+        subtitleIndexForChoice(activeSource.subtitleTracks, settings.subtitleChoice, autoSubtitleIndex)
     }
     var subtitleIndex by remember(activeSource, preferredSubtitleIndex) { mutableIntStateOf(preferredSubtitleIndex) }
     val savedProgress = viewModel.watchProgress.collectAsState().value.firstOrNull {
@@ -164,6 +167,8 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                 override fun onPlayerError(error: PlaybackException) {
                     Log.w(TAG, "playback error for ${activeSource.label}", error)
                     if (sourceIndex < sources.lastIndex) {
+                        gestureMessage = "Source failed, trying next source…"
+                        controlsVisible = true
                         sourceIndex += 1
                     } else {
                         playerError = "${error.errorCodeName}: ${error.message ?: "Playback failed"}"
@@ -197,7 +202,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
     if (error != null) {
         Column(Modifier.fillMaxSize().background(Color.Black), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             ErrorState(error, onBack)
-            if (sourceIndex < sources.lastIndex) PrimaryButton("Try next source", modifier = Modifier.width(220.dp), onClick = { sourceIndex += 1; playerError = null })
+            PrimaryButton("Try alternate source", modifier = Modifier.width(240.dp), onClick = { sourceIndex = ((sourceIndex + 1).coerceAtMost(sources.lastIndex)); playerError = null })
         }
     } else {
         Box(
@@ -299,6 +304,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                     activeSource = activeSource,
                     sourceIndex = sourceIndex,
                     subtitleIndex = subtitleIndex,
+                    autoSubtitleIndex = autoSubtitleIndex,
                     sourceMenuVisible = sourceMenuVisible,
                     subtitleMenuVisible = subtitleMenuVisible,
                     speedMenuVisible = speedMenuVisible,
@@ -313,7 +319,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                     onSourceMenu = { sourceMenuVisible = !sourceMenuVisible; subtitleMenuVisible = false },
                     onSourceSelected = { sourceIndex = it; sourceMenuVisible = false },
                     onSubtitleMenu = { subtitleMenuVisible = !subtitleMenuVisible; sourceMenuVisible = false; speedMenuVisible = false },
-                    onSubtitleSelected = { subtitleIndex = it; subtitleMenuVisible = false },
+                    onSubtitleSelected = { index, choice -> subtitleIndex = index; viewModel.updateSubtitleChoice(choice); subtitleMenuVisible = false },
                     onSpeedMenu = { speedMenuVisible = !speedMenuVisible; sourceMenuVisible = false; subtitleMenuVisible = false },
                     onSpeedSelected = { player.setPlaybackSpeed(it); speedMenuVisible = false },
                     onLockToggle = { locked = !locked; controlsVisible = true },
@@ -334,6 +340,7 @@ private fun CloudstreamPlayerOverlay(
     activeSource: PlaybackSource,
     sourceIndex: Int,
     subtitleIndex: Int,
+    autoSubtitleIndex: Int,
     sourceMenuVisible: Boolean,
     subtitleMenuVisible: Boolean,
     speedMenuVisible: Boolean,
@@ -348,7 +355,7 @@ private fun CloudstreamPlayerOverlay(
     onSourceMenu: () -> Unit,
     onSourceSelected: (Int) -> Unit,
     onSubtitleMenu: () -> Unit,
-    onSubtitleSelected: (Int) -> Unit,
+    onSubtitleSelected: (Int, String) -> Unit,
     onSpeedMenu: () -> Unit,
     onSpeedSelected: (Float) -> Unit,
     onLockToggle: () -> Unit,
@@ -429,7 +436,7 @@ private fun CloudstreamPlayerOverlay(
             PlayerMenu("Select source", Modifier.align(Alignment.CenterEnd).padding(end = 32.dp)) {
                 sources.forEachIndexed { index, item ->
                     MenuRow(
-                        text = "${index + 1}. ${item.label} • ${item.type}",
+                        text = "${index + 1}. ${sourceDisplayLabel(item)}",
                         selected = index == sourceIndex,
                         onClick = { onSourceSelected(index) }
                     )
@@ -443,12 +450,13 @@ private fun CloudstreamPlayerOverlay(
         }
         if (subtitleMenuVisible) {
             PlayerMenu("Subtitles / settings", Modifier.align(Alignment.CenterEnd).padding(end = 32.dp)) {
-                MenuRow("Off", selected = subtitleIndex == -1, onClick = { onSubtitleSelected(-1) })
+                MenuRow("Off", selected = subtitleIndex == -1, onClick = { onSubtitleSelected(-1, "Off") })
+                MenuRow("Auto (${activeSource.subtitleTracks.getOrNull(autoSubtitleIndex)?.label ?: "preferred language"})", selected = false, onClick = { onSubtitleSelected(autoSubtitleIndex, "Auto") })
                 activeSource.subtitleTracks.forEachIndexed { index, subtitle ->
                     MenuRow(
                         text = subtitle.label.ifBlank { subtitle.language ?: "Subtitle ${index + 1}" },
                         selected = subtitleIndex == index,
-                        onClick = { onSubtitleSelected(index) }
+                        onClick = { onSubtitleSelected(index, subtitle.language ?: subtitle.label) }
                     )
                 }
                 if (activeSource.subtitleTracks.isEmpty()) Text("No external subtitle tracks", color = MiruroColors.Subtle, modifier = Modifier.padding(12.dp))
@@ -476,6 +484,18 @@ private fun MenuRow(text: String, selected: Boolean, onClick: () -> Unit) {
         fontSize = 16.sp,
         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
     )
+}
+
+private fun sourceDisplayLabel(source: PlaybackSource): String {
+    val quality = Regex("""(?i)(2160p|1440p|1080p|720p|480p|360p|4k)""").find(source.label)?.value?.uppercase(Locale.ROOT) ?: source.type.name
+    val subtitles = if (source.subtitleTracks.isNotEmpty()) " • ${source.subtitleTracks.size} subtitles" else ""
+    return "${source.label} • $quality$subtitles"
+}
+
+private fun subtitleIndexForChoice(tracks: List<com.ttvralph.miruroapp.data.SubtitleTrack>, choice: String, autoIndex: Int): Int = when {
+    choice.equals("Off", ignoreCase = true) -> -1
+    choice.equals("Auto", ignoreCase = true) -> autoIndex
+    else -> preferredSubtitleIndex(tracks, choice).takeIf { it >= 0 } ?: autoIndex
 }
 
 private fun preferredSubtitleIndex(tracks: List<com.ttvralph.miruroapp.data.SubtitleTrack>, preferredLanguage: String): Int {
