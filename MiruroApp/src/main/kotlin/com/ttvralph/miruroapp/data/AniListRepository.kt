@@ -18,6 +18,7 @@ class AniListRepository {
     private val mapper = jacksonObjectMapper()
     private val jsonType = "application/json".toMediaType()
     private val dateCache = mutableMapOf<Int, Map<Int, String>>()
+    private val miruro = MiruroRepository()
 
     suspend fun homeRows(): List<HomeRow> = listOf(
         "Trending Now" to mapOf("sort" to listOf("TRENDING_DESC")),
@@ -29,6 +30,9 @@ class AniListRepository {
 
     suspend fun search(query: String): List<AnimeItem> = mediaPage(mapOf("search" to query, "page" to 1, "perPage" to 30, "sort" to listOf("SEARCH_MATCH")))
 
+    suspend fun resolveEpisodeSource(episode: AnimeEpisode): PlaybackSource? =
+        miruro.resolveSource(episode.anilistId, episode.sourceCandidates)
+
     suspend fun details(id: Int): AnimeDetails = withContext(Dispatchers.IO) {
         val media = anilist(MEDIA_QUERY, mapOf("id" to id)).path("Media")
         val title = preferredTitle(media.path("title")) ?: error("Missing title")
@@ -36,8 +40,11 @@ class AniListRepository {
         val chain = runCatching { findSeasonChain(root) }.getOrDefault(listOf(root)).ifEmpty { listOf(root) }
         val seasons = chain.mapIndexed { index, entry ->
             val dates = episodeAirDates(entry.id)
+            val candidates = runCatching { miruro.episodeCandidates(entry.id) }.getOrDefault(emptyMap())
             val episodes = (1..(entry.episodes ?: 0).coerceAtMost(2000)).map { ep ->
-                AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.SUB)
+                val epCandidates = candidates[ep].orEmpty()
+                val audio = if (epCandidates.any { it.category == "sub" } || epCandidates.isEmpty()) AudioType.SUB else AudioType.DUB
+                AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], audio, entry.id, epCandidates)
             }
             AnimeSeason(entry.id, index + 1, entry.title, entry.year, episodes)
         }

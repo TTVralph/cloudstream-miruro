@@ -93,15 +93,28 @@ class MainActivity : ComponentActivity(), MiruroNavigator {
     override fun toggleFavorite(details: AnimeDetails) { lifecycleScope.launch { store.setFavorite(details.id, !store.favoriteIds.first().contains(details.id)); renderDetails(details) } }
     override fun openEpisode(episode: AnimeEpisode) { releasePlayer(); currentEpisode = episode; screen = Screen.EPISODE_DETAILS; reset("Episode"); EpisodeDetailsScreen(ui, this).render(root, episode) }
     override fun openPlayer(episode: AnimeEpisode) {
-        val source = episode.playbackSource ?: return openEpisode(episode)
-        releasePlayer(); screen = Screen.PLAYER; currentEpisode = episode; root.removeAllViews(); loading("Loading player…")
+        if (episode.sourceCandidates.isEmpty()) return openEpisode(episode)
+        releasePlayer(); screen = Screen.PLAYER; currentEpisode = episode; job?.cancel(); root.removeAllViews(); loading("Resolving stream…")
+        job = lifecycleScope.launch {
+            val source = runCatching { repo.resolveEpisodeSource(episode) }.getOrNull()
+            if (source == null) {
+                root.removeAllViews(); loading("No playable source found.")
+                root.addView(ui.button("Back") { openEpisode(episode) }, LinearLayout.LayoutParams(dp(180), dp(58)).apply { topMargin = dp(16) })
+                return@launch
+            }
+            startPlayback(source)
+        }
+    }
+
+    private fun startPlayback(source: PlaybackSource) {
+        root.removeAllViews()
         val factory = DefaultHttpDataSource.Factory().setDefaultRequestProperties(source.headers)
         val mediaSource = when (source.type) {
             PlaybackType.HLS -> HlsMediaSource.Factory(factory).createMediaSource(mediaItem(source, MimeTypes.APPLICATION_M3U8))
             PlaybackType.DASH -> DashMediaSource.Factory(factory).createMediaSource(mediaItem(source, MimeTypes.APPLICATION_MPD))
             else -> ProgressiveMediaSource.Factory(factory).createMediaSource(mediaItem(source, null))
         }
-        root.removeAllViews(); root.addView(PlayerView(this).apply { useController = true; isFocusable = true }, LinearLayout.LayoutParams(-1, dp(560)))
+        root.addView(PlayerView(this).apply { useController = true; isFocusable = true }, LinearLayout.LayoutParams(-1, dp(560)))
         player = ExoPlayer.Builder(this).build().also { exo -> (root.getChildAt(0) as PlayerView).player = exo; exo.setMediaSource(mediaSource); exo.playWhenReady = true; exo.addListener(object : Player.Listener {}); exo.prepare() }
     }
 
