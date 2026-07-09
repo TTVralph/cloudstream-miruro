@@ -22,12 +22,17 @@ import com.ttvralph.miruroapp.data.WatchProgressStore
 import com.ttvralph.miruroapp.data.WatchlistEntry
 import com.ttvralph.miruroapp.data.WatchlistStore
 import com.ttvralph.miruroapp.data.WatchlistSort
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+private const val MAX_DETAILS_CACHE_SIZE = 50
+private const val MAX_ITEM_CACHE_SIZE = 500
 
 sealed interface UiState<out T> {
     data object Loading : UiState<Nothing>
@@ -42,6 +47,13 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     private val settingsStore = SettingsStore(application)
     private val detailsCache = linkedMapOf<Int, AnimeDetails>()
     private val itemCache = linkedMapOf<Int, AnimeItem>()
+    private var homeJob: Job? = null
+    private var searchJob: Job? = null
+    private var moviesJob: Job? = null
+    private var seriesJob: Job? = null
+    private var detailsJob: Job? = null
+    private var genreJob: Job? = null
+    private var playbackJob: Job? = null
 
     private val _homeRows = MutableStateFlow<UiState<List<HomeRow>>>(UiState.Loading)
     val homeRows: StateFlow<UiState<List<HomeRow>>> = _homeRows.asStateFlow()
@@ -86,9 +98,12 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun loadHome() {
-        viewModelScope.launch {
+        homeJob?.cancel()
+        homeJob = viewModelScope.launch {
             _homeRows.value = UiState.Loading
-            runCatching { repo.homeRows() }
+            val result = runCatching { repo.homeRows() }
+            if (!isActive) return@launch
+            result
                 .onSuccess { rows ->
                     rememberItems(rows.flatMap { it.items })
                     _homeRows.value = if (rows.isEmpty()) UiState.Error("Home rows are empty.") else UiState.Success(rows)
@@ -102,12 +117,16 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     fun search(filters: AnimeSearchFilters) {
         val trimmed = filters.query.trim()
         if (trimmed.isEmpty() && filters.genres.isEmpty() && filters.format == null && filters.year == null && filters.status == null) {
+            searchJob?.cancel()
             _searchResults.value = null
             return
         }
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             _searchResults.value = UiState.Loading
-            runCatching { repo.search(filters.copy(query = trimmed)) }
+            val result = runCatching { repo.search(filters.copy(query = trimmed)) }
+            if (!isActive) return@launch
+            result
                 .onSuccess {
                     if (trimmed.isNotBlank()) searchHistoryStore.add(trimmed)
                     rememberItems(it); _searchResults.value = UiState.Success(it)
@@ -117,16 +136,20 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun clearSearch() {
+        searchJob?.cancel()
         _searchResults.value = null
     }
 
     fun loadMovies(force: Boolean = false, nextPage: Boolean = false) {
         if (!force && !nextPage && _movies.value is UiState.Success) return
-        viewModelScope.launch {
+        moviesJob?.cancel()
+        moviesJob = viewModelScope.launch {
             val previous = (_movies.value as? UiState.Success)?.data.orEmpty().takeIf { nextPage }.orEmpty()
             val page = if (nextPage) moviesPage + 1 else 1
             _movies.value = UiState.Loading
-            runCatching { repo.browse("MOVIE", page) }
+            val result = runCatching { repo.browse("MOVIE", page) }
+            if (!isActive) return@launch
+            result
                 .onSuccess { items ->
                     moviesPage = page
                     rememberItems(items)
@@ -138,11 +161,14 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     fun loadSeries(force: Boolean = false, nextPage: Boolean = false) {
         if (!force && !nextPage && _series.value is UiState.Success) return
-        viewModelScope.launch {
+        seriesJob?.cancel()
+        seriesJob = viewModelScope.launch {
             val previous = (_series.value as? UiState.Success)?.data.orEmpty().takeIf { nextPage }.orEmpty()
             val page = if (nextPage) seriesPage + 1 else 1
             _series.value = UiState.Loading
-            runCatching { repo.browse("TV", page) }
+            val result = runCatching { repo.browse("TV", page) }
+            if (!isActive) return@launch
+            result
                 .onSuccess { items ->
                     seriesPage = page
                     rememberItems(items)
@@ -153,11 +179,18 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun loadDetails(id: Int) {
+        detailsJob?.cancel()
         detailsCache[id]?.let { _details.value = UiState.Success(it); return }
-        viewModelScope.launch {
+        detailsJob = viewModelScope.launch {
             _details.value = UiState.Loading
-            runCatching { repo.details(id) }
-                .onSuccess { detailsCache[id] = it; rememberItems(listOf(AnimeItem(it.id, it.title, it.posterUrl, it.bannerUrl, com.ttvralph.miruroapp.data.AnimeType.UNKNOWN, it.year))); _details.value = UiState.Success(it) }
+            val result = runCatching { repo.details(id) }
+            if (!isActive) return@launch
+            result
+                .onSuccess {
+                    rememberDetails(it)
+                    rememberItems(listOf(AnimeItem(it.id, it.title, it.posterUrl, it.bannerUrl, com.ttvralph.miruroapp.data.AnimeType.UNKNOWN, it.year)))
+                    _details.value = UiState.Success(it)
+                }
                 .onFailure { _details.value = UiState.Error("Could not load details.") }
         }
     }
@@ -166,10 +199,13 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     fun cachedItem(id: Int): AnimeItem? = itemCache[id]
 
     fun loadGenre(genres: List<String>, format: String? = null, page: Int = 1, sort: AnimeSort = AnimeSort.POPULARITY, status: String? = null, year: Int? = null) {
-        viewModelScope.launch {
+        genreJob?.cancel()
+        genreJob = viewModelScope.launch {
             val previous = (_genreResults.value as? UiState.Success)?.data.orEmpty()
             _genreResults.value = UiState.Loading
-            runCatching { repo.browseGenre(genres, format, page, sort, status, year) }
+            val result = runCatching { repo.browseGenre(genres, format, page, sort, status, year) }
+            if (!isActive) return@launch
+            result
                 .onSuccess { items ->
                     rememberItems(items)
                     _genreResults.value = UiState.Success(if (page > 1) (previous + items).distinctBy { it.id } else items)
@@ -197,20 +233,36 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearWatchProgress() { viewModelScope.launch { progressStore.clear() } }
 
-    private fun rememberItems(items: List<AnimeItem>) { items.forEach { itemCache[it.id] = it } }
+    private fun rememberDetails(details: AnimeDetails) {
+        detailsCache[details.id] = details
+        trimCache(detailsCache, MAX_DETAILS_CACHE_SIZE)
+    }
+
+    private fun rememberItems(items: List<AnimeItem>) {
+        items.forEach { itemCache[it.id] = it }
+        trimCache(itemCache, MAX_ITEM_CACHE_SIZE)
+    }
+
+    private fun <T> trimCache(cache: LinkedHashMap<Int, T>, maxSize: Int) {
+        while (cache.size > maxSize) {
+            cache.remove(cache.keys.first())
+        }
+    }
 
     fun toggleFavorite(id: Int) {
         viewModelScope.launch { store.setFavorite(id, id !in favoriteIds.value, itemCache[id]) }
     }
 
     fun resolvePlayback(episode: AnimeEpisode, provider: String? = settings.value.preferredProvider) {
-        viewModelScope.launch {
+        playbackJob?.cancel()
+        playbackJob = viewModelScope.launch {
             _playback.value = UiState.Loading
-            val result = runCatching { repo.resolveEpisodeSource(episode, provider) }
-                .getOrElse { e ->
-                    Log.w("MiruroViewModel", "resolvePlayback failed for anilistId=${episode.anilistId} ep=${episode.episodeNumber}", e)
-                    SourceResolution.NotFound(e.message ?: "Unexpected error: ${e::class.simpleName}")
-                }
+            val resolution = runCatching { repo.resolveEpisodeSource(episode, provider) }
+            if (!isActive) return@launch
+            val result = resolution.getOrElse { e ->
+                Log.w("MiruroViewModel", "resolvePlayback failed for anilistId=${episode.anilistId} ep=${episode.episodeNumber}", e)
+                SourceResolution.NotFound(e.message ?: "Unexpected error: ${e::class.simpleName}")
+            }
             _playback.value = when (result) {
                 is SourceResolution.Found -> UiState.Success(result.source)
                 is SourceResolution.NotFound -> UiState.Error(result.reason)
@@ -219,6 +271,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun clearPlayback() {
+        playbackJob?.cancel()
         _playback.value = null
     }
 
@@ -235,7 +288,12 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     fun resolveFavoriteMetadata(ids: Set<Int>) {
         ids.filter { it !in itemCache }.forEach { id ->
-            viewModelScope.launch { runCatching { repo.details(id) }.onSuccess { details -> detailsCache[id] = details; rememberItems(listOf(AnimeItem(details.id, details.title, details.posterUrl, details.bannerUrl, com.ttvralph.miruroapp.data.AnimeType.UNKNOWN, details.year))) } }
+            viewModelScope.launch {
+                runCatching { repo.details(id) }.onSuccess { details ->
+                    rememberDetails(details)
+                    rememberItems(listOf(AnimeItem(details.id, details.title, details.posterUrl, details.bannerUrl, com.ttvralph.miruroapp.data.AnimeType.UNKNOWN, details.year)))
+                }
+            }
         }
     }
 }
