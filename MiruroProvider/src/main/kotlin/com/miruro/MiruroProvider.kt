@@ -12,7 +12,6 @@ import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.addDate
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.newAnimeLoadResponse
@@ -29,14 +28,11 @@ import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.nicehttp.JsonAsString
 import java.io.ByteArrayInputStream
 import java.net.URLEncoder
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
-import java.util.TimeZone
 import java.util.zip.GZIPInputStream
 
 class MiruroProvider : MainAPI() {
-    override var mainUrl = "https://www.miruro.to"
+    override var mainUrl = "https://www.miruro.tv"
     override var name = "Miruro"
     override var lang = "en"
 
@@ -59,8 +55,8 @@ class MiruroProvider : MainAPI() {
 
     private val mapper = jacksonObjectMapper()
     private val anilistUrl = "https://graphql.anilist.co"
-    private val pipeHosts = listOf("https://www.miruro.to", "https://www.miruro.tv", "https://www.miruro.bz", "https://www.miruro.ru")
-    private val providerPriority = listOf("kiwi", "pewe", "bee", "bonk", "bun", "ally", "nun", "twin", "cog", "moo", "hop", "telli")
+    private val pipeUrl = "$mainUrl/api/secure/pipe"
+    private val providerPriority = listOf("zoro", "animepahe", "gogoanime", "kiwi")
     private val requestHeaders = mapOf(
         "Accept" to "application/json, text/plain, */*",
         "Accept-Language" to "en-US,en;q=0.9",
@@ -77,7 +73,6 @@ class MiruroProvider : MainAPI() {
         "Content-Type" to "application/json",
         "User-Agent" to requestHeaders.getValue("User-Agent")
     )
-    private val anilistEpisodeDateCache = mutableMapOf<Int, Map<Int, String>>()
 
     private fun encodeUrl(value: String): String {
         return URLEncoder.encode(value, "UTF-8")
@@ -94,45 +89,6 @@ class MiruroProvider : MainAPI() {
     private fun textOrNull(node: JsonNode?): String? {
         val value = node?.asText() ?: return null
         return value.takeIf { it.isNotBlank() && it != "null" }
-    }
-
-    private fun releaseDateFromText(value: String?): String? {
-        val date = value?.trim()?.takeIf { it.isNotBlank() && it != "null" } ?: return null
-        return date.takeIf { Regex("""^\d{4}-\d{2}-\d{2}(?:[T ].*)?$""").matches(it) }
-    }
-
-    private fun releaseDateFromNode(node: JsonNode?): String? {
-        if (node == null || node.isNull || node.isMissingNode) return null
-        if (node.isTextual) return releaseDateFromText(node.asText())
-
-        val year = node.path("year").asInt(0).takeIf { it > 0 }
-        val month = node.path("month").asInt(0).takeIf { it in 1..12 }
-        val day = node.path("day").asInt(0).takeIf { it in 1..31 }
-        if (year != null && month != null && day != null) {
-            return "%04d-%02d-%02d".format(Locale.ROOT, year, month, day)
-        }
-
-        return firstText(node, "date", "iso", "value")?.let { releaseDateFromText(it) }
-    }
-
-    private fun episodeReleaseDate(episode: JsonNode): String? {
-        val directDate = listOf("airDate", "airedAt", "releaseDate", "released", "date")
-            .firstNotNullOfOrNull { field -> releaseDateFromNode(episode.get(field)) }
-        if (directDate != null) return directDate
-
-        val createdAtContext = firstText(episode, "createdAtType", "createdAtKind", "dateType")
-            ?.lowercase(Locale.ROOT)
-        return if (createdAtContext?.contains(Regex("release|air|premiere|broadcast")) == true) {
-            releaseDateFromNode(episode.get("createdAt"))
-        } else {
-            null
-        }
-    }
-
-    private fun anilistDateString(epochSeconds: Long): String {
-        return SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }.format(Date(epochSeconds * 1000))
     }
 
     private fun cleanDescription(value: String?): String? {
@@ -263,25 +219,6 @@ class MiruroProvider : MainAPI() {
         return mapper.readTree(json).path("data")
     }
 
-
-    private suspend fun pipeRequest(payload: JsonNode): JsonNode {
-        val encoded = encodePipeRequest(payload)
-        var lastError: Throwable? = null
-        pipeHosts.forEach { host ->
-            val headers = requestHeaders + mapOf(
-                "Origin" to host,
-                "Referer" to "$host/"
-            )
-            val result = runCatching {
-                val response = app.get("$host/api/secure/pipe?e=${encodeUrl(encoded)}", headers = headers).text.trim()
-                decodePipeResponse(response)
-            }
-            result.getOrNull()?.let { return it }
-            lastError = result.exceptionOrNull()
-        }
-        throw lastError ?: IllegalStateException("Miruro pipe request failed")
-    }
-
     private suspend fun fetchRawEpisodes(anilistId: Int): JsonNode {
         val payload = mapper.createObjectNode().apply {
             put("path", "episodes")
@@ -290,7 +227,9 @@ class MiruroProvider : MainAPI() {
             putNull("body")
             put("version", "0.1.0")
         }
-        return pipeRequest(payload)
+        val encoded = encodePipeRequest(payload)
+        val response = app.get("$pipeUrl?e=${encodeUrl(encoded)}", headers = requestHeaders).text.trim()
+        return decodePipeResponse(response)
     }
 
     private suspend fun resolveSourceEpisodeId(
@@ -327,23 +266,13 @@ class MiruroProvider : MainAPI() {
             putNull("body")
             put("version", "0.1.0")
         }
-        return pipeRequest(payload)
-    }
-
-    private fun isPlayableStream(node: JsonNode): Boolean {
-        val url = streamUrl(node) ?: return false
-        val type = streamType(node)?.lowercase(Locale.ROOT)
-        return type in setOf("hls", "m3u8", "dash", "mpd") || url.contains(".m3u8") || url.contains(".mpd")
-    }
-
-    private fun streamReferer(node: JsonNode): String {
-        return firstText(node, "referer", "referrer")
-            ?: node.path("source").takeIf { it.isObject }?.let { firstText(it, "referer", "referrer") }
-            ?: "$mainUrl/"
+        val encoded = encodePipeRequest(payload)
+        val response = app.get("$pipeUrl?e=${encodeUrl(encoded)}", headers = requestHeaders).text.trim()
+        return decodePipeResponse(response)
     }
 
     private fun hasPlayableStreams(node: JsonNode): Boolean {
-        return findFirstArray(node, "streams", "sources")?.any { isPlayableStream(it) } == true
+        return findFirstArray(node, "streams", "sources")?.any { streamUrl(it) != null } == true
     }
 
     private suspend fun fetchSources(
@@ -375,25 +304,6 @@ class MiruroProvider : MainAPI() {
         val provider: String,
         val episodeId: String
     )
-
-    private data class MediaSeasonEntry(
-        val id: Int,
-        val title: String,
-        val poster: String?,
-        val description: String?,
-        val episodes: Int?,
-        val status: String?,
-        val seasonYear: Int?,
-        val startYear: Int?,
-        val startMonth: Int?,
-        val startDay: Int?,
-        val format: String?,
-        val prequelIds: List<Int>,
-        val sequelIds: List<Int>
-    ) {
-        val sortKey: Int
-            get() = ((startYear ?: seasonYear ?: 9999) * 10_000) + ((startMonth ?: 12) * 100) + (startDay ?: 31)
-    }
 
     private suspend fun sourceCandidates(
         selectedProvider: String,
@@ -460,187 +370,13 @@ class MiruroProvider : MainAPI() {
         return if (value > 300) ((value + 59) / 60) else value
     }
 
-    private fun availabilityLines(subCount: Int, dubCount: Int): List<String> {
-        return listOfNotNull(
-            subCount.takeIf { it > 0 }?.let { "Sub: $it episodes" },
-            dubCount.takeIf { it > 0 }?.let { "Dub: $it episodes" }
-        )
-    }
-
-
-    private fun mediaSeasonEntry(media: JsonNode): MediaSeasonEntry? {
-        val id = media.path("id").asInt(0).takeIf { it > 0 } ?: return null
-        val title = preferredTitle(media.path("title")) ?: return null
-        val poster = textOrNull(media.path("coverImage").get("extraLarge"))
-            ?: textOrNull(media.path("coverImage").get("large"))
-        val relations = media.path("relations").path("edges")
-        val prequels = mutableListOf<Int>()
-        val sequels = mutableListOf<Int>()
-        if (relations.isArray) {
-            relations.forEach { edge ->
-                val relationType = textOrNull(edge.get("relationType")) ?: return@forEach
-                val node = edge.path("node")
-                if (textOrNull(node.get("type")) != "ANIME") return@forEach
-                val relatedId = node.path("id").asInt(0).takeIf { it > 0 } ?: return@forEach
-                when (relationType) {
-                    "PREQUEL" -> prequels.add(relatedId)
-                    "SEQUEL" -> sequels.add(relatedId)
-                }
-            }
+    private fun availabilityLine(subCount: Int, dubCount: Int): String? {
+        return when {
+            subCount > 0 && dubCount > 0 -> "Sub: $subCount episodes • Dub: $dubCount episodes"
+            subCount > 0 -> "Sub only • $subCount episodes"
+            dubCount > 0 -> "Dub only • $dubCount episodes"
+            else -> null
         }
-
-        return MediaSeasonEntry(
-            id = id,
-            title = title,
-            poster = poster,
-            description = cleanDescription(textOrNull(media.get("description"))),
-            episodes = media.path("episodes").asInt(0).takeIf { it > 0 },
-            status = textOrNull(media.get("status")),
-            seasonYear = media.path("seasonYear").asInt(0).takeIf { it > 0 },
-            startYear = media.path("startDate").path("year").asInt(0).takeIf { it > 0 },
-            startMonth = media.path("startDate").path("month").asInt(0).takeIf { it > 0 },
-            startDay = media.path("startDate").path("day").asInt(0).takeIf { it > 0 },
-            format = textOrNull(media.get("format")),
-            prequelIds = prequels.distinct(),
-            sequelIds = sequels.distinct()
-        )
-    }
-
-    private suspend fun fetchAniListEpisodeAirDates(anilistId: Int): Map<Int, String> {
-        anilistEpisodeDateCache[anilistId]?.let { return it }
-        val gql = """
-            query (${ '$' }mediaId: Int) {
-                Page(page: 1, perPage: 200) {
-                    airingSchedules(mediaId: ${ '$' }mediaId, sort: EPISODE) {
-                        episode
-                        airingAt
-                    }
-                }
-            }
-        """.trimIndent()
-        val dates = runCatching {
-            anilistQuery(gql, mapOf("mediaId" to anilistId))
-                .path("Page")
-                .path("airingSchedules")
-                .takeIf { it.isArray }
-                ?.mapNotNull { item ->
-                    val episode = item.path("episode").asInt(0).takeIf { it > 0 } ?: return@mapNotNull null
-                    val airingAt = item.path("airingAt").asLong(0).takeIf { it > 0 } ?: return@mapNotNull null
-                    episode to anilistDateString(airingAt)
-                }
-                ?.toMap()
-                ?: emptyMap()
-        }.getOrDefault(emptyMap())
-        anilistEpisodeDateCache[anilistId] = dates
-        return dates
-    }
-
-    private suspend fun fetchSeasonEntry(anilistId: Int): MediaSeasonEntry? {
-        val gql = """
-            query (${ '$' }id: Int) {
-                Media(id: ${ '$' }id, type: ANIME) {
-                    id
-                    title { romaji english native }
-                    coverImage { large extraLarge }
-                    description(asHtml: false)
-                    format
-                    episodes
-                    status
-                    seasonYear
-                    startDate { year month day }
-                    relations {
-                        edges {
-                            relationType
-                            node {
-                                id
-                                type
-                                format
-                                title { romaji english native }
-                                coverImage { large extraLarge }
-                                description(asHtml: false)
-                                episodes
-                                status
-                                seasonYear
-                                startDate { year month day }
-                            }
-                        }
-                    }
-                }
-            }
-        """.trimIndent()
-        return mediaSeasonEntry(anilistQuery(gql, mapOf("id" to anilistId)).path("Media"))
-    }
-
-    private fun isSeasonFormat(format: String?): Boolean {
-        return format == "TV" || format == "TV_SHORT"
-    }
-
-    private fun franchiseTokens(title: String): Set<String> {
-        val generic = setOf(
-            "the", "a", "an", "season", "part", "cour", "ova", "special", "movie",
-            "episode", "arc", "chapter", "final", "new", "second", "third", "fourth",
-            "2nd", "3rd", "4th", "ii", "iii", "iv"
-        )
-        return title
-            .lowercase(Locale.ROOT)
-            .replace("&", " and ")
-            .replace(Regex("[^a-z0-9]+"), " ")
-            .trim()
-            .split(Regex("\\s+"))
-            .filter { it.length >= 3 && it !in generic && it.toIntOrNull() == null }
-            .toSet()
-    }
-
-    private fun sameMainFranchise(root: MediaSeasonEntry, candidate: MediaSeasonEntry): Boolean {
-        val rootTokens = franchiseTokens(root.title)
-        if (rootTokens.isEmpty()) return false
-        val candidateTokens = franchiseTokens(candidate.title)
-        return rootTokens.intersect(candidateTokens).isNotEmpty()
-    }
-
-    private suspend fun findSeasonChain(anilistId: Int, maxSeasons: Int = 12): List<MediaSeasonEntry> {
-        val root = runCatching { fetchSeasonEntry(anilistId) }.getOrNull() ?: return emptyList()
-        if (!isSeasonFormat(root.format)) return listOf(root).filter { isSeasonFormat(it.format) }
-        if (isLongRunningContinuousSeries(root)) return listOf(root)
-
-        val entries = linkedMapOf(root.id to root)
-        val visited = mutableSetOf<Int>()
-
-        suspend fun walk(id: Int): Unit {
-            if (!visited.add(id) || entries.size >= maxSeasons) return
-            val entry = if (id == root.id) root else runCatching { fetchSeasonEntry(id) }.getOrNull() ?: return
-            if (!isSeasonFormat(entry.format) || !sameMainFranchise(root, entry)) return
-            entries[id] = entry
-            (entry.prequelIds + entry.sequelIds).forEach { relatedId ->
-                if (entries.size < maxSeasons) walk(relatedId)
-            }
-        }
-
-        walk(anilistId)
-        return entries.values
-            .filter { isSeasonFormat(it.format) }
-            .sortedWith(compareBy<MediaSeasonEntry> { it.sortKey }.thenBy { it.id })
-            .take(maxSeasons)
-    }
-
-    private fun isLongRunningContinuousSeries(entry: MediaSeasonEntry): Boolean {
-        val normalizedTitle = entry.title
-            .lowercase(Locale.ROOT)
-            .replace(Regex("[^a-z0-9]+"), " ")
-            .trim()
-        val strongTitleMatch = listOf(
-            "one piece",
-            "detective conan",
-            "case closed",
-            "pokemon",
-            "pocket monsters",
-            "boruto"
-        ).any { normalizedTitle.contains(it) }
-        val conservativeNarutoMatch = normalizedTitle == "naruto" ||
-            normalizedTitle.contains("naruto shippuden") ||
-            normalizedTitle.contains("naruto shippuuden")
-        val longRunningHints = (entry.episodes ?: 0) >= 100 || entry.status == "RELEASING" || entry.episodes == null
-        return (strongTitleMatch && longRunningHints) || (conservativeNarutoMatch && longRunningHints)
     }
 
     private fun mediaSearchResponse(item: JsonNode): SearchResponse? {
@@ -712,146 +448,13 @@ class MiruroProvider : MainAPI() {
         }
     }
 
-    private fun detailLines(
-        seasons: List<MediaSeasonEntry>,
-        totalEpisodes: Int,
-        fallbackStatus: String?,
-        rating: String?,
-        genres: List<String>
-    ): List<String> {
-        val years = seasons.mapNotNull { it.startYear ?: it.seasonYear }.filter { it > 0 }
-        val firstYear = years.minOrNull()
-        val lastYear = years.maxOrNull()
-        val status = seasons.firstOrNull { it.status == "RELEASING" }?.status
-            ?: seasons.lastOrNull()?.status
-            ?: fallbackStatus
-        val formattedStatus = status
-            ?.lowercase(Locale.ROOT)
-            ?.replace('_', ' ')
-            ?.replaceFirstChar { it.titlecase(Locale.ROOT) }
-        return listOfNotNull(
-            seasons.size.takeIf { it > 1 }?.let { "Seasons: $it" },
-            totalEpisodes.takeIf { it > 0 }?.let { "Episodes: $it total" },
-            formattedStatus?.let { "Status: $it" },
-            when {
-                firstYear != null && lastYear != null && firstYear != lastYear -> "Years: $firstYear–$lastYear"
-                firstYear != null -> "Years: $firstYear"
-                else -> null
-            },
-            rating?.let { "Rating: $it" },
-            genres.takeIf { it.isNotEmpty() }?.joinToString(prefix = "Genres: ", separator = ", ")
-        )
-    }
-
-    private data class ProviderEpisodeList(
-        val provider: String,
-        val category: String,
-        val dubStatus: DubStatus,
-        val episodes: JsonNode
-    )
-
-    private fun providerEpisodeNumbers(episodes: JsonNode): Set<Int> {
-        if (!episodes.isArray) return emptySet()
-        return episodes.mapNotNull { ep -> ep.path("number").asInt(0).takeIf { it > 0 } }.toSet()
-    }
-
-    private fun isValidProviderEpisodeList(episodes: JsonNode, anilistEpisodeCount: Int?): Boolean {
-        val numbers = providerEpisodeNumbers(episodes)
-        if (numbers.isEmpty()) return false
-        val uniqueCount = numbers.size
-        val maxNumber = numbers.maxOrNull() ?: return false
-        if (maxNumber > 2000 || uniqueCount > 2000) return false
-        if (anilistEpisodeCount != null) {
-            val saneLimit = anilistEpisodeCount + 10
-            if (uniqueCount > saneLimit || maxNumber > saneLimit) return false
-        }
-        return true
-    }
-
-    private fun bestProviderEpisodeList(candidates: List<ProviderEpisodeList>, anilistEpisodeCount: Int?): ProviderEpisodeList? {
-        val available = candidates.filter { isValidProviderEpisodeList(it.episodes, anilistEpisodeCount) }
-        return available
-            .filter { providerRank(it.provider) < providerPriority.size }
-            .minByOrNull { providerRank(it.provider) }
-            ?: available.maxByOrNull { providerEpisodeNumbers(it.episodes).size }
-    }
-
-    private suspend fun addSeasonEpisodes(
-        season: MediaSeasonEntry,
-        seasonNumber: Int,
-        episodeMap: MutableMap<DubStatus, MutableList<Episode>>
-    ) {
-        val rawEpisodes = runCatching { fetchRawEpisodes(season.id) }.getOrNull() ?: return
-        val providers = rawEpisodes.path("providers")
-        if (!providers.isObject) return
-
-        val candidates = mutableListOf<ProviderEpisodeList>()
-        providers.fields().forEach { providerEntry ->
-            val provider = providerEntry.key
-            val episodes = providerEntry.value.path("episodes")
-            if (episodes.isArray) {
-                candidates.add(ProviderEpisodeList(provider, "sub", DubStatus.Subbed, episodes))
-            } else {
-                episodes.path("sub").takeIf { it.isArray }?.let {
-                    candidates.add(ProviderEpisodeList(provider, "sub", DubStatus.Subbed, it))
-                }
-                episodes.path("dub").takeIf { it.isArray }?.let {
-                    candidates.add(ProviderEpisodeList(provider, "dub", DubStatus.Dubbed, it))
-                }
-            }
-        }
-
-        listOf(DubStatus.Subbed to "sub", DubStatus.Dubbed to "dub").forEach { (dubStatus, category) ->
-            val selected = bestProviderEpisodeList(
-                candidates.filter { it.dubStatus == dubStatus && it.category == category },
-                season.episodes
-            ) ?: return@forEach
-            val episodeDateFallbacks = fetchAniListEpisodeAirDates(season.id)
-            val bucket = episodeMap.getOrPut(dubStatus) { mutableListOf() }
-            val seenKeys = bucket.mapNotNull { episode ->
-                val number = episode.episode ?: return@mapNotNull null
-                "${episode.season ?: 1}-${dubStatus.name}-$number"
-            }.toMutableSet()
-
-            selected.episodes.forEach { ep ->
-                val rawEpisodeId = textOrNull(ep.get("id")) ?: return@forEach
-                val sourceEpisodeId = if (rawEpisodeId.startsWith("watch/")) rawEpisodeId else normalizeEpisodeId(rawEpisodeId)
-                val number = ep.path("number").asInt(0).takeIf { it > 0 } ?: return@forEach
-                val dedupeKey = "$seasonNumber-${dubStatus.name}-$number"
-                if (!seenKeys.add(dedupeKey)) return@forEach
-                val episodeId = if (sourceEpisodeId.startsWith("watch/")) {
-                    sourceEpisodeId
-                } else {
-                    watchPath(selected.provider, season.id, category, sourceEpisodeId, number)
-                }
-                val rawTitle = textOrNull(ep.get("title")) ?: "Episode $number"
-                val episodeTitle = if (seasonNumber > 1 && rawTitle == "Episode $number") {
-                    "Season $seasonNumber Episode $number"
-                } else {
-                    rawTitle
-                }
-                val data = listOf(selected.provider, season.id.toString(), category, number.toString(), episodeId).joinToString("|")
-                bucket.add(
-                    newEpisode(data) {
-                        name = episodeTitle
-                        episode = number
-                        this.season = seasonNumber
-                        posterUrl = firstText(ep, "image", "thumbnail", "img")
-                        runTime = runtimeMinutes(ep.path("duration").asInt(0))
-                        addDate(episodeReleaseDate(ep) ?: episodeDateFallbacks[number])
-                    }
-                )
-            }
-        }
-    }
-
     override suspend fun load(url: String): LoadResponse? {
         val anilistId = extractAniListId(url) ?: return null
 
         return try {
             val gql = """
-                query (${ '$' }id: Int) {
-                    Media(id: ${ '$' }id, type: ANIME) {
+                query (${'$'}id: Int) {
+                    Media(id: ${'$'}id, type: ANIME) {
                         id
                         title { romaji english native }
                         description(asHtml: false)
@@ -863,7 +466,6 @@ class MiruroProvider : MainAPI() {
                         genres
                         status
                         seasonYear
-                        startDate { year month day }
                     }
                 }
             """.trimIndent()
@@ -871,75 +473,111 @@ class MiruroProvider : MainAPI() {
             val title = preferredTitle(media.path("title")) ?: return null
             val poster = textOrNull(media.path("coverImage").get("extraLarge"))
                 ?: textOrNull(media.path("coverImage").get("large"))
-            val openedDescription = cleanDescription(textOrNull(media.get("description")))
+            val description = cleanDescription(textOrNull(media.get("description")))
+            val tags = listOfNotNull(
+                textOrNull(media.get("status"))
+                    ?.lowercase(Locale.ROOT)
+                    ?.replace('_', ' ')
+                    ?.replaceFirstChar { it.titlecase(Locale.ROOT) },
+                media.path("seasonYear").asInt(0).takeIf { it > 0 }?.toString(),
+                media.path("averageScore").asInt(0).takeIf { it > 0 }?.let { "$it% AniList" }
+            ) + media.path("genres").takeIf { it.isArray }?.mapNotNull { textOrNull(it) }.orEmpty()
+            val enrichedDescription = listOfNotNull(
+                description,
+                tags.takeIf { it.isNotEmpty() }?.joinToString(prefix = "\n\n", separator = " • ")
+            ).joinToString("")
             val type = tvTypeFromFormat(textOrNull(media.get("format")))
-            val chain = if (type == TvType.AnimeMovie) emptyList() else runCatching { findSeasonChain(anilistId) }.getOrNull().orEmpty()
-            val seasons = chain.ifEmpty { mediaSeasonEntry(media)?.let { listOf(it) }.orEmpty() }
-            val mainSeason = seasons.firstOrNull() ?: mediaSeasonEntry(media)
-            val description = mainSeason?.description ?: openedDescription
-
-            val rating = media.path("averageScore").asInt(0).takeIf { it > 0 }?.let { "$it% AniList" }
-            val genres = media.path("genres").takeIf { it.isArray }?.mapNotNull { textOrNull(it) }.orEmpty()
-
             val episodeMap = mutableMapOf<DubStatus, MutableList<Episode>>()
-            seasons.forEachIndexed { index, season ->
-                runCatching { addSeasonEpisodes(season, index + 1, episodeMap) }
+            val rawEpisodes = runCatching { fetchRawEpisodes(anilistId) }.getOrNull()
+            val providers = rawEpisodes?.path("providers")
+            if (providers != null && providers.isObject) {
+                providers.fields().forEach { providerEntry ->
+                    val provider = providerEntry.key
+                    val episodes = providerEntry.value.path("episodes")
+                    val categorizedLists = if (episodes.isArray) {
+                        listOf(Triple("sub", DubStatus.Subbed, episodes))
+                    } else {
+                        listOfNotNull(
+                            episodes.path("sub").takeIf { it.isArray }?.let { Triple("sub", DubStatus.Subbed, it) },
+                            episodes.path("dub").takeIf { it.isArray }?.let { Triple("dub", DubStatus.Dubbed, it) }
+                        )
+                    }
+                    categorizedLists.forEach { (category, dubStatus, list) ->
+                        if (list.isArray) {
+                            val bucket = episodeMap.getOrPut(dubStatus) { mutableListOf() }
+                            list.forEach { ep ->
+                                val rawEpisodeId = textOrNull(ep.get("id")) ?: return@forEach
+                                val sourceEpisodeId = if (rawEpisodeId.startsWith("watch/")) {
+                                    rawEpisodeId
+                                } else {
+                                    normalizeEpisodeId(rawEpisodeId)
+                                }
+                                val number = ep.path("number").asInt(0).takeIf { it > 0 } ?: return@forEach
+                                val episodeId = if (sourceEpisodeId.startsWith("watch/")) {
+                                    sourceEpisodeId
+                                } else {
+                                    watchPath(provider, anilistId, category, sourceEpisodeId, number)
+                                }
+                                val episodeTitle = textOrNull(ep.get("title")) ?: "Episode $number"
+                                val data = listOf(provider, anilistId.toString(), category, number.toString(), episodeId)
+                                    .joinToString("|")
+                                bucket.add(
+                                    newEpisode(data) {
+                                        name = episodeTitle
+                                        episode = number
+                                        posterUrl = firstText(ep, "image", "thumbnail", "img")
+                                        runTime = runtimeMinutes(ep.path("duration").asInt(0))
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
+
+            val normalizedEpisodes = mutableMapOf<DubStatus, List<Episode>>().apply {
+                episodeMap.forEach { (dubStatus, episodeList) ->
+                    this[dubStatus] = episodeList.distinctBy { it.data }.sortedBy { it.episode }
+                }
+            }
+            val availability = availabilityLine(
+                normalizedEpisodes[DubStatus.Subbed].orEmpty().mapNotNull { it.episode }.distinct().size,
+                normalizedEpisodes[DubStatus.Dubbed].orEmpty().mapNotNull { it.episode }.distinct().size
+            )
+            val plotWithAvailability = listOfNotNull(availability, enrichedDescription.ifBlank { description })
+                .joinToString("\n\n")
 
             if (type == TvType.AnimeMovie && episodeMap.isEmpty()) {
                 return newMovieLoadResponse(title, url, type, "kiwi|$anilistId|sub|1|movie-1") {
                     posterUrl = poster
-                    plot = listOfNotNull(
-                        description,
-                        rating?.let { "Rating: $it" },
-                        genres.takeIf { it.isNotEmpty() }?.joinToString(prefix = "Genres: ", separator = ", ")
-                    ).joinToString("\n\n")
+                    plot = plotWithAvailability
                 }
             }
 
             if (episodeMap.isEmpty()) {
-                val fallbackSeason = mainSeason
-                val episodeCount = fallbackSeason?.episodes?.takeIf { it in 1..2000 }
-                if (episodeCount != null) {
-                    val fallbackSeasonNumber = seasons.indexOfFirst { it.id == (fallbackSeason.id) }.takeIf { it >= 0 }?.plus(1) ?: 1
-                    episodeMap[DubStatus.Subbed] = (1..episodeCount).map { episodeNumber ->
-                        newEpisode("kiwi|${fallbackSeason.id}|sub|$episodeNumber|animepahe-$episodeNumber") {
-                            name = "Episode $episodeNumber"
-                            episode = episodeNumber
-                            season = fallbackSeasonNumber
-                        }
-                    }.toMutableList()
-                }
+                val episodeCount = media.path("episodes").asInt(1).coerceIn(1, 500)
+                episodeMap[DubStatus.Subbed] = (1..episodeCount).map { episodeNumber ->
+                    newEpisode("kiwi|$anilistId|sub|$episodeNumber|animepahe-$episodeNumber") {
+                        name = "Episode $episodeNumber"
+                        episode = episodeNumber
+                    }
+                }.toMutableList()
             }
 
             val finalEpisodes = mutableMapOf<DubStatus, List<Episode>>().apply {
                 episodeMap.forEach { (dubStatus, episodeList) ->
-                    this[dubStatus] = episodeList
-                        .distinctBy { "${it.season ?: 1}-${dubStatus.name}-${it.episode ?: 0}" }
-                        .sortedWith(compareBy<Episode> { it.season ?: 1 }.thenBy { it.episode ?: 0 })
+                    this[dubStatus] = episodeList.distinctBy { it.data }.sortedBy { it.episode }
                 }
             }
-            val subCount = finalEpisodes[DubStatus.Subbed].orEmpty()
-                .map { "${it.season ?: 1}-${it.episode ?: 0}" }
-                .distinct()
-                .size
-            val dubCount = finalEpisodes[DubStatus.Dubbed].orEmpty()
-                .map { "${it.season ?: 1}-${it.episode ?: 0}" }
-                .distinct()
-                .size
-            val totalEpisodes = finalEpisodes.values
-                .flatten()
-                .distinctBy { "${it.season ?: 1}-${it.episode ?: 0}" }
-                .size
-            val detailLines = detailLines(seasons, totalEpisodes, textOrNull(media.get("status")), rating, genres)
-            val finalPlot = buildList {
-                description?.let { add(it) }
-                availabilityLines(subCount, dubCount).takeIf { it.isNotEmpty() }?.let { add("Availability:\n" + it.joinToString("\n")) }
-                detailLines.takeIf { it.isNotEmpty() }?.let { add("Details:\n" + it.joinToString("\n")) }
-            }.joinToString("\n\n")
+            val finalAvailability = availabilityLine(
+                finalEpisodes[DubStatus.Subbed].orEmpty().mapNotNull { it.episode }.distinct().size,
+                finalEpisodes[DubStatus.Dubbed].orEmpty().mapNotNull { it.episode }.distinct().size
+            )
+            val finalPlot = listOfNotNull(finalAvailability, enrichedDescription.ifBlank { description })
+                .joinToString("\n\n")
 
             newAnimeLoadResponse(title, url, type) {
-                posterUrl = mainSeason?.poster ?: poster
+                posterUrl = poster
                 plot = finalPlot
                 episodes = finalEpisodes
             }
@@ -987,12 +625,10 @@ class MiruroProvider : MainAPI() {
                 }
 
                 findFirstArray(sources, "streams", "sources")?.forEach { stream ->
-                    if (!isPlayableStream(stream)) return@forEach
                     val url = streamUrl(stream) ?: return@forEach
                     if (!streamUrls.add(url)) return@forEach
                     val qualityLabel = streamQuality(stream)
                     val streamType = streamType(stream)?.lowercase(Locale.ROOT)
-                    val referer = streamReferer(stream)
                     callback(
                         newExtractorLink(
                             source = name,
@@ -1000,10 +636,10 @@ class MiruroProvider : MainAPI() {
                             url = url,
                             type = if (streamType == "dash" || streamType == "mpd") ExtractorLinkType.DASH else ExtractorLinkType.M3U8
                         ) {
-                            referer = referer
+                            referer = mainUrl
                             quality = getQualityFromName(qualityLabel).takeIf { it != Qualities.Unknown.value }
                                 ?: Qualities.Unknown.value
-                            headers = mapOf("Referer" to referer, "Origin" to mainUrl)
+                            headers = mapOf("Referer" to "$mainUrl/", "Origin" to mainUrl)
                         }
                     )
                     found = true
