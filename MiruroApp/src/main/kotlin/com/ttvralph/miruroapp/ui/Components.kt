@@ -262,6 +262,7 @@ fun SideNav(
     onLibrary: () -> Unit,
     onMovies: () -> Unit,
     onSeries: () -> Unit,
+    onGenres: () -> Unit,
     onSettings: () -> Unit
 ) {
     var focusedEntry by remember { mutableStateOf<String?>(null) }
@@ -275,7 +276,8 @@ fun SideNav(
         NavEntryData(Icons.Filled.Search, "Search", "Search", onSearch),
         NavEntryData(Icons.Filled.Favorite, "Library", "Favorites", onLibrary),
         NavEntryData(Icons.Filled.PlayArrow, "Movies", "Movies", onMovies),
-        NavEntryData(Icons.Filled.List, "Series", "Series", onSeries)
+        NavEntryData(Icons.Filled.List, "Series", "Series", onSeries),
+        NavEntryData(Icons.Filled.Star, "Genres", "Genres", onGenres)
     )
 
     Column(

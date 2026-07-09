@@ -12,6 +12,16 @@ A Cloudstream extension for browsing and watching anime through Miruro-backed so
 - Load subtitles/tracks exposed by the source payload.
 - Try equivalent episodes across available providers, with a preferred provider order to reduce broken-link fallbacks.
 
+## Android App Highlights
+
+- Includes a standalone Jetpack Compose for TV app with Home, Search, Movies, Series, Library, Details, and Media3 playback screens.
+- Search runs automatically with a short debounce as users type and includes a clear action for quickly starting a new query.
+- Favorites are persisted locally with DataStore and can be toggled from hero/detail actions, with a dedicated Library screen for saved anime.
+- Episode watch progress is persisted locally, powers a Continue Watching home row, resumes unfinished playback, and marks episodes as watched after 90% completion.
+- Details show watched/progress badges on episode cards and route episode clicks through an episode/provider summary before playback.
+- Genre browsing is available from the side navigation with popular AniList genre chips and browse grids.
+- Settings includes playback/preference status plus a clear watch-history action.
+
 ## Not Included
 
 Download support is intentionally disabled for now. The extension exposes playable stream links, but `hasDownloadSupport` remains `false` until download behavior is tested safely against the supported HLS/DASH source types.

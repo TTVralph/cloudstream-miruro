@@ -48,6 +48,7 @@ private sealed class Routes(val route: String) {
     data object Favorites : Routes("favorites")
     data object Movies : Routes("movies")
     data object Series : Routes("series")
+    data object Genres : Routes("genres")
     data object Settings : Routes("settings")
     data object Details : Routes("details/{${Args.ID}}") {
         fun path(id: Int) = "details/$id"
@@ -74,6 +75,7 @@ private fun navLabelFor(route: String?): String = when (route) {
     Routes.Favorites.route -> "Favorites"
     Routes.Movies.route -> "Movies"
     Routes.Series.route -> "Series"
+    Routes.Genres.route -> "Genres"
     Routes.Settings.route -> "Settings"
     else -> ""
 }
@@ -99,6 +101,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     onLibrary = { navController.navigateTopLevel(Routes.Favorites.route) },
                     onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
                     onSeries = { navController.navigateTopLevel(Routes.Series.route) },
+                    onGenres = { navController.navigateTopLevel(Routes.Genres.route) },
                     onSettings = { navController.navigateTopLevel(Routes.Settings.route) }
                 )
             }
@@ -125,7 +128,10 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 composable(Routes.Series.route) {
                     SeriesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
-                composable(Routes.Settings.route) { SettingsScreen() }
+                composable(Routes.Genres.route) {
+                    GenresScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                }
+                composable(Routes.Settings.route) { SettingsScreen(viewModel) }
                 composable(
                     Routes.Details.route,
                     arguments = listOf(navArgument(Args.ID) { type = NavType.IntType })
