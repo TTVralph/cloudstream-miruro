@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -225,10 +226,13 @@ fun SearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     var yearText by remember { mutableStateOf("") }
     val state by viewModel.searchResults.collectAsState()
     val recent by viewModel.recentSearches.collectAsState()
+    val settings by viewModel.settings.collectAsState()
+    var advancedVisible by remember { mutableStateOf(false) }
+    var genrePickerVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(query, format, selectedGenres, status, sort, yearText) {
         val trimmed = query.trim()
-        if (trimmed.isEmpty()) {
+        if (trimmed.isEmpty() && selectedGenres.isEmpty() && format == null && status == null && yearText.isBlank() && sort == AnimeSort.SEARCH_MATCH) {
             viewModel.clearSearch()
         } else {
             delay(350)
@@ -267,13 +271,34 @@ fun SearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
             keyboardActions = KeyboardActions(onSearch = { viewModel.search(query) }),
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp)
         )
-        FilterRow("Type", listOf(null to "All", "TV" to "Series", "MOVIE" to "Movies"), format) { format = it }
-        MultiGenreRow(selectedGenres) { selectedGenres = it }
-        FilterRow("Status", listOf(null to "Any", "RELEASING" to "Airing", "FINISHED" to "Finished", "NOT_YET_RELEASED" to "Upcoming"), status) { status = it }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
-            items(AnimeSort.values().toList(), key = { it.name }) { item -> SecondaryButton(if (sort == item) "✓ ${item.label}" else item.label, modifier = Modifier.width(170.dp), onClick = { sort = item }) }
-            item { OutlinedTextField(value = yearText, onValueChange = { yearText = it.filter(Char::isDigit).take(4) }, placeholder = { Text("Year", color = MiruroColors.Subtle) }, singleLine = true, modifier = Modifier.width(130.dp)) }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+            SecondaryButton(if (advancedVisible) "Hide advanced filters" else "Show advanced filters", modifier = Modifier.width(230.dp), onClick = { advancedVisible = !advancedVisible })
+            if (selectedGenres.isNotEmpty() || format != null || status != null || yearText.isNotBlank() || sort != AnimeSort.SEARCH_MATCH) {
+                SecondaryButton("Reset filters", modifier = Modifier.width(160.dp), onClick = { format = null; selectedGenres = emptySet(); status = null; sort = AnimeSort.SEARCH_MATCH; yearText = "" })
+            }
         }
+        if (advancedVisible) {
+            FocusableSurface(onClick = { }, modifier = Modifier.fillMaxWidth(), unfocusedBackground = MiruroColors.Card) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Advanced search", color = MiruroColors.Text, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Spacer(Modifier.height(10.dp))
+                    FilterRow("Type", listOf(null to "All", "TV" to "Series", "MOVIE" to "Movies"), format) { format = it }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                        Text("Genres:", color = MiruroColors.Subtle, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(82.dp))
+                        SecondaryButton(if (selectedGenres.isEmpty()) "Any genre" else "${selectedGenres.size} selected", modifier = Modifier.width(180.dp), onClick = { genrePickerVisible = true })
+                        Spacer(Modifier.width(10.dp))
+                        SecondaryButton("Clear genres", modifier = Modifier.width(155.dp), onClick = { selectedGenres = emptySet() })
+                    }
+                    MultiGenreRow(selectedGenres) { selectedGenres = it }
+                    FilterRow("Status", listOf(null to "Any", "RELEASING" to "Airing", "FINISHED" to "Finished", "NOT_YET_RELEASED" to "Upcoming"), status) { status = it }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
+                        items(AnimeSort.values().toList(), key = { it.name }) { item -> SecondaryButton(if (sort == item) "✓ ${item.label}" else item.label, modifier = Modifier.width(170.dp), onClick = { sort = item }) }
+                        item { OutlinedTextField(value = yearText, onValueChange = { yearText = it.filter(Char::isDigit).take(4) }, placeholder = { Text("Year", color = MiruroColors.Subtle) }, singleLine = true, modifier = Modifier.width(130.dp)) }
+                    }
+                }
+            }
+        }
+        if (genrePickerVisible) GenrePickerDialog(selectedGenres, onDismiss = { genrePickerVisible = false }, onSelected = { selectedGenres = it })
         if (recent.isNotEmpty() && query.isBlank()) {
             SectionTitle("Recent searches")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) { items(recent, key = { it }) { term -> SecondaryButton(term, modifier = Modifier.width(180.dp), onClick = { query = term }) } }
@@ -286,7 +311,7 @@ fun SearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
                 if (s.data.isEmpty()) {
                     StateMessage("No results found.")
                 } else {
-                    PosterGrid(s.data, onOpenDetails, modifier = Modifier.weight(1f))
+                    PosterGrid(s.data, onOpenDetails, settings.posterGridDensity, modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -309,6 +334,25 @@ private fun MultiGenreRow(selected: Set<String>, onSelected: (Set<String>) -> Un
     }
 }
 
+@Composable
+private fun GenrePickerDialog(selected: Set<String>, onDismiss: () -> Unit, onSelected: (Set<String>) -> Unit) {
+    var draft by remember(selected) { mutableStateOf(selected) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { PrimaryButton("Apply", modifier = Modifier.width(120.dp), onClick = { onSelected(draft); onDismiss() }) },
+        dismissButton = { SecondaryButton("Cancel", modifier = Modifier.width(120.dp), onClick = onDismiss) },
+        title = { Text("Pick genres", color = MiruroColors.Text, fontWeight = FontWeight.Bold) },
+        text = {
+            LazyColumn(modifier = Modifier.height(420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { SecondaryButton(if (draft.isEmpty()) "✓ Any genre" else "Any genre", modifier = Modifier.fillMaxWidth(), onClick = { draft = emptySet() }) }
+                items(AniListGenres, key = { it }) { genre ->
+                    SecondaryButton(if (genre in draft) "✓ $genre" else genre, modifier = Modifier.fillMaxWidth(), onClick = { draft = if (genre in draft) draft - genre else draft + genre })
+                }
+            }
+        },
+        containerColor = MiruroColors.Card
+    )
+}
 
 @Composable
 private fun FilterRow(label: String, options: List<Pair<String?, String>>, selected: String?, onSelected: (String?) -> Unit) {
@@ -350,15 +394,20 @@ private fun BrowseScreen(
             is UiState.Error -> ErrorState(state.message, onRetry)
             is UiState.Success ->
                 if (state.data.isEmpty()) StateMessage("Nothing found.")
-                else PosterGrid(state.data, onOpenDetails, modifier = Modifier.weight(1f))
+                else PosterGrid(state.data, onOpenDetails, gridDensity = PosterGridDensity.COMFORTABLE, modifier = Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun PosterGrid(items: List<AnimeItem>, onOpenDetails: (Int) -> Unit, modifier: Modifier = Modifier) {
+private fun PosterGrid(items: List<AnimeItem>, onOpenDetails: (Int) -> Unit, gridDensity: PosterGridDensity = PosterGridDensity.COMFORTABLE, modifier: Modifier = Modifier) {
+    val minSize = when (gridDensity) {
+        PosterGridDensity.COMPACT -> 135.dp
+        PosterGridDensity.COMFORTABLE -> 160.dp
+        PosterGridDensity.LARGE -> 210.dp
+    }
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 160.dp),
+        columns = GridCells.Adaptive(minSize = minSize),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         contentPadding = PaddingValues(vertical = 6.dp, horizontal = 2.dp),
@@ -373,6 +422,7 @@ private fun PosterGrid(items: List<AnimeItem>, onOpenDetails: (Int) -> Unit, mod
 @Composable
 fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     val entries by viewModel.watchlistEntries.collectAsState()
+    val settings by viewModel.settings.collectAsState()
     val ids = entries.map { it.id }.toSet()
     LaunchedEffect(ids) { viewModel.resolveFavoriteMetadata(ids) }
     Column(modifier = Modifier.fillMaxSize()) {
@@ -380,7 +430,7 @@ fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
         if (ids.isEmpty()) {
             StateMessage("Your library is empty. Add anime with \"+ Add to List\".")
         } else {
-            LazyVerticalGrid(columns = GridCells.Adaptive(180.dp), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxSize()) {
+            LazyVerticalGrid(columns = GridCells.Adaptive(when (settings.posterGridDensity) { PosterGridDensity.COMPACT -> 150.dp; PosterGridDensity.COMFORTABLE -> 180.dp; PosterGridDensity.LARGE -> 230.dp }), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxSize()) {
                 items(entries, key = { it.id }) { entry ->
                     val id = entry.id
                     val item = viewModel.cachedItem(id) ?: entry.title?.let { AnimeItem(entry.id, it, entry.posterUrl, null, com.ttvralph.miruroapp.data.AnimeType.UNKNOWN) }
@@ -396,27 +446,38 @@ fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
 
 @Composable
 fun GenresScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
-    var selectedGenres by remember { mutableStateOf(setOf("Action")) }
+    var selectedGenres by remember { mutableStateOf(emptySet<String>()) }
     var format by remember { mutableStateOf<String?>(null) }
     var sort by remember { mutableStateOf(AnimeSort.POPULARITY) }
     var status by remember { mutableStateOf<String?>(null) }
     var yearText by remember { mutableStateOf("") }
     var page by remember { mutableStateOf(1) }
+    val settings by viewModel.settings.collectAsState()
+    var advancedVisible by remember { mutableStateOf(true) }
+    var genrePickerVisible by remember { mutableStateOf(false) }
     val state by viewModel.genreResults.collectAsState()
     LaunchedEffect(selectedGenres, format, sort, status, yearText, page) { viewModel.loadGenre(selectedGenres.toList(), format, page, sort, status, yearText.toIntOrNull()) }
     Column(modifier = Modifier.fillMaxSize()) {
         SectionTitle("Genres")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+            SecondaryButton(if (advancedVisible) "Hide browse filters" else "Show browse filters", modifier = Modifier.width(220.dp), onClick = { advancedVisible = !advancedVisible })
+            SecondaryButton("Clear genres", modifier = Modifier.width(155.dp), onClick = { selectedGenres = emptySet(); page = 1 })
+            SecondaryButton("Genre picker", modifier = Modifier.width(165.dp), onClick = { genrePickerVisible = true })
+        }
+        if (genrePickerVisible) GenrePickerDialog(selectedGenres, onDismiss = { genrePickerVisible = false }, onSelected = { selectedGenres = it; page = 1 })
+        if (advancedVisible) {
         FilterRow("Type", listOf(null to "All", "TV" to "Series", "MOVIE" to "Movies"), format) { format = it; page = 1 }
-        MultiGenreRow(selectedGenres) { selectedGenres = it.ifEmpty { setOf("Action") }; page = 1 }
+        MultiGenreRow(selectedGenres) { selectedGenres = it; page = 1 }
         FilterRow("Status", listOf(null to "Any", "RELEASING" to "Airing", "FINISHED" to "Finished", "NOT_YET_RELEASED" to "Upcoming"), status) { status = it; page = 1 }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
             items(AnimeSort.values().toList(), key = { it.name }) { item -> SecondaryButton(if (sort == item) "✓ ${item.label}" else item.label, modifier = Modifier.width(170.dp), onClick = { sort = item; page = 1 }) }
             item { OutlinedTextField(value = yearText, onValueChange = { yearText = it.filter(Char::isDigit).take(4); page = 1 }, placeholder = { Text("Year", color = MiruroColors.Subtle) }, singleLine = true, modifier = Modifier.width(130.dp)) }
         }
+        }
         when (val s = state) {
             null, is UiState.Loading -> LoadingState("Loading selected genres…")
             is UiState.Error -> ErrorState(s.message) { viewModel.loadGenre(selectedGenres.toList(), format, page, sort, status, yearText.toIntOrNull()) }
-            is UiState.Success -> if (s.data.isEmpty()) StateMessage("Nothing found for selected genres.") else { PosterGrid(s.data, onOpenDetails, modifier = Modifier.weight(1f)); SecondaryButton("Load page ${page + 1}", modifier = Modifier.width(220.dp), onClick = { page += 1 }) }
+            is UiState.Success -> if (s.data.isEmpty()) StateMessage("Nothing found for selected genres.") else { PosterGrid(s.data, onOpenDetails, settings.posterGridDensity, modifier = Modifier.weight(1f)); SecondaryButton("Load page ${page + 1}", modifier = Modifier.width(220.dp), onClick = { page += 1 }) }
         }
     }
 }

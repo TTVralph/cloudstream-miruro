@@ -1,9 +1,14 @@
 package com.ttvralph.miruroapp
 
+import android.app.Activity
+import android.content.Context
+import android.graphics.Color as AndroidColor
+import android.media.AudioManager
 import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +55,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.PlaybackSource
@@ -57,6 +63,7 @@ import com.ttvralph.miruroapp.data.PlaybackType
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
+import com.ttvralph.miruroapp.ui.PrimaryButton
 import com.ttvralph.miruroapp.ui.SecondaryButton
 import java.util.Locale
 import kotlinx.coroutines.delay
@@ -87,7 +94,6 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
     val context = LocalContext.current
     val sources = remember(source) { listOf(source.copy(fallbackSources = emptyList())) + source.fallbackSources }
     var sourceIndex by remember(source) { mutableIntStateOf(0) }
-    var subtitleIndex by remember(source) { mutableIntStateOf(-1) }
     var playerError by remember(source) { mutableStateOf<String?>(null) }
     var controlsVisible by remember(source) { mutableStateOf(true) }
     var sourceMenuVisible by remember(source) { mutableStateOf(false) }
@@ -95,9 +101,14 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
     var speedMenuVisible by remember(source) { mutableStateOf(false) }
     val activeSource = sources[sourceIndex]
     val settings = viewModel.settings.collectAsState().value
+    val preferredSubtitleIndex = remember(source, settings.subtitleLanguage) { preferredSubtitleIndex(source.subtitleTracks, settings.subtitleLanguage) }
+    var subtitleIndex by remember(source, preferredSubtitleIndex) { mutableIntStateOf(preferredSubtitleIndex) }
     val savedProgress = viewModel.watchProgress.collectAsState().value.firstOrNull {
         it.animeId == episode.anilistId && it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.episodeNumber && it.audioType == episode.audioType
     }
+    var locked by remember(source) { mutableStateOf(false) }
+    var gestureMessage by remember(source) { mutableStateOf<String?>(null) }
+    val audioManager = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     val player = remember(activeSource, subtitleIndex) {
         Log.d(TAG, "preparing player label=${activeSource.label} type=${activeSource.type}")
@@ -142,21 +153,48 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
 
     val error = playerError
     if (error != null) {
-        ErrorState(error, onBack)
+        Column(Modifier.fillMaxSize().background(Color.Black), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            ErrorState(error, onBack)
+            if (sourceIndex < sources.lastIndex) PrimaryButton("Try next source", modifier = Modifier.width(220.dp), onClick = { sourceIndex += 1; playerError = null })
+        }
     } else {
         Box(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .pointerInput(player, controlsVisible) {
+                .pointerInput(player, controlsVisible, locked) {
                     detectTapGestures(
                         onTap = { controlsVisible = !controlsVisible },
                         onDoubleTap = { offset ->
-                            val seekBy = if (offset.x < size.width / 2f) -SEEK_INCREMENT_MS else SEEK_INCREMENT_MS
-                            player.seekTo((player.currentPosition + seekBy).coerceAtLeast(0L))
+                            if (!locked) {
+                                val seekBy = if (offset.x < size.width / 2f) -SEEK_INCREMENT_MS else SEEK_INCREMENT_MS
+                                player.seekTo((player.currentPosition + seekBy).coerceAtLeast(0L))
+                                gestureMessage = if (seekBy < 0) "Rewind 10s" else "Forward 10s"
+                            }
                             controlsVisible = true
                         }
                     )
+                }
+                .pointerInput(player, locked) {
+                    detectDragGestures { change, dragAmount ->
+                        if (!locked && kotlin.math.abs(dragAmount.y) > kotlin.math.abs(dragAmount.x)) {
+                            val delta = -dragAmount.y / size.height
+                            if (change.position.x < size.width / 2f) {
+                                val activity = context as? Activity
+                                val current = activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f } ?: 0.5f
+                                val next = (current + delta).coerceIn(0.05f, 1f)
+                                activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = next }
+                                gestureMessage = "Brightness ${(next * 100).toInt()}%"
+                            } else {
+                                val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                                val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                val next = (current + (delta * max).toInt()).coerceIn(0, max)
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
+                                gestureMessage = "Volume ${next * 100 / max}%"
+                            }
+                            controlsVisible = true
+                        }
+                    }
                 }
         ) {
             AndroidView(
@@ -169,7 +207,11 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                         requestFocus()
                     }
                 },
-                update = { it.player = player }
+                update = { view ->
+                    view.player = player
+                    view.subtitleView?.setStyle(captionStyle(settings.subtitleStyle))
+                    view.subtitleView?.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (settings.subtitleStyle == "Large") 24f else 18f)
+                }
             )
             LaunchedEffect(controlsVisible, player.isPlaying) { if (controlsVisible && player.isPlaying) { delay(4_000L); controlsVisible = false } }
             if (controlsVisible) {
@@ -183,6 +225,9 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                     sourceMenuVisible = sourceMenuVisible,
                     subtitleMenuVisible = subtitleMenuVisible,
                     speedMenuVisible = speedMenuVisible,
+                    locked = locked,
+                    gestureMessage = gestureMessage,
+                    subtitleStyle = settings.subtitleStyle,
                     onBack = onBack,
                     onSeekBack = { player.seekTo((player.currentPosition - SEEK_INCREMENT_MS).coerceAtLeast(0L)) },
                     onPlayPause = { player.playWhenReady = !player.playWhenReady },
@@ -193,6 +238,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                     onSubtitleSelected = { subtitleIndex = it; subtitleMenuVisible = false },
                     onSpeedMenu = { speedMenuVisible = !speedMenuVisible; sourceMenuVisible = false; subtitleMenuVisible = false },
                     onSpeedSelected = { player.setPlaybackSpeed(it); speedMenuVisible = false },
+                    onLockToggle = { locked = !locked; controlsVisible = true },
                     onNextEpisode = onNextEpisode,
                     onHideControls = { controlsVisible = false },
                     onProgressTick = { position, duration -> viewModel.saveProgress(episode, position, duration) }
@@ -213,6 +259,9 @@ private fun CloudstreamPlayerOverlay(
     sourceMenuVisible: Boolean,
     subtitleMenuVisible: Boolean,
     speedMenuVisible: Boolean,
+    locked: Boolean,
+    gestureMessage: String?,
+    subtitleStyle: String,
     onBack: () -> Unit,
     onSeekBack: () -> Unit,
     onPlayPause: () -> Unit,
@@ -223,6 +272,7 @@ private fun CloudstreamPlayerOverlay(
     onSubtitleSelected: (Int) -> Unit,
     onSpeedMenu: () -> Unit,
     onSpeedSelected: (Float) -> Unit,
+    onLockToggle: () -> Unit,
     onNextEpisode: (() -> Unit)?,
     onHideControls: () -> Unit,
     onProgressTick: (Long, Long) -> Unit
@@ -254,12 +304,14 @@ private fun CloudstreamPlayerOverlay(
                 Text("S${episode.seasonNumber} • E${episode.episodeNumber}", color = MiruroColors.Subtle, fontSize = 14.sp)
                 Text(episode.title ?: "Episode ${episode.episodeNumber}", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            SecondaryButton("Lock", modifier = Modifier.width(110.dp), onClick = onHideControls)
+            SecondaryButton(if (locked) "Unlock" else "Lock", modifier = Modifier.width(110.dp), onClick = onLockToggle)
             Spacer(Modifier.width(10.dp))
             SecondaryButton("Settings", modifier = Modifier.width(140.dp), onClick = onSubtitleMenu)
         }
 
-        Row(
+        gestureMessage?.let { Text(it, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center).background(Color(0x99000000)).padding(16.dp)) }
+
+        if (!locked) Row(
             modifier = Modifier.align(Alignment.Center),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -269,7 +321,7 @@ private fun CloudstreamPlayerOverlay(
             SecondaryButton("+10s", modifier = Modifier.width(110.dp), onClick = onSeekForward)
         }
 
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xCC000000)).padding(16.dp)) {
+        if (!locked) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xCC000000)).padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(formatTime(position), color = Color.White, fontSize = 14.sp)
                 Slider(
@@ -320,7 +372,7 @@ private fun CloudstreamPlayerOverlay(
                     )
                 }
                 if (activeSource.subtitleTracks.isEmpty()) Text("No external subtitle tracks", color = MiruroColors.Subtle, modifier = Modifier.padding(12.dp))
-                Text("Subtitle styling follows Settings and selectable Media3 tracks appear here when available.", color = MiruroColors.Subtle, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
+                Text("Subtitle style: $subtitleStyle. External subtitles auto-select from your preferred language when available.", color = MiruroColors.Subtle, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
             }
         }
     }
@@ -344,6 +396,19 @@ private fun MenuRow(text: String, selected: Boolean, onClick: () -> Unit) {
         fontSize = 16.sp,
         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
     )
+}
+
+private fun preferredSubtitleIndex(tracks: List<com.ttvralph.miruroapp.data.SubtitleTrack>, preferredLanguage: String): Int {
+    val preferred = preferredLanguage.lowercase(Locale.ROOT)
+    return tracks.indexOfFirst { track ->
+        track.language?.lowercase(Locale.ROOT)?.contains(preferred.take(2)) == true ||
+            track.label.lowercase(Locale.ROOT).contains(preferred)
+    }.takeIf { it >= 0 } ?: -1
+}
+
+private fun captionStyle(style: String): CaptionStyleCompat = when (style) {
+    "High Contrast" -> CaptionStyleCompat(AndroidColor.WHITE, AndroidColor.BLACK, AndroidColor.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, AndroidColor.BLACK, null)
+    else -> CaptionStyleCompat.DEFAULT
 }
 
 private fun buildMediaItem(source: PlaybackSource, mime: String?, subtitleIndex: Int): MediaItem =
