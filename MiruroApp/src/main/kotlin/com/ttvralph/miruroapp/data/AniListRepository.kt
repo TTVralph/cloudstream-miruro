@@ -41,10 +41,18 @@ class AniListRepository {
         val seasons = chain.mapIndexed { index, entry ->
             val dates = episodeAirDates(entry.id)
             val candidates = runCatching { miruro.episodeCandidates(entry.id) }.getOrDefault(emptyMap())
-            val episodes = (1..(entry.episodes ?: 0).coerceAtMost(2000)).map { ep ->
+            val episodes = (1..(entry.episodes ?: 0).coerceAtMost(2000)).flatMap { ep ->
                 val epCandidates = candidates[ep].orEmpty()
-                val audio = if (epCandidates.any { it.category == "sub" } || epCandidates.isEmpty()) AudioType.SUB else AudioType.DUB
-                AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], audio, entry.id, epCandidates)
+                val grouped = epCandidates.groupBy { it.category.lowercase(Locale.ROOT) }
+                when {
+                    grouped.isEmpty() -> listOf(AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.SUB, entry.id))
+                    else -> listOfNotNull(
+                        grouped["sub"]?.let { AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.SUB, entry.id, it) },
+                        grouped["dub"]?.let { AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.DUB, entry.id, it) }
+                    ).ifEmpty {
+                        listOf(AnimeEpisode(index + 1, ep, "Episode $ep", null, entry.duration, dates[ep], AudioType.SUB, entry.id, epCandidates))
+                    }
+                }
             }
             AnimeSeason(entry.id, index + 1, entry.title, entry.year, episodes)
         }

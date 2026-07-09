@@ -2,7 +2,14 @@ package com.ttvralph.miruroapp
 
 import android.net.Uri
 import android.util.Log
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -12,7 +19,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
@@ -31,6 +40,7 @@ import com.ttvralph.miruroapp.data.PlaybackSource
 import com.ttvralph.miruroapp.data.PlaybackType
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.LoadingState
+import com.ttvralph.miruroapp.ui.SecondaryButton
 import java.util.Locale
 
 private const val TAG = "PlayerScreen"
@@ -95,11 +105,44 @@ private fun VideoPlayer(source: PlaybackSource, onBack: () -> Unit) {
     if (error != null) {
         ErrorState(error, onBack)
     } else {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { ctx -> PlayerView(ctx).apply { useController = true; isFocusable = true } },
-            update = { it.player = player }
-        )
+        Box(Modifier.fillMaxSize()) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = true
+                        controllerShowTimeoutMs = 0
+                        controllerHideOnTouch = false
+                        setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+                        isFocusable = true
+                        requestFocus()
+                    }
+                },
+                update = { it.player = player }
+            )
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .background(Color(0x99000000))
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SecondaryButton("Back", modifier = Modifier.width(120.dp), onClick = onBack)
+                Spacer(Modifier.width(12.dp))
+                SecondaryButton("Prev source", modifier = Modifier.width(170.dp), onClick = {
+                    sourceIndex = if (sourceIndex == 0) sources.lastIndex else sourceIndex - 1
+                })
+                Spacer(Modifier.width(12.dp))
+                SecondaryButton("${activeSource.label} (${sourceIndex + 1}/${sources.size})", modifier = Modifier.width(280.dp), onClick = {
+                    sourceIndex = if (sourceIndex == sources.lastIndex) 0 else sourceIndex + 1
+                })
+                Spacer(Modifier.width(12.dp))
+                SecondaryButton("Next source", modifier = Modifier.width(170.dp), onClick = {
+                    sourceIndex = if (sourceIndex == sources.lastIndex) 0 else sourceIndex + 1
+                })
+            }
+        }
     }
 }
 
