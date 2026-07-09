@@ -1,6 +1,6 @@
 package com.ttvralph.miruroapp.data
 
-data class AnimeItem(val id: Int, val title: String, val posterUrl: String?, val bannerUrl: String?, val type: AnimeType, val year: Int? = null)
+data class AnimeItem(val id: Int, val title: String, val posterUrl: String?, val bannerUrl: String?, val type: AnimeType, val year: Int? = null, val score: Int? = null)
 enum class AnimeType { TV, MOVIE, OVA, SPECIAL, UNKNOWN }
 data class AnimeDetails(val id: Int, val title: String, val posterUrl: String?, val bannerUrl: String?, val description: String?, val status: String?, val year: Int?, val rating: String?, val genres: List<String>, val seasons: List<AnimeSeason>)
 data class AnimeSeason(val id: Int, val seasonNumber: Int, val title: String, val year: Int?, val episodes: List<AnimeEpisode>)

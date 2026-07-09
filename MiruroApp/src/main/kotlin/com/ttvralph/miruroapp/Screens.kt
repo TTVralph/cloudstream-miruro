@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,10 +40,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import java.util.Locale
 import com.ttvralph.miruroapp.data.AnimeDetails
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeSeason
+import com.ttvralph.miruroapp.ui.Badge
 import com.ttvralph.miruroapp.ui.BodyText
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.FocusableSurface
@@ -50,6 +53,8 @@ import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PosterCard
 import com.ttvralph.miruroapp.ui.PrimaryButton
+import com.ttvralph.miruroapp.ui.RatingLabel
+import com.ttvralph.miruroapp.ui.SecondaryButton
 import com.ttvralph.miruroapp.ui.SectionTitle
 import com.ttvralph.miruroapp.ui.StateMessage
 
@@ -66,7 +71,13 @@ fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
                     item { HeroBanner(hero, onOpenDetails) }
                 }
                 items(rows, key = { it.title }) { row ->
-                    PosterRow(row.title, row.items, onOpenDetails)
+                    PosterRow(
+                        title = row.title,
+                        items = row.items,
+                        onClick = onOpenDetails,
+                        badge = if (row.title == "Trending Now") "HOT" else null,
+                        showRank = row.title == "Top Rated Anime"
+                    )
                 }
                 item { Spacer(Modifier.height(24.dp)) }
             }
@@ -79,7 +90,7 @@ private fun HeroBanner(item: AnimeItem, onOpenDetails: (Int) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(360.dp)
+            .height(420.dp)
             .padding(bottom = 8.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(MiruroColors.Panel)
@@ -97,8 +108,8 @@ private fun HeroBanner(item: AnimeItem, onOpenDetails: (Int) -> Unit) {
                     Brush.verticalGradient(
                         colorStops = arrayOf(
                             0f to Color.Transparent,
-                            0.55f to Color.Black.copy(alpha = 0.35f),
-                            1f to MiruroColors.Background.copy(alpha = 0.96f)
+                            0.5f to Color.Transparent,
+                            1f to MiruroColors.Background.copy(alpha = 0.97f)
                         )
                     )
                 )
@@ -106,34 +117,53 @@ private fun HeroBanner(item: AnimeItem, onOpenDetails: (Int) -> Unit) {
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(32.dp),
+                .padding(32.dp)
+                .width(600.dp)
         ) {
-            Text(item.title, color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
-            Text(
-                listOfNotNull(item.year?.toString(), item.type.name, "Trending Now").joinToString("  •  "),
-                color = MiruroColors.Accent2,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+            Badge("★ TRENDING NOW")
+            Spacer(Modifier.height(14.dp))
+            Text(item.title, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black, lineHeight = 42.sp)
             Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                item.score?.let {
+                    RatingLabel(String.format(Locale.US, "%.1f", it / 10f))
+                    Spacer(Modifier.width(12.dp))
+                }
+                Text(
+                    listOfNotNull(item.year?.toString(), item.type.name).joinToString("  •  "),
+                    color = MiruroColors.Subtle,
+                    fontSize = 14.sp
+                )
+            }
+            Spacer(Modifier.height(12.dp))
             BodyText("Discover anime, search AniList metadata, manage your watchlist, and jump into episode playback.")
-            Spacer(Modifier.height(16.dp))
-            PrimaryButton("View Details", modifier = Modifier.width(200.dp)) { onOpenDetails(item.id) }
+            Spacer(Modifier.height(20.dp))
+            Row {
+                PrimaryButton("Play Now", modifier = Modifier.width(190.dp)) { onOpenDetails(item.id) }
+                Spacer(Modifier.width(12.dp))
+                SecondaryButton("More Info", modifier = Modifier.width(180.dp)) { onOpenDetails(item.id) }
+            }
         }
     }
 }
 
 @Composable
-private fun PosterRow(title: String, items: List<AnimeItem>, onClick: (Int) -> Unit) {
+private fun PosterRow(
+    title: String,
+    items: List<AnimeItem>,
+    onClick: (Int) -> Unit,
+    badge: String? = null,
+    showRank: Boolean = false
+) {
     Column {
-        SectionTitle(title)
+        SectionTitle(title, badge)
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
         ) {
-            items(items, key = { it.id }) { anime ->
-                PosterCard(anime) { onClick(anime.id) }
+            itemsIndexed(items, key = { _, anime -> anime.id }) { index, anime ->
+                PosterCard(anime, onClick = { onClick(anime.id) }, rank = if (showRank) index + 1 else null)
             }
         }
     }
@@ -221,8 +251,18 @@ fun DetailsScreen(
         is UiState.Success -> {
             val details = s.data
             val favorite = details.id in favorites
+            val firstPlayable = details.seasons
+                .flatMap { season -> season.episodes.map { season.seasonNumber to it } }
+                .firstOrNull { (_, ep) -> ep.sourceCandidates.isNotEmpty() }
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                item { DetailsHeader(details, favorite) { viewModel.toggleFavorite(details.id) } }
+                item {
+                    DetailsHeader(
+                        details = details,
+                        favorite = favorite,
+                        onToggleFavorite = { viewModel.toggleFavorite(details.id) },
+                        onPlay = firstPlayable?.let { (season, ep) -> { onPlayEpisode(season, ep.episodeNumber) } }
+                    )
+                }
                 if (details.seasons.isEmpty()) {
                     item { StateMessage("No episodes available.") }
                 } else {
@@ -242,7 +282,7 @@ fun DetailsScreen(
 }
 
 @Composable
-private fun DetailsHeader(d: AnimeDetails, favorite: Boolean, onToggleFavorite: () -> Unit) {
+private fun DetailsHeader(d: AnimeDetails, favorite: Boolean, onToggleFavorite: () -> Unit, onPlay: (() -> Unit)?) {
     Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
         AsyncImage(
             model = d.posterUrl,
@@ -265,8 +305,14 @@ private fun DetailsHeader(d: AnimeDetails, favorite: Boolean, onToggleFavorite: 
             Spacer(Modifier.height(10.dp))
             BodyText(d.description ?: "No synopsis available.", modifier = Modifier.width(520.dp))
             Spacer(Modifier.height(16.dp))
-            PrimaryButton(if (favorite) "Remove Favorite" else "Add Favorite", modifier = Modifier.width(230.dp)) {
-                onToggleFavorite()
+            Row {
+                if (onPlay != null) {
+                    PrimaryButton("Play", modifier = Modifier.width(160.dp), onClick = onPlay)
+                    Spacer(Modifier.width(12.dp))
+                }
+                SecondaryButton(if (favorite) "Remove My List" else "+ My List", modifier = Modifier.width(190.dp)) {
+                    onToggleFavorite()
+                }
             }
         }
     }
