@@ -187,8 +187,15 @@ class MiruroRepository {
     }
 
     private fun streamUrl(node: JsonNode): String? =
-        text(node, "url", "file", "stream")
-            ?: node.path("source").takeIf { it.isObject }?.let { text(it, "url", "file", "stream") }
+        (text(node, "url", "file", "stream")
+            ?: node.path("source").takeIf { it.isObject }?.let { text(it, "url", "file", "stream") })
+            ?.let(::normalizeStreamUrl)
+
+    private fun normalizeStreamUrl(url: String): String = when {
+        url.startsWith("//") -> "https:$url"
+        url.startsWith("http://") || url.startsWith("https://") -> url
+        else -> url
+    }
 
     private fun streamType(node: JsonNode): String? =
         text(node, "type", "format")
