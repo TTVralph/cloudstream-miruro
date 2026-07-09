@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,9 +37,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.foundation.lazy.list.TvLazyColumn
-import androidx.tv.foundation.lazy.list.TvLazyRow
-import androidx.tv.foundation.lazy.list.items
 import coil.compose.AsyncImage
 import com.ttvralph.miruroapp.data.AnimeDetails
 import com.ttvralph.miruroapp.data.AnimeEpisode
@@ -60,7 +60,7 @@ fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
         is UiState.Error -> ErrorState(s.message) { viewModel.loadHome() }
         is UiState.Success -> {
             val rows = s.data
-            TvLazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
                 rows.firstOrNull()?.items?.firstOrNull()?.let { hero ->
                     item { HeroBanner(hero, onOpenDetails) }
                 }
@@ -113,7 +113,7 @@ private fun HeroBanner(item: AnimeItem, onOpenDetails: (Int) -> Unit) {
 private fun PosterRow(title: String, items: List<AnimeItem>, onClick: (Int) -> Unit) {
     Column {
         SectionTitle(title)
-        TvLazyRow(
+        LazyRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp)
@@ -155,7 +155,7 @@ fun SearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
                 if (s.data.isEmpty()) {
                     StateMessage("No results found.")
                 } else {
-                    TvLazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
                         item { PosterRow("Results", s.data, onOpenDetails) }
                     }
                 }
@@ -170,7 +170,7 @@ fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     if (ids.isEmpty()) {
         StateMessage("No favorites yet.")
     } else {
-        TvLazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(ids.toList(), key = { it }) { id ->
                 FocusableSurface(onClick = { onOpenDetails(id) }, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).height(64.dp)) {
                     Box(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), contentAlignment = Alignment.CenterStart) {
@@ -208,7 +208,7 @@ fun DetailsScreen(
         is UiState.Success -> {
             val details = s.data
             val favorite = details.id in favorites
-            TvLazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
                 item { DetailsHeader(details, favorite) { viewModel.toggleFavorite(details.id) } }
                 if (details.seasons.isEmpty()) {
                     item { StateMessage("No episodes available.") }
