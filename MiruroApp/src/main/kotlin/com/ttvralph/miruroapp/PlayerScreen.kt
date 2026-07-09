@@ -65,7 +65,7 @@ private const val TAG = "PlayerScreen"
 private const val SEEK_INCREMENT_MS = 10_000L
 
 @Composable
-fun PlayerScreen(viewModel: MiruroViewModel, episode: AnimeEpisode?, onBack: () -> Unit) {
+fun PlayerScreen(viewModel: MiruroViewModel, episode: AnimeEpisode?, onBack: () -> Unit, onNextEpisode: (() -> Unit)? = null) {
     if (episode == null) {
         ErrorState("Episode not found.", onBack)
         return
@@ -78,12 +78,12 @@ fun PlayerScreen(viewModel: MiruroViewModel, episode: AnimeEpisode?, onBack: () 
     when (val s = state) {
         null, is UiState.Loading -> LoadingState("Resolving stream…")
         is UiState.Error -> ErrorState(s.message, onBack)
-        is UiState.Success -> VideoPlayer(s.data, episode, viewModel, onBack)
+        is UiState.Success -> VideoPlayer(s.data, episode, viewModel, onBack, onNextEpisode)
     }
 }
 
 @Composable
-private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel: MiruroViewModel, onBack: () -> Unit) {
+private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel: MiruroViewModel, onBack: () -> Unit, onNextEpisode: (() -> Unit)?) {
     val context = LocalContext.current
     val sources = remember(source) { listOf(source.copy(fallbackSources = emptyList())) + source.fallbackSources }
     var sourceIndex by remember(source) { mutableIntStateOf(0) }
@@ -92,7 +92,9 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
     var controlsVisible by remember(source) { mutableStateOf(true) }
     var sourceMenuVisible by remember(source) { mutableStateOf(false) }
     var subtitleMenuVisible by remember(source) { mutableStateOf(false) }
+    var speedMenuVisible by remember(source) { mutableStateOf(false) }
     val activeSource = sources[sourceIndex]
+    val settings = viewModel.settings.collectAsState().value
     val savedProgress = viewModel.watchProgress.collectAsState().value.firstOrNull {
         it.animeId == episode.anilistId && it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.episodeNumber && it.audioType == episode.audioType
     }
@@ -111,6 +113,10 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
         }
         ExoPlayer.Builder(context).build().apply {
             addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_ENDED && settings.autoPlayNext) onNextEpisode?.invoke()
+                }
+
                 override fun onPlayerError(error: PlaybackException) {
                     Log.w(TAG, "playback error for ${activeSource.label}", error)
                     if (sourceIndex < sources.lastIndex) {
@@ -123,7 +129,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
             setMediaSource(mediaSource)
             playWhenReady = true
             prepare()
-            savedProgress?.takeIf { !it.watched && it.positionMs > 10_000L }?.let { seekTo(it.positionMs) }
+            if (settings.resumePlayback) savedProgress?.takeIf { !it.watched && it.positionMs > 10_000L }?.let { seekTo(it.positionMs) }
         }
     }
     DisposableEffect(player) {
@@ -165,6 +171,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                 },
                 update = { it.player = player }
             )
+            LaunchedEffect(controlsVisible, player.isPlaying) { if (controlsVisible && player.isPlaying) { delay(4_000L); controlsVisible = false } }
             if (controlsVisible) {
                 CloudstreamPlayerOverlay(
                     player = player,
@@ -175,14 +182,18 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                     subtitleIndex = subtitleIndex,
                     sourceMenuVisible = sourceMenuVisible,
                     subtitleMenuVisible = subtitleMenuVisible,
+                    speedMenuVisible = speedMenuVisible,
                     onBack = onBack,
                     onSeekBack = { player.seekTo((player.currentPosition - SEEK_INCREMENT_MS).coerceAtLeast(0L)) },
                     onPlayPause = { player.playWhenReady = !player.playWhenReady },
                     onSeekForward = { player.seekTo(player.currentPosition + SEEK_INCREMENT_MS) },
                     onSourceMenu = { sourceMenuVisible = !sourceMenuVisible; subtitleMenuVisible = false },
                     onSourceSelected = { sourceIndex = it; sourceMenuVisible = false },
-                    onSubtitleMenu = { subtitleMenuVisible = !subtitleMenuVisible; sourceMenuVisible = false },
+                    onSubtitleMenu = { subtitleMenuVisible = !subtitleMenuVisible; sourceMenuVisible = false; speedMenuVisible = false },
                     onSubtitleSelected = { subtitleIndex = it; subtitleMenuVisible = false },
+                    onSpeedMenu = { speedMenuVisible = !speedMenuVisible; sourceMenuVisible = false; subtitleMenuVisible = false },
+                    onSpeedSelected = { player.setPlaybackSpeed(it); speedMenuVisible = false },
+                    onNextEpisode = onNextEpisode,
                     onHideControls = { controlsVisible = false },
                     onProgressTick = { position, duration -> viewModel.saveProgress(episode, position, duration) }
                 )
@@ -201,6 +212,7 @@ private fun CloudstreamPlayerOverlay(
     subtitleIndex: Int,
     sourceMenuVisible: Boolean,
     subtitleMenuVisible: Boolean,
+    speedMenuVisible: Boolean,
     onBack: () -> Unit,
     onSeekBack: () -> Unit,
     onPlayPause: () -> Unit,
@@ -209,6 +221,9 @@ private fun CloudstreamPlayerOverlay(
     onSourceSelected: (Int) -> Unit,
     onSubtitleMenu: () -> Unit,
     onSubtitleSelected: (Int) -> Unit,
+    onSpeedMenu: () -> Unit,
+    onSpeedSelected: (Float) -> Unit,
+    onNextEpisode: (() -> Unit)?,
     onHideControls: () -> Unit,
     onProgressTick: (Long, Long) -> Unit
 ) {
@@ -273,8 +288,8 @@ private fun CloudstreamPlayerOverlay(
                 SecondaryButton("Sources", modifier = Modifier.width(145.dp), onClick = onSourceMenu)
                 SecondaryButton("${activeSource.label} (${sourceIndex + 1}/${sources.size})", modifier = Modifier.width(260.dp), onClick = onSourceMenu)
                 SecondaryButton("Subtitles", modifier = Modifier.width(155.dp), onClick = onSubtitleMenu)
-                SecondaryButton("Audio", modifier = Modifier.width(120.dp), onClick = onSubtitleMenu)
-                SecondaryButton("Next episode", modifier = Modifier.width(170.dp), onClick = onHideControls)
+                SecondaryButton("Speed", modifier = Modifier.width(120.dp), onClick = onSpeedMenu)
+                SecondaryButton("Next episode", modifier = Modifier.width(170.dp), onClick = { onNextEpisode?.invoke() ?: onHideControls() })
             }
         }
 
@@ -289,6 +304,11 @@ private fun CloudstreamPlayerOverlay(
                 }
             }
         }
+        if (speedMenuVisible) {
+            PlayerMenu("Playback speed", Modifier.align(Alignment.CenterEnd).padding(end = 32.dp)) {
+                listOf(0.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed -> MenuRow("${speed}x", selected = false, onClick = { onSpeedSelected(speed) }) }
+            }
+        }
         if (subtitleMenuVisible) {
             PlayerMenu("Subtitles / settings", Modifier.align(Alignment.CenterEnd).padding(end = 32.dp)) {
                 MenuRow("Off", selected = subtitleIndex == -1, onClick = { onSubtitleSelected(-1) })
@@ -300,7 +320,7 @@ private fun CloudstreamPlayerOverlay(
                     )
                 }
                 if (activeSource.subtitleTracks.isEmpty()) Text("No external subtitle tracks", color = MiruroColors.Subtle, modifier = Modifier.padding(12.dp))
-                Text("Audio track and subtitle styling controls will appear here when Media3 exposes selectable tracks.", color = MiruroColors.Subtle, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
+                Text("Subtitle styling follows Settings and selectable Media3 tracks appear here when available.", color = MiruroColors.Subtle, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
             }
         }
     }

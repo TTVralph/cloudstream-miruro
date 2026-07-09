@@ -22,6 +22,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ttvralph.miruroapp.data.AudioType
+import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.MiruroTheme
 import com.ttvralph.miruroapp.ui.SideNav
@@ -158,7 +159,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     val episodeNumber = entry.arguments?.getInt(Args.EPISODE) ?: return@composable
                     val audio = entry.arguments?.getString(Args.AUDIO)?.let { runCatching { AudioType.valueOf(it) }.getOrNull() } ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
-                    EpisodeDetailsScreen(episode) {
+                    EpisodeDetailsScreen(episode, viewModel) {
                         navController.navigate(Routes.Player.path(id, season, episodeNumber, audio))
                     }
                 }
@@ -176,7 +177,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     val episodeNumber = entry.arguments?.getInt(Args.EPISODE) ?: return@composable
                     val audio = entry.arguments?.getString(Args.AUDIO)?.let { runCatching { AudioType.valueOf(it) }.getOrNull() } ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
-                    PlayerScreen(viewModel, episode) { navController.popBackStack() }
+                    PlayerScreen(viewModel, episode, onBack = { navController.popBackStack() }, onNextEpisode = { findNextEpisode(viewModel, id, season, episodeNumber, audio)?.let { next -> navController.navigate(Routes.Player.path(id, next.seasonNumber, next.episodeNumber, next.audioType)) } })
                 }
             }
         }
@@ -189,3 +190,12 @@ private fun findEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, e
         ?.firstOrNull { it.seasonNumber == season }
         ?.episodes
         ?.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
+
+
+private fun findNextEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType) =
+    viewModel.cachedDetails(animeId)
+        ?.seasons
+        ?.flatMap { it.episodes }
+        ?.filter { it.audioType == audio && it.sourceCandidates.isNotEmpty() }
+        ?.sortedWith(compareBy<AnimeEpisode> { it.seasonNumber }.thenBy { it.episodeNumber })
+        ?.firstOrNull { it.seasonNumber > season || (it.seasonNumber == season && it.episodeNumber > episodeNumber) }

@@ -48,6 +48,10 @@ import coil.compose.AsyncImage
 import com.ttvralph.miruroapp.data.AnimeDetails
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
+import com.ttvralph.miruroapp.data.AnimeSearchFilters
+import com.ttvralph.miruroapp.data.AnimeSort
+import com.ttvralph.miruroapp.data.PosterGridDensity
+import com.ttvralph.miruroapp.data.ThemeMode
 import com.ttvralph.miruroapp.data.AudioType
 import com.ttvralph.miruroapp.ui.Badge
 import com.ttvralph.miruroapp.ui.BodyText
@@ -214,7 +218,13 @@ private fun PosterRow(
 @Composable
 fun SearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     var query by remember { mutableStateOf("") }
+    var format by remember { mutableStateOf<String?>(null) }
+    var genre by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var sort by remember { mutableStateOf(AnimeSort.SEARCH_MATCH) }
+    var yearText by remember { mutableStateOf("") }
     val state by viewModel.searchResults.collectAsState()
+    val recent by viewModel.recentSearches.collectAsState()
 
     LaunchedEffect(query) {
         val trimmed = query.trim()
@@ -222,7 +232,7 @@ fun SearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
             viewModel.clearSearch()
         } else {
             delay(350)
-            viewModel.search(trimmed)
+            viewModel.search(AnimeSearchFilters(trimmed, format, yearText.toIntOrNull(), genre, status, sort))
         }
     }
 
@@ -255,18 +265,42 @@ fun SearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { viewModel.search(query) }),
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 20.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp)
         )
+        FilterRow("Type", listOf(null to "All", "TV" to "Series", "MOVIE" to "Movies"), format) { format = it }
+        FilterRow("Genre", listOf(null to "Any", "Action" to "Action", "Comedy" to "Comedy", "Drama" to "Drama", "Fantasy" to "Fantasy", "Romance" to "Romance", "Sci-Fi" to "Sci-Fi"), genre) { genre = it }
+        FilterRow("Status", listOf(null to "Any", "RELEASING" to "Airing", "FINISHED" to "Finished", "NOT_YET_RELEASED" to "Upcoming"), status) { status = it }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
+            items(AnimeSort.values().toList(), key = { it.name }) { item -> SecondaryButton(if (sort == item) "✓ ${item.label}" else item.label, modifier = Modifier.width(170.dp), onClick = { sort = item }) }
+            item { OutlinedTextField(value = yearText, onValueChange = { yearText = it.filter(Char::isDigit).take(4) }, placeholder = { Text("Year", color = MiruroColors.Subtle) }, singleLine = true, modifier = Modifier.width(130.dp)) }
+        }
+        if (recent.isNotEmpty() && query.isBlank()) {
+            SectionTitle("Recent searches")
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) { items(recent, key = { it }) { term -> SecondaryButton(term, modifier = Modifier.width(180.dp), onClick = { query = term }) } }
+        }
         when (val s = state) {
             null -> StateMessage(if (query.isBlank()) "Start typing to search AniList." else "Searching automatically as you type…")
             is UiState.Loading -> LoadingState("Searching…")
-            is UiState.Error -> ErrorState(s.message) { viewModel.search(query) }
+            is UiState.Error -> ErrorState(s.message) { viewModel.search(AnimeSearchFilters(query, format, yearText.toIntOrNull(), genre, status, sort)) }
             is UiState.Success -> {
                 if (s.data.isEmpty()) {
                     StateMessage("No results found.")
                 } else {
                     PosterGrid(s.data, onOpenDetails, modifier = Modifier.weight(1f))
                 }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun FilterRow(label: String, options: List<Pair<String?, String>>, selected: String?, onSelected: (String?) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+        Text("$label:", color = MiruroColors.Subtle, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(82.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(options, key = { it.second }) { (value, text) ->
+                SecondaryButton(if (value == selected) "✓ $text" else text, modifier = Modifier.width(145.dp), onClick = { onSelected(value) })
             }
         }
     }
@@ -323,22 +357,18 @@ private fun PosterGrid(items: List<AnimeItem>, onOpenDetails: (Int) -> Unit, mod
 @Composable
 fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     val ids by viewModel.favoriteIds.collectAsState()
+    LaunchedEffect(ids) { viewModel.resolveFavoriteMetadata(ids) }
     Column(modifier = Modifier.fillMaxSize()) {
         SectionTitle("Library")
         if (ids.isEmpty()) {
             StateMessage("Your library is empty. Add anime with \"+ Add to List\".")
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyVerticalGrid(columns = GridCells.Adaptive(180.dp), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxSize()) {
                 items(ids.toList(), key = { it }) { id ->
                     val item = viewModel.cachedItem(id)
-                    FocusableSurface(
-                        onClick = { onOpenDetails(id) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).height(76.dp)
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.Center) {
-                            Text(item?.title ?: "Anime #$id", color = MiruroColors.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                            Text("Saved to My List • Press to open details", color = MiruroColors.Subtle, fontSize = 12.sp)
-                        }
+                    Column {
+                        if (item != null) PosterCard(item) { onOpenDetails(id) } else StateMessage("Resolving Anime #$id…")
+                        SecondaryButton("Remove", modifier = Modifier.width(160.dp), onClick = { viewModel.toggleFavorite(id) })
                     }
                 }
             }
@@ -350,33 +380,43 @@ fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
 fun GenresScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     val genres = listOf("Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural")
     var selected by remember { mutableStateOf(genres.first()) }
+    var format by remember { mutableStateOf<String?>(null) }
+    var sort by remember { mutableStateOf(AnimeSort.POPULARITY) }
+    var page by remember { mutableStateOf(1) }
     val state by viewModel.genreResults.collectAsState()
-    LaunchedEffect(selected) { viewModel.loadGenre(selected) }
+    LaunchedEffect(selected, format, sort, page) { viewModel.loadGenre(selected, format, page, sort) }
     Column(modifier = Modifier.fillMaxSize()) {
         SectionTitle("Genres")
+        FilterRow("Type", listOf(null to "All", "TV" to "Series", "MOVIE" to "Movies"), format) { format = it; page = 1 }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
             items(genres, key = { it }) { genre ->
-                SecondaryButton(if (genre == selected) "✓ $genre" else genre, modifier = Modifier.width(150.dp), onClick = { selected = genre })
+                SecondaryButton(if (genre == selected) "✓ $genre" else genre, modifier = Modifier.width(150.dp), onClick = { selected = genre; page = 1 })
             }
         }
         when (val s = state) {
             null, is UiState.Loading -> LoadingState("Loading $selected anime…")
             is UiState.Error -> ErrorState(s.message) { viewModel.loadGenre(selected) }
-            is UiState.Success -> if (s.data.isEmpty()) StateMessage("Nothing found for $selected.") else PosterGrid(s.data, onOpenDetails, modifier = Modifier.weight(1f))
+            is UiState.Success -> if (s.data.isEmpty()) StateMessage("Nothing found for $selected.") else { PosterGrid(s.data, onOpenDetails, modifier = Modifier.weight(1f)); SecondaryButton("Load page ${page + 1}", modifier = Modifier.width(220.dp), onClick = { page += 1 }) }
         }
     }
 }
 
 @Composable
 fun SettingsScreen(viewModel: MiruroViewModel? = null) {
+    val settings by (viewModel?.settings ?: kotlinx.coroutines.flow.MutableStateFlow(com.ttvralph.miruroapp.data.AppSettings())).collectAsState()
     Column(modifier = Modifier.fillMaxSize()) {
         SectionTitle("Settings")
-        StateMessage("Preferences scaffold: preferred audio defaults to Sub, provider fallback remains automatic, theme uses the app dark TV theme, and playback resumes saved episode progress by default.")
-        SectionTitle("Playback")
-        StateMessage("Player controls include source and subtitle menus, lock/hide controls, seek buttons, source fallback on errors, and saved watch progress.")
-        if (viewModel != null) {
-            SecondaryButton("Clear watch history", modifier = Modifier.width(240.dp), onClick = { viewModel.clearWatchProgress() })
-        }
+        StateMessage("Preferences are saved locally and applied to playback/source selection defaults.")
+        SectionTitle("Playback preferences")
+        FilterRow("Audio", listOf("SUB" as String? to "Sub", "DUB" as String? to "Dub"), settings.preferredAudio.name) { it?.let { v -> viewModel?.updatePreferredAudio(AudioType.valueOf(v)) } }
+        FilterRow("Provider", listOf("Auto" as String? to "Auto", "zoro" as String? to "Zoro", "animepahe" as String? to "AnimePahe", "gogoanime" as String? to "Gogo", "kiwi" as String? to "Kiwi"), settings.preferredProvider) { viewModel?.updatePreferredProvider(it ?: "Auto") }
+        FilterRow("Theme", ThemeMode.values().map { it.name as String? to it.name.lowercase(Locale.ROOT).replaceFirstChar { c -> c.titlecase(Locale.ROOT) } }, settings.themeMode.name) { it?.let { v -> viewModel?.updateThemeMode(ThemeMode.valueOf(v)) } }
+        FilterRow("Grid", PosterGridDensity.values().map { it.name as String? to it.name.lowercase(Locale.ROOT).replaceFirstChar { c -> c.titlecase(Locale.ROOT) } }, settings.posterGridDensity.name) { it?.let { v -> viewModel?.updatePosterGridDensity(PosterGridDensity.valueOf(v)) } }
+        FilterRow("Autoplay", listOf("true" as String? to "On", "false" as String? to "Off"), settings.autoPlayNext.toString()) { viewModel?.updateAutoPlayNext(it == "true") }
+        FilterRow("Resume", listOf("true" as String? to "On", "false" as String? to "Off"), settings.resumePlayback.toString()) { viewModel?.updateResumePlayback(it == "true") }
+        FilterRow("Subtitle", listOf("English" as String? to "English", "Spanish" as String? to "Spanish", "Japanese" as String? to "Japanese"), settings.subtitleLanguage) { viewModel?.updateSubtitleLanguage(it ?: "English") }
+        FilterRow("Style", listOf("Default" as String? to "Default", "Large" as String? to "Large", "High Contrast" as String? to "High Contrast"), settings.subtitleStyle) { viewModel?.updateSubtitleStyle(it ?: "Default") }
+        if (viewModel != null) SecondaryButton("Clear watch history", modifier = Modifier.width(240.dp), onClick = { viewModel.clearWatchProgress() })
     }
 }
 
@@ -636,7 +676,7 @@ private fun EpisodeBadge(text: String) {
 }
 
 @Composable
-fun EpisodeDetailsScreen(episode: AnimeEpisode?, onPlay: () -> Unit) {
+fun EpisodeDetailsScreen(episode: AnimeEpisode?, viewModel: MiruroViewModel? = null, onPlay: () -> Unit) {
     if (episode == null) {
         StateMessage("Episode not found.")
         return
@@ -658,10 +698,18 @@ fun EpisodeDetailsScreen(episode: AnimeEpisode?, onPlay: () -> Unit) {
             "Release date" to (episode.releaseDate ?: "Unknown"),
             "Audio type" to episode.audioType.name,
             "Providers" to episode.sourceCandidates.joinToString { it.provider }.ifBlank { "None" },
-            "Playback" to if (episode.sourceCandidates.isNotEmpty()) "Pick Play to use the resolver with automatic provider fallback." else "No playable source is available for this episode."
+            "Playback" to if (episode.sourceCandidates.isNotEmpty()) "Choose a provider or use Auto before playback." else "No playable source is available for this episode."
         ).forEach { (label, value) -> BodyText("$label: $value") }
         if (episode.sourceCandidates.isNotEmpty()) {
             Spacer(Modifier.height(20.dp))
+            val providers = listOf("Auto") + episode.sourceCandidates.map { it.provider }.distinct()
+            val selected = viewModel?.settings?.collectAsState()?.value?.preferredProvider ?: "Auto"
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(providers, key = { it }) { provider ->
+                    SecondaryButton(if (provider == selected) "✓ $provider" else provider, modifier = Modifier.width(170.dp), onClick = { viewModel?.updatePreferredProvider(provider) })
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             PrimaryButton("Play", modifier = Modifier.width(180.dp), onClick = onPlay)
         }
     }
