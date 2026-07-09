@@ -6,6 +6,7 @@ data class AnimeDetails(val id: Int, val title: String, val posterUrl: String?, 
 data class AnimeSeason(val id: Int, val seasonNumber: Int, val title: String, val year: Int?, val episodes: List<AnimeEpisode>)
 data class AnimeEpisode(val seasonNumber: Int, val episodeNumber: Int, val title: String?, val thumbnailUrl: String?, val runtimeMinutes: Int?, val releaseDate: String?, val audioType: AudioType, val anilistId: Int, val sourceCandidates: List<EpisodeSourceCandidate> = emptyList())
 data class EpisodeSourceCandidate(val provider: String, val episodeId: String, val category: String)
+data class EpisodeMetadata(val title: String? = null, val thumbnailUrl: String? = null)
 
 enum class AnimeSort(val aniList: String, val label: String) {
     SEARCH_MATCH("SEARCH_MATCH", "Best match"),

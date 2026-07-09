@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -83,12 +84,14 @@ fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     val favorites by viewModel.favoriteIds.collectAsState()
     val progress by viewModel.watchProgress.collectAsState()
     val settings by viewModel.settings.collectAsState()
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     when (val s = state) {
         is UiState.Loading -> LoadingState("Loading home rows…")
         is UiState.Error -> ErrorState(s.message) { viewModel.loadHome() }
         is UiState.Success -> {
             val rows = s.data
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 rows.firstOrNull()?.items?.firstOrNull()?.let { hero ->
                     item {
                         HomeHero(
@@ -112,6 +115,7 @@ fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
                         badge = if (row.title == "Trending Now") "HOT" else null
                     )
                 }
+                item { TopButton { scope.launch { listState.animateScrollToItem(0) } } }
                 item { Spacer(Modifier.height(32.dp)) }
             }
         }
@@ -422,22 +426,35 @@ private fun posterRowWidth(gridDensity: PosterGridDensity) = when (gridDensity) 
 
 @Composable
 private fun PosterGrid(items: List<AnimeItem>, onOpenDetails: (Int) -> Unit, gridDensity: PosterGridDensity = PosterGridDensity.COMFORTABLE, modifier: Modifier = Modifier) {
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
     val minSize = when (gridDensity) {
         PosterGridDensity.COMPACT -> 135.dp
         PosterGridDensity.COMFORTABLE -> 160.dp
         PosterGridDensity.LARGE -> 210.dp
     }
-    LazyVerticalGrid(
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TopButton { scope.launch { gridState.animateScrollToItem(0) } }
+        }
+        LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = minSize),
         horizontalArrangement = Arrangement.spacedBy(20.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         contentPadding = PaddingValues(vertical = 6.dp, horizontal = 2.dp),
-        modifier = modifier.fillMaxWidth()
+        state = gridState,
+        modifier = Modifier.fillMaxWidth().weight(1f)
     ) {
         items(items, key = { it.id }) { anime ->
             PosterCard(anime) { onOpenDetails(anime.id) }
         }
     }
+    }
+}
+
+@Composable
+private fun TopButton(onClick: () -> Unit) {
+    SecondaryButton("Top", modifier = Modifier.width(100.dp), onClick = onClick)
 }
 
 @Composable
@@ -446,6 +463,8 @@ fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     val settings by viewModel.settings.collectAsState()
     val progress by viewModel.watchProgress.collectAsState()
     val ids = entries.map { it.id }.toSet()
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
     LaunchedEffect(ids) { viewModel.resolveFavoriteMetadata(ids) }
     Column(modifier = Modifier.fillMaxSize()) {
         SectionTitle("Library")
@@ -458,7 +477,8 @@ fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
                 WatchlistSort.PROGRESS -> entries.sortedByDescending { entry -> progressForAnime(progress, entry.id) }
                 WatchlistSort.RECENTLY_ADDED -> entries.sortedByDescending { it.addedAtMs }
             }
-            LazyVerticalGrid(columns = GridCells.Adaptive(when (settings.posterGridDensity) { PosterGridDensity.COMPACT -> 150.dp; PosterGridDensity.COMFORTABLE -> 180.dp; PosterGridDensity.LARGE -> 230.dp }), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxSize()) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TopButton { scope.launch { gridState.animateScrollToItem(0) } } }
+            LazyVerticalGrid(state = gridState, columns = GridCells.Adaptive(when (settings.posterGridDensity) { PosterGridDensity.COMPACT -> 150.dp; PosterGridDensity.COMFORTABLE -> 180.dp; PosterGridDensity.LARGE -> 230.dp }), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxSize()) {
                 items(sortedEntries, key = { it.id }) { entry ->
                     val id = entry.id
                     val item = viewModel.cachedItem(id) ?: entry.title?.let { AnimeItem(entry.id, it, entry.posterUrl, null, com.ttvralph.miruroapp.data.AnimeType.UNKNOWN) }
