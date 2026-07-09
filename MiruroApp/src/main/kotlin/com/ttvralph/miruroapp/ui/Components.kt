@@ -211,8 +211,8 @@ fun RatingLabel(score: String) {
 }
 
 @Composable
-fun PosterCard(item: AnimeItem, onClick: () -> Unit) {
-    FocusableSurface(onClick = onClick, modifier = Modifier.width(160.dp).height(240.dp)) {
+fun PosterCard(item: AnimeItem, width: androidx.compose.ui.unit.Dp = 160.dp, onClick: () -> Unit) {
+    FocusableSurface(onClick = onClick, modifier = Modifier.width(width).height(width * 1.5f)) {
         Box(modifier = Modifier.fillMaxSize()) {
             AsyncImage(
                 model = item.posterUrl,

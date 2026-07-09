@@ -21,6 +21,7 @@ import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.data.WatchProgressStore
 import com.ttvralph.miruroapp.data.WatchlistEntry
 import com.ttvralph.miruroapp.data.WatchlistStore
+import com.ttvralph.miruroapp.data.WatchlistSort
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -215,6 +216,8 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     fun updateResumePlayback(value: Boolean) { viewModelScope.launch { settingsStore.updateResumePlayback(value) } }
     fun updateSubtitleLanguage(value: String) { viewModelScope.launch { settingsStore.updateSubtitleLanguage(value) } }
     fun updateSubtitleStyle(value: String) { viewModelScope.launch { settingsStore.updateSubtitleStyle(value) } }
+    fun updateHideWatchedEpisodes(value: Boolean) { viewModelScope.launch { settingsStore.updateHideWatchedEpisodes(value) } }
+    fun updateWatchlistSort(value: WatchlistSort) { viewModelScope.launch { settingsStore.updateWatchlistSort(value) } }
 
     fun resolveFavoriteMetadata(ids: Set<Int>) {
         ids.filter { it !in itemCache }.forEach { id ->

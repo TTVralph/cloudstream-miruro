@@ -108,6 +108,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
     }
     var locked by remember(source) { mutableStateOf(false) }
     var gestureMessage by remember(source) { mutableStateOf<String?>(null) }
+    var nextCountdown by remember(source) { mutableIntStateOf(0) }
     val audioManager = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     val player = remember(activeSource, subtitleIndex) {
@@ -125,7 +126,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
         ExoPlayer.Builder(context).build().apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_ENDED && settings.autoPlayNext) onNextEpisode?.invoke()
+                    if (playbackState == Player.STATE_ENDED && settings.autoPlayNext && onNextEpisode != null) nextCountdown = 5
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -148,6 +149,14 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
             val duration = player.duration.takeIf { it > 0 } ?: 0L
             viewModel.saveProgress(episode, player.currentPosition, duration)
             player.release()
+        }
+    }
+
+    LaunchedEffect(gestureMessage) { if (gestureMessage != null) { delay(1_200L); gestureMessage = null } }
+    LaunchedEffect(nextCountdown) {
+        if (nextCountdown > 0) {
+            delay(1_000L)
+            if (nextCountdown == 1) onNextEpisode?.invoke() else nextCountdown -= 1
         }
     }
 
@@ -228,6 +237,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                     locked = locked,
                     gestureMessage = gestureMessage,
                     subtitleStyle = settings.subtitleStyle,
+                    nextCountdown = nextCountdown,
                     onBack = onBack,
                     onSeekBack = { player.seekTo((player.currentPosition - SEEK_INCREMENT_MS).coerceAtLeast(0L)) },
                     onPlayPause = { player.playWhenReady = !player.playWhenReady },
@@ -239,7 +249,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                     onSpeedMenu = { speedMenuVisible = !speedMenuVisible; sourceMenuVisible = false; subtitleMenuVisible = false },
                     onSpeedSelected = { player.setPlaybackSpeed(it); speedMenuVisible = false },
                     onLockToggle = { locked = !locked; controlsVisible = true },
-                    onNextEpisode = onNextEpisode,
+                    onNextEpisode = onNextEpisode?.let { next -> { nextCountdown = 0; next() } },
                     onHideControls = { controlsVisible = false },
                     onProgressTick = { position, duration -> viewModel.saveProgress(episode, position, duration) }
                 )
@@ -262,6 +272,7 @@ private fun CloudstreamPlayerOverlay(
     locked: Boolean,
     gestureMessage: String?,
     subtitleStyle: String,
+    nextCountdown: Int,
     onBack: () -> Unit,
     onSeekBack: () -> Unit,
     onPlayPause: () -> Unit,
@@ -309,6 +320,7 @@ private fun CloudstreamPlayerOverlay(
             SecondaryButton("Settings", modifier = Modifier.width(140.dp), onClick = onSubtitleMenu)
         }
 
+        if (nextCountdown > 0) Text("Next episode in ${nextCountdown}s", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center).background(Color(0x99000000)).padding(16.dp))
         gestureMessage?.let { Text(it, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center).background(Color(0x99000000)).padding(16.dp)) }
 
         if (!locked) Row(
@@ -341,7 +353,7 @@ private fun CloudstreamPlayerOverlay(
                 SecondaryButton("${activeSource.label} (${sourceIndex + 1}/${sources.size})", modifier = Modifier.width(260.dp), onClick = onSourceMenu)
                 SecondaryButton("Subtitles", modifier = Modifier.width(155.dp), onClick = onSubtitleMenu)
                 SecondaryButton("Speed", modifier = Modifier.width(120.dp), onClick = onSpeedMenu)
-                SecondaryButton("Next episode", modifier = Modifier.width(170.dp), onClick = { onNextEpisode?.invoke() ?: onHideControls() })
+                SecondaryButton(if (onNextEpisode != null) "Next episode" else "No next episode", modifier = Modifier.width(190.dp), onClick = { onNextEpisode?.invoke() ?: onHideControls() })
             }
         }
 
