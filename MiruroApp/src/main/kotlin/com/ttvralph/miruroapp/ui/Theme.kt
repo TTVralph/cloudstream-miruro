@@ -2,8 +2,11 @@ package com.ttvralph.miruroapp.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.Color
+import com.ttvralph.miruroapp.data.ThemeMode
 
 object MiruroColors {
     val Background = Color(0xFF050505)
@@ -21,7 +24,7 @@ object MiruroColors {
     val Border = Color(0x1AFFFFFF)       // white @ 10%
 }
 
-private val MiruroColorScheme = darkColorScheme(
+private val MiruroDarkColorScheme = darkColorScheme(
     primary = MiruroColors.Accent,
     secondary = MiruroColors.Accent2,
     surface = MiruroColors.Card,
@@ -31,7 +34,22 @@ private val MiruroColorScheme = darkColorScheme(
     error = MiruroColors.Danger
 )
 
+private val MiruroLightColorScheme = lightColorScheme(
+    primary = MiruroColors.Accent,
+    secondary = MiruroColors.Accent2,
+    surface = Color(0xFFFFFBFF),
+    background = Color(0xFFFFFBFF),
+    onSurface = Color(0xFF1C1B1F),
+    onBackground = Color(0xFF1C1B1F),
+    error = Color(0xFFBA1A1A)
+)
+
 @Composable
-fun MiruroTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = MiruroColorScheme, content = content)
+fun MiruroTheme(themeMode: ThemeMode = ThemeMode.DARK, content: @Composable () -> Unit) {
+    val dark = when (themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+    MaterialTheme(colorScheme = if (dark) MiruroDarkColorScheme else MiruroLightColorScheme, content = content)
 }

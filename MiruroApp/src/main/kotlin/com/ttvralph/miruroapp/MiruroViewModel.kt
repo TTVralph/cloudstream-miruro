@@ -19,6 +19,7 @@ import com.ttvralph.miruroapp.data.PlaybackSource
 import com.ttvralph.miruroapp.data.SourceResolution
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.data.WatchProgressStore
+import com.ttvralph.miruroapp.data.WatchlistEntry
 import com.ttvralph.miruroapp.data.WatchlistStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -45,8 +46,9 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     val homeRows: StateFlow<UiState<List<HomeRow>>> = _homeRows.asStateFlow()
 
     private val _searchResults = MutableStateFlow<UiState<List<AnimeItem>>?>(null)
-    private val _recentSearches = MutableStateFlow<List<String>>(emptyList())
-    val recentSearches: StateFlow<List<String>> = _recentSearches.asStateFlow()
+    private val searchHistoryStore = com.ttvralph.miruroapp.data.SearchHistoryStore(application)
+    val recentSearches: StateFlow<List<String>> =
+        searchHistoryStore.recentSearches.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val searchResults: StateFlow<UiState<List<AnimeItem>>?> = _searchResults.asStateFlow()
 
     private val _details = MutableStateFlow<UiState<AnimeDetails>>(UiState.Loading)
@@ -69,6 +71,9 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     val favoriteIds: StateFlow<Set<Int>> =
         store.favoriteIds.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    val watchlistEntries: StateFlow<List<WatchlistEntry>> =
+        store.entries.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val settings: StateFlow<AppSettings> =
         settingsStore.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
@@ -93,7 +98,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     fun search(filters: AnimeSearchFilters) {
         val trimmed = filters.query.trim()
-        if (trimmed.isEmpty() && filters.genre == null && filters.format == null && filters.year == null && filters.status == null) {
+        if (trimmed.isEmpty() && filters.genres.isEmpty() && filters.format == null && filters.year == null && filters.status == null) {
             _searchResults.value = null
             return
         }
@@ -101,7 +106,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
             _searchResults.value = UiState.Loading
             runCatching { repo.search(filters.copy(query = trimmed)) }
                 .onSuccess {
-                    if (trimmed.isNotBlank()) _recentSearches.value = (listOf(trimmed) + _recentSearches.value.filterNot { it.equals(trimmed, true) }).take(8)
+                    if (trimmed.isNotBlank()) searchHistoryStore.add(trimmed)
                     rememberItems(it); _searchResults.value = UiState.Success(it)
                 }
                 .onFailure { _searchResults.value = UiState.Error("Search failed. Please try again.") }
@@ -145,12 +150,16 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     fun cachedDetails(id: Int): AnimeDetails? = detailsCache[id]
     fun cachedItem(id: Int): AnimeItem? = itemCache[id]
 
-    fun loadGenre(genre: String, format: String? = null, page: Int = 1, sort: AnimeSort = AnimeSort.POPULARITY, status: String? = null, year: Int? = null) {
+    fun loadGenre(genres: List<String>, format: String? = null, page: Int = 1, sort: AnimeSort = AnimeSort.POPULARITY, status: String? = null, year: Int? = null) {
         viewModelScope.launch {
+            val previous = (_genreResults.value as? UiState.Success)?.data.orEmpty()
             _genreResults.value = UiState.Loading
-            runCatching { repo.browseGenre(genre, format, page, sort, status, year) }
-                .onSuccess { rememberItems(it); _genreResults.value = UiState.Success(it) }
-                .onFailure { _genreResults.value = UiState.Error("Could not load $genre anime.") }
+            runCatching { repo.browseGenre(genres, format, page, sort, status, year) }
+                .onSuccess { items ->
+                    rememberItems(items)
+                    _genreResults.value = UiState.Success(if (page > 1) (previous + items).distinctBy { it.id } else items)
+                }
+                .onFailure { _genreResults.value = UiState.Error("Could not load selected genres.") }
         }
     }
 
@@ -176,7 +185,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     private fun rememberItems(items: List<AnimeItem>) { items.forEach { itemCache[it.id] = it } }
 
     fun toggleFavorite(id: Int) {
-        viewModelScope.launch { store.setFavorite(id, id !in favoriteIds.value) }
+        viewModelScope.launch { store.setFavorite(id, id !in favoriteIds.value, itemCache[id]) }
     }
 
     fun resolvePlayback(episode: AnimeEpisode, provider: String? = settings.value.preferredProvider) {

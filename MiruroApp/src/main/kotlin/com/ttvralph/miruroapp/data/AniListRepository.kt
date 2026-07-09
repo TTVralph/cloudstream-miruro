@@ -33,7 +33,7 @@ class AniListRepository {
             "search" to filters.query.takeIf { it.isNotBlank() },
             "format" to filters.format,
             "seasonYear" to filters.year,
-            "genre" to filters.genre,
+            "genreIn" to filters.genres.takeIf { it.isNotEmpty() },
             "status" to filters.status,
             "page" to filters.page,
             "perPage" to 30,
@@ -44,8 +44,8 @@ class AniListRepository {
     suspend fun browse(format: String): List<AnimeItem> =
         mediaPage(mapOf("format" to format, "page" to 1, "perPage" to 30, "sort" to listOf("POPULARITY_DESC")))
 
-    suspend fun browseGenre(genre: String, format: String? = null, page: Int = 1, sort: AnimeSort = AnimeSort.POPULARITY, status: String? = null, year: Int? = null): List<AnimeItem> =
-        mediaPage(mapOf("genre" to genre, "format" to format, "page" to page, "perPage" to 30, "sort" to listOf(sort.aniList), "status" to status, "seasonYear" to year))
+    suspend fun browseGenre(genres: List<String>, format: String? = null, page: Int = 1, sort: AnimeSort = AnimeSort.POPULARITY, status: String? = null, year: Int? = null): List<AnimeItem> =
+        mediaPage(mapOf("genreIn" to genres.takeIf { it.isNotEmpty() }, "format" to format, "page" to page, "perPage" to 30, "sort" to listOf(sort.aniList), "status" to status, "seasonYear" to year))
 
     suspend fun resolveEpisodeSource(episode: AnimeEpisode, provider: String? = null): SourceResolution =
         miruro.resolveSource(episode.anilistId, episode.sourceCandidates.let { candidates -> provider?.takeIf { it != "Auto" }?.let { selected -> candidates.filter { it.provider.equals(selected, ignoreCase = true) } }?.ifEmpty { candidates } ?: candidates })
@@ -116,7 +116,7 @@ class AniListRepository {
     private fun sameFranchise(a: String, b: String) = tokens(a).intersect(tokens(b)).isNotEmpty()
     private data class SeasonEntry(val id:Int,val title:String,val episodes:Int?,val duration:Int?,val format:String?,val year:Int?,val month:Int,val day:Int,val prequels:List<Int>,val sequels:List<Int>) { val sortKey = (year ?: 9999) * 10000 + month * 100 + day; fun isLongRunning() = (episodes ?: 0) >= 100 || title.lowercase(Locale.ROOT).let { listOf("one piece","detective conan","case closed","pokemon","boruto","naruto").any(it::contains) } }
     companion object {
-        private const val PAGE_QUERY = "query(\$page:Int,\$perPage:Int,\$search:String,\$sort:[MediaSort],\$status:MediaStatus,\$season:MediaSeason,\$seasonYear:Int,\$format:MediaFormat,\$genre:String){Page(page:\$page,perPage:\$perPage){media(search:\$search,type:ANIME,sort:\$sort,status:\$status,season:\$season,seasonYear:\$seasonYear,format:\$format,genre:\$genre,isAdult:false){id title{romaji english native} coverImage{large extraLarge} bannerImage format seasonYear startDate{year} averageScore}}}"
+        private const val PAGE_QUERY = "query(\$page:Int,\$perPage:Int,\$search:String,\$sort:[MediaSort],\$status:MediaStatus,\$season:MediaSeason,\$seasonYear:Int,\$format:MediaFormat,\$genreIn:[String]){Page(page:\$page,perPage:\$perPage){media(search:\$search,type:ANIME,sort:\$sort,status:\$status,season:\$season,seasonYear:\$seasonYear,format:\$format,genre_in:\$genreIn,isAdult:false){id title{romaji english native} coverImage{large extraLarge} bannerImage format seasonYear startDate{year} averageScore}}}"
         private const val MEDIA_QUERY = "query(\$id:Int){Media(id:\$id,type:ANIME){id title{romaji english native} description(asHtml:false) coverImage{large extraLarge} bannerImage format episodes duration averageScore genres status seasonYear startDate{year month day} relations{edges{relationType node{id type format title{romaji english native} episodes duration seasonYear startDate{year month day}}}}}}"
         private const val SEASON_QUERY = MEDIA_QUERY
         private const val AIRING_QUERY = "query(\$mediaId:Int){Page(page:1,perPage:200){airingSchedules(mediaId:\$mediaId,sort:EPISODE){episode airingAt}}}"
