@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.focusable
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -40,8 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.focusable
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -70,6 +71,7 @@ import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.PlaybackSource
 import com.ttvralph.miruroapp.data.PlaybackType
 import com.ttvralph.miruroapp.ui.ErrorState
+import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PrimaryButton
@@ -110,12 +112,8 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
     var speedMenuVisible by remember(source) { mutableStateOf(false) }
     val activeSource = sources[sourceIndex]
     val settings = viewModel.settings.collectAsState().value
-    val autoSubtitleIndex = remember(activeSource, settings.subtitleLanguage) {
-        preferredSubtitleIndex(activeSource.subtitleTracks, settings.subtitleLanguage)
-    }
-    val preferredSubtitleIndex = remember(activeSource, settings.subtitleChoice, autoSubtitleIndex) {
-        subtitleIndexForChoice(activeSource.subtitleTracks, settings.subtitleChoice, autoSubtitleIndex)
-    }
+    val autoSubtitleIndex = remember(activeSource, settings.subtitleLanguage) { preferredSubtitleIndex(activeSource.subtitleTracks, settings.subtitleLanguage) }
+    val preferredSubtitleIndex = remember(activeSource, settings.subtitleChoice, autoSubtitleIndex) { subtitleIndexForChoice(activeSource.subtitleTracks, settings.subtitleChoice, autoSubtitleIndex) }
     var subtitleIndex by remember(activeSource, preferredSubtitleIndex) { mutableIntStateOf(preferredSubtitleIndex) }
     val savedProgress = viewModel.watchProgress.collectAsState().value.firstOrNull {
         it.animeId == episode.anilistId && it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.episodeNumber && it.audioType == episode.audioType
@@ -137,9 +135,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
             speedMenuVisible = false
         } else {
             val now = System.currentTimeMillis()
-            if (now - lastBackPressMs < 2_000L) {
-                onBack()
-            } else {
+            if (now - lastBackPressMs < 2_000L) onBack() else {
                 lastBackPressMs = now
                 gestureMessage = "Press Back again to exit video"
             }
@@ -379,68 +375,54 @@ private fun CloudstreamPlayerOverlay(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color(0x33000000))) {
-        Row(
-            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color(0xAA000000)).padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SecondaryButton("Back", modifier = Modifier.width(110.dp), onClick = onBack)
-            Spacer(Modifier.width(16.dp))
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.52f), Color.Transparent, Color.Black.copy(alpha = 0.82f))))) {
+        Row(modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(28.dp), verticalAlignment = Alignment.CenterVertically) {
+            SecondaryButton("‹ Back", modifier = Modifier.width(126.dp), onClick = onBack)
+            Spacer(Modifier.width(18.dp))
             Column(Modifier.weight(1f)) {
-                Text("S${episode.seasonNumber} • E${episode.episodeNumber}", color = MiruroColors.Subtle, fontSize = 14.sp)
-                Text(episode.title ?: "Episode ${episode.episodeNumber}", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("AniStream", color = MiruroColors.AccentSoft, fontSize = 13.sp, fontWeight = FontWeight.Black)
+                Text("S${episode.seasonNumber} E${episode.episodeNumber} • ${episode.title ?: "Episode ${episode.episodeNumber}"}", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             SecondaryButton(if (locked) "Unlock" else "Lock", modifier = Modifier.width(110.dp), onClick = onLockToggle)
             Spacer(Modifier.width(10.dp))
             SecondaryButton("Settings", modifier = Modifier.width(140.dp), onClick = onSubtitleMenu)
         }
 
-        if (nextCountdown > 0) Text("Next episode in ${nextCountdown}s", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center).background(Color(0x99000000)).padding(16.dp))
-        gestureMessage?.let { Text(it, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center).background(Color(0x99000000)).padding(16.dp)) }
+        if (nextCountdown > 0) CenterToast("Next episode in ${nextCountdown}s")
+        gestureMessage?.let { CenterToast(it) }
 
-        if (!locked) Row(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SecondaryButton("-10s", modifier = Modifier.width(110.dp), onClick = onSeekBack)
-            SecondaryButton(if (isPlaying) "Pause" else "Play", modifier = Modifier.width(150.dp), onClick = onPlayPause)
-            SecondaryButton("+10s", modifier = Modifier.width(110.dp), onClick = onSeekForward)
+        if (!locked) {
+            Row(modifier = Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                SecondaryButton("-10s", modifier = Modifier.width(110.dp), onClick = onSeekBack)
+                PrimaryButton(if (isPlaying) "Pause" else "Play", modifier = Modifier.width(150.dp), onClick = onPlayPause)
+                SecondaryButton("+10s", modifier = Modifier.width(110.dp), onClick = onSeekForward)
+            }
         }
 
-        if (!locked) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xCC000000)).padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(formatTime(position), color = Color.White, fontSize = 14.sp)
-                Slider(
-                    value = progress,
-                    onValueChange = { newProgress ->
-                        progress = newProgress
-                        if (duration > 0L) player.seekTo((duration * newProgress).toLong())
-                    },
-                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
-                )
-                Text(formatTime(duration), color = Color.White, fontSize = 14.sp)
-            }
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(3.dp))
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SecondaryButton("Sources", modifier = Modifier.width(145.dp), onClick = onSourceMenu)
-                SecondaryButton("${activeSource.label} (${sourceIndex + 1}/${sources.size})", modifier = Modifier.width(260.dp), onClick = onSourceMenu)
-                SecondaryButton("Subtitles", modifier = Modifier.width(155.dp), onClick = onSubtitleMenu)
-                SecondaryButton("Speed", modifier = Modifier.width(120.dp), onClick = onSpeedMenu)
-                SecondaryButton(if (onNextEpisode != null) "Next episode" else "No next episode", modifier = Modifier.width(190.dp), onClick = { onNextEpisode?.invoke() ?: onHideControls() })
+        if (!locked) {
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color.Black.copy(alpha = 0.72f)).padding(horizontal = 36.dp, vertical = 24.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(formatTime(position), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Slider(value = progress, onValueChange = { newProgress -> progress = newProgress; if (duration > 0L) player.seekTo((duration * newProgress).toLong()) }, modifier = Modifier.weight(1f).padding(horizontal = 14.dp))
+                    Text("-${formatTime((duration - position).coerceAtLeast(0L))}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(4.dp), color = MiruroColors.Accent, trackColor = Color.White.copy(alpha = 0.20f))
+                Spacer(Modifier.height(18.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SecondaryButton("⏭ Skip Intro", modifier = Modifier.width(158.dp), onClick = onHideControls)
+                    SecondaryButton(if (onNextEpisode != null) "Next Episode" else "No Next", modifier = Modifier.width(160.dp), onClick = { onNextEpisode?.invoke() ?: onHideControls() })
+                    SecondaryButton("Subtitles", modifier = Modifier.width(140.dp), onClick = onSubtitleMenu)
+                    SecondaryButton("Audio / Sources", modifier = Modifier.width(188.dp), onClick = onSourceMenu)
+                    SecondaryButton("Speed", modifier = Modifier.width(120.dp), onClick = onSpeedMenu)
+                    Spacer(Modifier.weight(1f))
+                    Text("${activeSource.label} (${sourceIndex + 1}/${sources.size})", color = MiruroColors.Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
 
         if (sourceMenuVisible) {
-            PlayerMenu("Select source", Modifier.align(Alignment.CenterEnd).padding(end = 32.dp)) {
-                sources.forEachIndexed { index, item ->
-                    MenuRow(
-                        text = "${index + 1}. ${sourceDisplayLabel(item)}",
-                        selected = index == sourceIndex,
-                        onClick = { onSourceSelected(index) }
-                    )
-                }
+            PlayerMenu("Audio / Source", Modifier.align(Alignment.CenterEnd).padding(end = 32.dp)) {
+                sources.forEachIndexed { index, item -> MenuRow(text = "${index + 1}. ${sourceDisplayLabel(item)}", selected = index == sourceIndex, onClick = { onSourceSelected(index) }) }
             }
         }
         if (speedMenuVisible) {
@@ -449,27 +431,26 @@ private fun CloudstreamPlayerOverlay(
             }
         }
         if (subtitleMenuVisible) {
-            PlayerMenu("Subtitles / settings", Modifier.align(Alignment.CenterEnd).padding(end = 32.dp)) {
+            PlayerMenu("Subtitles", Modifier.align(Alignment.CenterEnd).padding(end = 32.dp)) {
                 MenuRow("Off", selected = subtitleIndex == -1, onClick = { onSubtitleSelected(-1, "Off") })
                 MenuRow("Auto (${activeSource.subtitleTracks.getOrNull(autoSubtitleIndex)?.label ?: "preferred language"})", selected = false, onClick = { onSubtitleSelected(autoSubtitleIndex, "Auto") })
-                activeSource.subtitleTracks.forEachIndexed { index, subtitle ->
-                    MenuRow(
-                        text = subtitle.label.ifBlank { subtitle.language ?: "Subtitle ${index + 1}" },
-                        selected = subtitleIndex == index,
-                        onClick = { onSubtitleSelected(index, subtitle.language ?: subtitle.label) }
-                    )
-                }
-                if (activeSource.subtitleTracks.isEmpty()) Text("No external subtitle tracks", color = MiruroColors.Subtle, modifier = Modifier.padding(12.dp))
-                Text("Subtitle style: $subtitleStyle. External subtitles auto-select from your preferred language when available.", color = MiruroColors.Subtle, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
+                activeSource.subtitleTracks.forEachIndexed { index, subtitle -> MenuRow(text = subtitle.label.ifBlank { subtitle.language ?: "Subtitle ${index + 1}" }, selected = subtitleIndex == index, onClick = { onSubtitleSelected(index, subtitle.language ?: subtitle.label) }) }
+                if (activeSource.subtitleTracks.isEmpty()) Text("No external subtitle tracks", color = MiruroColors.Muted, modifier = Modifier.padding(12.dp))
+                Text("Subtitle style: $subtitleStyle", color = MiruroColors.Muted, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
             }
         }
     }
 }
 
 @Composable
+private fun CenterToast(text: String) {
+    Text(text, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black, modifier = Modifier.background(Color.Black.copy(alpha = 0.68f)).padding(18.dp))
+}
+
+@Composable
 private fun PlayerMenu(title: String, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier.width(360.dp).background(Color(0xEE111111)).padding(16.dp)) {
-        Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    Column(modifier.width(380.dp).background(MiruroColors.Panel.copy(alpha = 0.96f)).padding(18.dp)) {
+        Text(title, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.height(12.dp))
         content()
     }
@@ -477,13 +458,11 @@ private fun PlayerMenu(title: String, modifier: Modifier = Modifier, content: @C
 
 @Composable
 private fun MenuRow(text: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        text = if (selected) "✓ $text" else text,
-        color = if (selected) MiruroColors.Accent else Color.White,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp),
-        fontSize = 16.sp,
-        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-    )
+    FocusableSurface(onClick = onClick, modifier = Modifier.fillMaxWidth().height(52.dp), unfocusedBackground = if (selected) MiruroColors.Accent.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.05f)) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (selected) "✓ $text" else text, color = if (selected) MiruroColors.AccentSoft else Color.White, fontSize = 15.sp, fontWeight = if (selected) FontWeight.Black else FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }
 
 private fun sourceDisplayLabel(source: PlaybackSource): String {
@@ -501,8 +480,7 @@ private fun subtitleIndexForChoice(tracks: List<com.ttvralph.miruroapp.data.Subt
 private fun preferredSubtitleIndex(tracks: List<com.ttvralph.miruroapp.data.SubtitleTrack>, preferredLanguage: String): Int {
     val preferred = preferredLanguage.lowercase(Locale.ROOT)
     return tracks.indexOfFirst { track ->
-        track.language?.lowercase(Locale.ROOT)?.contains(preferred.take(2)) == true ||
-            track.label.lowercase(Locale.ROOT).contains(preferred)
+        track.language?.lowercase(Locale.ROOT)?.contains(preferred.take(2)) == true || track.label.lowercase(Locale.ROOT).contains(preferred)
     }.takeIf { it >= 0 } ?: -1
 }
 
