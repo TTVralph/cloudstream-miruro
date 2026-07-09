@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.map
 
 enum class ThemeMode { DARK, LIGHT, SYSTEM }
 enum class PosterGridDensity { COMPACT, COMFORTABLE, LARGE }
+enum class WatchlistSort { RECENTLY_ADDED, TITLE, PROGRESS }
 
 data class AppSettings(
     val preferredAudio: AudioType = AudioType.SUB,
@@ -19,7 +20,9 @@ data class AppSettings(
     val autoPlayNext: Boolean = false,
     val resumePlayback: Boolean = true,
     val subtitleLanguage: String = "English",
-    val subtitleStyle: String = "Default"
+    val subtitleStyle: String = "Default",
+    val hideWatchedEpisodes: Boolean = false,
+    val watchlistSort: WatchlistSort = WatchlistSort.RECENTLY_ADDED
 )
 
 private val Context.settingsDataStore by preferencesDataStore("miruro_settings")
@@ -34,6 +37,8 @@ class SettingsStore(private val context: Context) {
         val resumePlayback = booleanPreferencesKey("resume_playback")
         val subtitleLanguage = stringPreferencesKey("subtitle_language")
         val subtitleStyle = stringPreferencesKey("subtitle_style")
+        val hideWatchedEpisodes = booleanPreferencesKey("hide_watched_episodes")
+        val watchlistSort = stringPreferencesKey("watchlist_sort")
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -45,7 +50,9 @@ class SettingsStore(private val context: Context) {
             autoPlayNext = prefs[Keys.autoPlayNext] ?: false,
             resumePlayback = prefs[Keys.resumePlayback] ?: true,
             subtitleLanguage = prefs[Keys.subtitleLanguage] ?: "English",
-            subtitleStyle = prefs[Keys.subtitleStyle] ?: "Default"
+            subtitleStyle = prefs[Keys.subtitleStyle] ?: "Default",
+            hideWatchedEpisodes = prefs[Keys.hideWatchedEpisodes] ?: false,
+            watchlistSort = prefs[Keys.watchlistSort]?.let { runCatching { WatchlistSort.valueOf(it) }.getOrNull() } ?: WatchlistSort.RECENTLY_ADDED
         )
     }
 
@@ -57,4 +64,6 @@ class SettingsStore(private val context: Context) {
     suspend fun updateResumePlayback(value: Boolean) { context.settingsDataStore.edit { it[Keys.resumePlayback] = value } }
     suspend fun updateSubtitleLanguage(value: String) { context.settingsDataStore.edit { it[Keys.subtitleLanguage] = value } }
     suspend fun updateSubtitleStyle(value: String) { context.settingsDataStore.edit { it[Keys.subtitleStyle] = value } }
+    suspend fun updateHideWatchedEpisodes(value: Boolean) { context.settingsDataStore.edit { it[Keys.hideWatchedEpisodes] = value } }
+    suspend fun updateWatchlistSort(value: WatchlistSort) { context.settingsDataStore.edit { it[Keys.watchlistSort] = value.name } }
 }

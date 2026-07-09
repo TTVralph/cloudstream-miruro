@@ -54,6 +54,8 @@ import com.ttvralph.miruroapp.data.AnimeSort
 import com.ttvralph.miruroapp.data.PosterGridDensity
 import com.ttvralph.miruroapp.data.ThemeMode
 import com.ttvralph.miruroapp.data.AudioType
+import com.ttvralph.miruroapp.data.WatchProgress
+import com.ttvralph.miruroapp.data.WatchlistSort
 import com.ttvralph.miruroapp.ui.Badge
 import com.ttvralph.miruroapp.ui.BodyText
 import com.ttvralph.miruroapp.ui.ErrorState
@@ -77,6 +79,7 @@ fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     val state by viewModel.homeRows.collectAsState()
     val favorites by viewModel.favoriteIds.collectAsState()
     val progress by viewModel.watchProgress.collectAsState()
+    val settings by viewModel.settings.collectAsState()
     when (val s = state) {
         is UiState.Loading -> LoadingState("Loading home rows…")
         is UiState.Error -> ErrorState(s.message) { viewModel.loadHome() }
@@ -102,6 +105,7 @@ fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
                         title = row.title,
                         items = row.items,
                         onClick = onOpenDetails,
+                        gridDensity = settings.posterGridDensity,
                         badge = if (row.title == "Trending Now") "HOT" else null
                     )
                 }
@@ -200,7 +204,8 @@ private fun PosterRow(
     title: String,
     items: List<AnimeItem>,
     onClick: (Int) -> Unit,
-    badge: String? = null
+    badge: String? = null,
+    gridDensity: PosterGridDensity = PosterGridDensity.COMFORTABLE
 ) {
     Column {
         SectionTitle(title, badge)
@@ -210,7 +215,7 @@ private fun PosterRow(
             contentPadding = PaddingValues(vertical = 6.dp, horizontal = 2.dp)
         ) {
             items(items, key = { it.id }) { anime ->
-                PosterCard(anime) { onClick(anime.id) }
+                PosterCard(anime, width = posterRowWidth(gridDensity)) { onClick(anime.id) }
             }
         }
     }
@@ -370,14 +375,16 @@ private fun FilterRow(label: String, options: List<Pair<String?, String>>, selec
 fun MoviesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     LaunchedEffect(Unit) { viewModel.loadMovies() }
     val state by viewModel.movies.collectAsState()
-    BrowseScreen("Movies", state, onRetry = { viewModel.loadMovies(force = true) }, onOpenDetails = onOpenDetails)
+    val settings by viewModel.settings.collectAsState()
+    BrowseScreen("Movies", state, onRetry = { viewModel.loadMovies(force = true) }, onOpenDetails = onOpenDetails, gridDensity = settings.posterGridDensity)
 }
 
 @Composable
 fun SeriesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     LaunchedEffect(Unit) { viewModel.loadSeries() }
     val state by viewModel.series.collectAsState()
-    BrowseScreen("Series", state, onRetry = { viewModel.loadSeries(force = true) }, onOpenDetails = onOpenDetails)
+    val settings by viewModel.settings.collectAsState()
+    BrowseScreen("Series", state, onRetry = { viewModel.loadSeries(force = true) }, onOpenDetails = onOpenDetails, gridDensity = settings.posterGridDensity)
 }
 
 @Composable
@@ -385,7 +392,8 @@ private fun BrowseScreen(
     title: String,
     state: UiState<List<AnimeItem>>,
     onRetry: () -> Unit,
-    onOpenDetails: (Int) -> Unit
+    onOpenDetails: (Int) -> Unit,
+    gridDensity: PosterGridDensity
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         SectionTitle(title)
@@ -394,9 +402,15 @@ private fun BrowseScreen(
             is UiState.Error -> ErrorState(state.message, onRetry)
             is UiState.Success ->
                 if (state.data.isEmpty()) StateMessage("Nothing found.")
-                else PosterGrid(state.data, onOpenDetails, gridDensity = PosterGridDensity.COMFORTABLE, modifier = Modifier.weight(1f))
+                else PosterGrid(state.data, onOpenDetails, gridDensity = gridDensity, modifier = Modifier.weight(1f))
         }
     }
+}
+
+private fun posterRowWidth(gridDensity: PosterGridDensity) = when (gridDensity) {
+    PosterGridDensity.COMPACT -> 135.dp
+    PosterGridDensity.COMFORTABLE -> 160.dp
+    PosterGridDensity.LARGE -> 210.dp
 }
 
 @Composable
@@ -423,6 +437,7 @@ private fun PosterGrid(items: List<AnimeItem>, onOpenDetails: (Int) -> Unit, gri
 fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
     val entries by viewModel.watchlistEntries.collectAsState()
     val settings by viewModel.settings.collectAsState()
+    val progress by viewModel.watchProgress.collectAsState()
     val ids = entries.map { it.id }.toSet()
     LaunchedEffect(ids) { viewModel.resolveFavoriteMetadata(ids) }
     Column(modifier = Modifier.fillMaxSize()) {
@@ -430,12 +445,19 @@ fun FavoritesScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) {
         if (ids.isEmpty()) {
             StateMessage("Your library is empty. Add anime with \"+ Add to List\".")
         } else {
+            FilterRow("Sort", WatchlistSort.values().map { it.name as String? to it.name.lowercase(Locale.ROOT).replace('_', ' ').replaceFirstChar { c -> c.titlecase(Locale.ROOT) } }, settings.watchlistSort.name) { it?.let { v -> viewModel.updateWatchlistSort(WatchlistSort.valueOf(v)) } }
+            val sortedEntries = when (settings.watchlistSort) {
+                WatchlistSort.TITLE -> entries.sortedBy { entry -> viewModel.cachedItem(entry.id)?.title ?: entry.title ?: "" }
+                WatchlistSort.PROGRESS -> entries.sortedByDescending { entry -> progressForAnime(progress, entry.id) }
+                WatchlistSort.RECENTLY_ADDED -> entries.sortedByDescending { it.addedAtMs }
+            }
             LazyVerticalGrid(columns = GridCells.Adaptive(when (settings.posterGridDensity) { PosterGridDensity.COMPACT -> 150.dp; PosterGridDensity.COMFORTABLE -> 180.dp; PosterGridDensity.LARGE -> 230.dp }), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.fillMaxSize()) {
-                items(entries, key = { it.id }) { entry ->
+                items(sortedEntries, key = { it.id }) { entry ->
                     val id = entry.id
                     val item = viewModel.cachedItem(id) ?: entry.title?.let { AnimeItem(entry.id, it, entry.posterUrl, null, com.ttvralph.miruroapp.data.AnimeType.UNKNOWN) }
                     Column {
                         if (item != null) PosterCard(item) { onOpenDetails(id) } else StateMessage("Resolving Anime #$id…")
+                        Text("Saved ${formatSavedDate(entry.addedAtMs)} • ${progressForAnime(progress, id)}% complete", color = MiruroColors.Subtle, fontSize = 12.sp)
                         SecondaryButton("Remove", modifier = Modifier.width(160.dp), onClick = { viewModel.toggleFavorite(id) })
                     }
                 }
@@ -497,6 +519,8 @@ fun SettingsScreen(viewModel: MiruroViewModel? = null) {
         FilterRow("Resume", listOf("true" as String? to "On", "false" as String? to "Off"), settings.resumePlayback.toString()) { viewModel?.updateResumePlayback(it == "true") }
         FilterRow("Subtitle", listOf("English" as String? to "English", "Spanish" as String? to "Spanish", "Japanese" as String? to "Japanese"), settings.subtitleLanguage) { viewModel?.updateSubtitleLanguage(it ?: "English") }
         FilterRow("Style", listOf("Default" as String? to "Default", "Large" as String? to "Large", "High Contrast" as String? to "High Contrast"), settings.subtitleStyle) { viewModel?.updateSubtitleStyle(it ?: "Default") }
+        FocusableSurface(onClick = { }, modifier = Modifier.fillMaxWidth(), unfocusedBackground = MiruroColors.Card) { Text("Subtitle preview — ${settings.subtitleStyle}", color = if (settings.subtitleStyle == "High Contrast") Color.White else MiruroColors.Text, fontSize = if (settings.subtitleStyle == "Large") 24.sp else 18.sp, modifier = Modifier.background(if (settings.subtitleStyle == "High Contrast") Color.Black else Color.Transparent).padding(14.dp)) }
+        FilterRow("Watched", listOf("false" as String? to "Show", "true" as String? to "Hide"), settings.hideWatchedEpisodes.toString()) { viewModel?.updateHideWatchedEpisodes(it == "true") }
         if (viewModel != null) SecondaryButton("Clear watch history", modifier = Modifier.width(240.dp), onClick = { viewModel.clearWatchProgress() })
     }
 }
@@ -512,6 +536,7 @@ fun DetailsScreen(
     val state by viewModel.details.collectAsState()
     val favorites by viewModel.favoriteIds.collectAsState()
     val progress by viewModel.watchProgress.collectAsState()
+    val settings by viewModel.settings.collectAsState()
 
     when (val s = state) {
         is UiState.Loading -> LoadingState("Loading details…")
@@ -534,7 +559,7 @@ fun DetailsScreen(
                 if (details.seasons.isEmpty()) {
                     item { StateMessage("No episodes available.") }
                 } else {
-                    item { SectionTitle("Episodes") }
+                    item { SectionTitle("Episodes", "${progressForAnime(progress, details.id)}% COMPLETE") }
                     details.seasons.forEach { season ->
                         if (details.seasons.size > 1) {
                             item {
@@ -548,7 +573,7 @@ fun DetailsScreen(
                             }
                         }
                         items(
-                            season.episodes.chunked(EPISODE_GRID_COLUMNS),
+                            season.episodes.filter { ep -> !settings.hideWatchedEpisodes || progress.none { it.animeId == ep.anilistId && it.seasonNumber == season.seasonNumber && it.episodeNumber == ep.episodeNumber && it.audioType == ep.audioType && it.watched } }.chunked(EPISODE_GRID_COLUMNS),
                             key = { row -> row.first().let { "${season.seasonNumber}-${it.episodeNumber}-${it.audioType}" } }
                         ) { rowEpisodes ->
                             Row(
@@ -795,3 +820,11 @@ fun EpisodeDetailsScreen(episode: AnimeEpisode?, viewModel: MiruroViewModel? = n
         }
     }
 }
+
+private fun progressForAnime(progress: List<WatchProgress>, animeId: Int): Int {
+    val items = progress.filter { it.animeId == animeId }
+    if (items.isEmpty()) return 0
+    return (items.map { it.percent }.average() * 100).toInt().coerceIn(0, 100)
+}
+
+private fun formatSavedDate(ms: Long): String = java.text.SimpleDateFormat("MMM d, yyyy", Locale.US).format(java.util.Date(ms))
