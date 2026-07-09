@@ -5,6 +5,12 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ttvralph.miruroapp.data.AniListRepository
+import com.ttvralph.miruroapp.data.AnimeSearchFilters
+import com.ttvralph.miruroapp.data.AnimeSort
+import com.ttvralph.miruroapp.data.AppSettings
+import com.ttvralph.miruroapp.data.PosterGridDensity
+import com.ttvralph.miruroapp.data.SettingsStore
+import com.ttvralph.miruroapp.data.ThemeMode
 import com.ttvralph.miruroapp.data.AnimeDetails
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
@@ -31,6 +37,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     private val repo = AniListRepository()
     private val store = WatchlistStore(application)
     private val progressStore = WatchProgressStore(application)
+    private val settingsStore = SettingsStore(application)
     private val detailsCache = linkedMapOf<Int, AnimeDetails>()
     private val itemCache = linkedMapOf<Int, AnimeItem>()
 
@@ -38,6 +45,8 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     val homeRows: StateFlow<UiState<List<HomeRow>>> = _homeRows.asStateFlow()
 
     private val _searchResults = MutableStateFlow<UiState<List<AnimeItem>>?>(null)
+    private val _recentSearches = MutableStateFlow<List<String>>(emptyList())
+    val recentSearches: StateFlow<List<String>> = _recentSearches.asStateFlow()
     val searchResults: StateFlow<UiState<List<AnimeItem>>?> = _searchResults.asStateFlow()
 
     private val _details = MutableStateFlow<UiState<AnimeDetails>>(UiState.Loading)
@@ -61,6 +70,9 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     val favoriteIds: StateFlow<Set<Int>> =
         store.favoriteIds.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
+    val settings: StateFlow<AppSettings> =
+        settingsStore.settings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
+
     init {
         loadHome()
     }
@@ -77,16 +89,21 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun search(query: String) {
-        val trimmed = query.trim()
-        if (trimmed.isEmpty()) {
+    fun search(query: String) = search(AnimeSearchFilters(query = query))
+
+    fun search(filters: AnimeSearchFilters) {
+        val trimmed = filters.query.trim()
+        if (trimmed.isEmpty() && filters.genre == null && filters.format == null && filters.year == null && filters.status == null) {
             _searchResults.value = null
             return
         }
         viewModelScope.launch {
             _searchResults.value = UiState.Loading
-            runCatching { repo.search(trimmed) }
-                .onSuccess { rememberItems(it); _searchResults.value = UiState.Success(it) }
+            runCatching { repo.search(filters.copy(query = trimmed)) }
+                .onSuccess {
+                    if (trimmed.isNotBlank()) _recentSearches.value = (listOf(trimmed) + _recentSearches.value.filterNot { it.equals(trimmed, true) }).take(8)
+                    rememberItems(it); _searchResults.value = UiState.Success(it)
+                }
                 .onFailure { _searchResults.value = UiState.Error("Search failed. Please try again.") }
         }
     }
@@ -128,10 +145,10 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     fun cachedDetails(id: Int): AnimeDetails? = detailsCache[id]
     fun cachedItem(id: Int): AnimeItem? = itemCache[id]
 
-    fun loadGenre(genre: String, format: String? = null) {
+    fun loadGenre(genre: String, format: String? = null, page: Int = 1, sort: AnimeSort = AnimeSort.POPULARITY, status: String? = null, year: Int? = null) {
         viewModelScope.launch {
             _genreResults.value = UiState.Loading
-            runCatching { repo.browseGenre(genre, format) }
+            runCatching { repo.browseGenre(genre, format, page, sort, status, year) }
                 .onSuccess { rememberItems(it); _genreResults.value = UiState.Success(it) }
                 .onFailure { _genreResults.value = UiState.Error("Could not load $genre anime.") }
         }
@@ -162,10 +179,10 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch { store.setFavorite(id, id !in favoriteIds.value) }
     }
 
-    fun resolvePlayback(episode: AnimeEpisode) {
+    fun resolvePlayback(episode: AnimeEpisode, provider: String? = settings.value.preferredProvider) {
         viewModelScope.launch {
             _playback.value = UiState.Loading
-            val result = runCatching { repo.resolveEpisodeSource(episode) }
+            val result = runCatching { repo.resolveEpisodeSource(episode, provider) }
                 .getOrElse { e ->
                     Log.w("MiruroViewModel", "resolvePlayback failed for anilistId=${episode.anilistId} ep=${episode.episodeNumber}", e)
                     SourceResolution.NotFound(e.message ?: "Unexpected error: ${e::class.simpleName}")
@@ -179,5 +196,20 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearPlayback() {
         _playback.value = null
+    }
+
+    fun updatePreferredAudio(value: com.ttvralph.miruroapp.data.AudioType) { viewModelScope.launch { settingsStore.updatePreferredAudio(value) } }
+    fun updatePreferredProvider(value: String) { viewModelScope.launch { settingsStore.updatePreferredProvider(value) } }
+    fun updateThemeMode(value: ThemeMode) { viewModelScope.launch { settingsStore.updateThemeMode(value) } }
+    fun updatePosterGridDensity(value: PosterGridDensity) { viewModelScope.launch { settingsStore.updatePosterGridDensity(value) } }
+    fun updateAutoPlayNext(value: Boolean) { viewModelScope.launch { settingsStore.updateAutoPlayNext(value) } }
+    fun updateResumePlayback(value: Boolean) { viewModelScope.launch { settingsStore.updateResumePlayback(value) } }
+    fun updateSubtitleLanguage(value: String) { viewModelScope.launch { settingsStore.updateSubtitleLanguage(value) } }
+    fun updateSubtitleStyle(value: String) { viewModelScope.launch { settingsStore.updateSubtitleStyle(value) } }
+
+    fun resolveFavoriteMetadata(ids: Set<Int>) {
+        ids.filter { it !in itemCache }.forEach { id ->
+            viewModelScope.launch { runCatching { repo.details(id) }.onSuccess { details -> detailsCache[id] = details; rememberItems(listOf(AnimeItem(details.id, details.title, details.posterUrl, details.bannerUrl, com.ttvralph.miruroapp.data.AnimeType.UNKNOWN, details.year))) } }
+        }
     }
 }

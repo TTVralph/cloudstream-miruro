@@ -7,6 +7,23 @@ data class AnimeSeason(val id: Int, val seasonNumber: Int, val title: String, va
 data class AnimeEpisode(val seasonNumber: Int, val episodeNumber: Int, val title: String?, val thumbnailUrl: String?, val runtimeMinutes: Int?, val releaseDate: String?, val audioType: AudioType, val anilistId: Int, val sourceCandidates: List<EpisodeSourceCandidate> = emptyList())
 data class EpisodeSourceCandidate(val provider: String, val episodeId: String, val category: String)
 
+enum class AnimeSort(val aniList: String, val label: String) {
+    SEARCH_MATCH("SEARCH_MATCH", "Best match"),
+    POPULARITY("POPULARITY_DESC", "Popularity"),
+    SCORE("SCORE_DESC", "Score"),
+    RELEASE_DATE("START_DATE_DESC", "Release date")
+}
+
+data class AnimeSearchFilters(
+    val query: String = "",
+    val format: String? = null,
+    val year: Int? = null,
+    val genre: String? = null,
+    val status: String? = null,
+    val sort: AnimeSort = AnimeSort.SEARCH_MATCH,
+    val page: Int = 1
+)
+
 data class PlaybackSource(
     val url: String,
     val label: String,

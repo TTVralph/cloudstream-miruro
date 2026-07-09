@@ -28,16 +28,27 @@ class AniListRepository {
         "Anime Movies" to mapOf("format" to "MOVIE", "sort" to listOf("POPULARITY_DESC"))
     ).mapNotNull { (title, vars) -> runCatching { HomeRow(title, mediaPage(vars + mapOf("page" to 1, "perPage" to 20))) }.getOrNull()?.takeIf { it.items.isNotEmpty() } }
 
-    suspend fun search(query: String): List<AnimeItem> = mediaPage(mapOf("search" to query, "page" to 1, "perPage" to 30, "sort" to listOf("SEARCH_MATCH")))
+    suspend fun search(filters: AnimeSearchFilters): List<AnimeItem> = mediaPage(
+        mapOf(
+            "search" to filters.query.takeIf { it.isNotBlank() },
+            "format" to filters.format,
+            "seasonYear" to filters.year,
+            "genre" to filters.genre,
+            "status" to filters.status,
+            "page" to filters.page,
+            "perPage" to 30,
+            "sort" to listOf(filters.sort.aniList)
+        )
+    )
 
     suspend fun browse(format: String): List<AnimeItem> =
         mediaPage(mapOf("format" to format, "page" to 1, "perPage" to 30, "sort" to listOf("POPULARITY_DESC")))
 
-    suspend fun browseGenre(genre: String, format: String? = null): List<AnimeItem> =
-        mediaPage(mapOf("genre" to genre, "format" to format, "page" to 1, "perPage" to 30, "sort" to listOf("POPULARITY_DESC")))
+    suspend fun browseGenre(genre: String, format: String? = null, page: Int = 1, sort: AnimeSort = AnimeSort.POPULARITY, status: String? = null, year: Int? = null): List<AnimeItem> =
+        mediaPage(mapOf("genre" to genre, "format" to format, "page" to page, "perPage" to 30, "sort" to listOf(sort.aniList), "status" to status, "seasonYear" to year))
 
-    suspend fun resolveEpisodeSource(episode: AnimeEpisode): SourceResolution =
-        miruro.resolveSource(episode.anilistId, episode.sourceCandidates)
+    suspend fun resolveEpisodeSource(episode: AnimeEpisode, provider: String? = null): SourceResolution =
+        miruro.resolveSource(episode.anilistId, episode.sourceCandidates.let { candidates -> provider?.takeIf { it != "Auto" }?.let { selected -> candidates.filter { it.provider.equals(selected, ignoreCase = true) } }?.ifEmpty { candidates } ?: candidates })
 
     suspend fun details(id: Int): AnimeDetails = withContext(Dispatchers.IO) {
         val media = anilist(MEDIA_QUERY, mapOf("id" to id)).path("Media")
