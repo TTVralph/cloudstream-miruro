@@ -86,6 +86,8 @@ fun HomeScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit, onPlayP
     val settings by viewModel.settings.collectAsState()
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val progressIds = remember(progress) { progress.map { it.animeId }.toSet() }
+    LaunchedEffect(progressIds) { viewModel.resolveProgressMetadata(progress) }
     when (val s = state) {
         is UiState.Loading -> LoadingState("Loading home rows…")
         is UiState.Error -> ErrorState(s.message) { viewModel.loadHome() }

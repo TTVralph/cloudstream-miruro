@@ -307,7 +307,13 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     fun updateHideWatchedEpisodes(value: Boolean) { viewModelScope.launch { settingsStore.updateHideWatchedEpisodes(value) } }
     fun updateWatchlistSort(value: WatchlistSort) { viewModelScope.launch { settingsStore.updateWatchlistSort(value) } }
 
-    fun resolveFavoriteMetadata(ids: Set<Int>) {
+    fun resolveFavoriteMetadata(ids: Set<Int>) = resolveItemMetadata(ids)
+
+    fun resolveProgressMetadata(progress: List<WatchProgress>) {
+        resolveItemMetadata(progress.map { it.animeId }.toSet())
+    }
+
+    private fun resolveItemMetadata(ids: Set<Int>) {
         ids.filter { it !in itemCache }.forEach { id ->
             viewModelScope.launch {
                 runCatching { repo.details(id) }.onSuccess { details ->
