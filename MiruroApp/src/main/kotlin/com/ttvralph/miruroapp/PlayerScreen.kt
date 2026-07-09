@@ -8,7 +8,6 @@ import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +69,7 @@ import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.PlaybackSource
 import com.ttvralph.miruroapp.data.PlaybackType
 import com.ttvralph.miruroapp.ui.ErrorState
+import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PrimaryButton
@@ -214,12 +214,22 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     when (event.key) {
-                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.MediaPlayPause -> {
+                        Key.MediaPlayPause -> {
                             controlsVisible = true
                             if (!locked) player.playWhenReady = !player.playWhenReady
                             true
                         }
-                        Key.DirectionLeft, Key.MediaRewind -> {
+                        Key.MediaPlay -> {
+                            controlsVisible = true
+                            if (!locked) player.play()
+                            true
+                        }
+                        Key.MediaPause -> {
+                            controlsVisible = true
+                            if (!locked) player.pause()
+                            true
+                        }
+                        Key.MediaRewind -> {
                             controlsVisible = true
                             if (!locked) {
                                 player.seekTo((player.currentPosition - SEEK_INCREMENT_MS).coerceAtLeast(0L))
@@ -227,7 +237,7 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                             }
                             true
                         }
-                        Key.DirectionRight, Key.MediaFastForward -> {
+                        Key.MediaFastForward -> {
                             controlsVisible = true
                             if (!locked) {
                                 player.seekTo(player.currentPosition + SEEK_INCREMENT_MS)
@@ -235,11 +245,38 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
                             }
                             true
                         }
-                        Key.DirectionUp, Key.DirectionDown, Key.MediaPlay, Key.MediaPause -> {
-                            controlsVisible = true
-                            if (!locked && event.key == Key.MediaPlay) player.play()
-                            if (!locked && event.key == Key.MediaPause) player.pause()
-                            true
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            if (controlsVisible) false else {
+                                controlsVisible = true
+                                if (!locked) player.playWhenReady = !player.playWhenReady
+                                true
+                            }
+                        }
+                        Key.DirectionLeft -> {
+                            if (controlsVisible) false else {
+                                controlsVisible = true
+                                if (!locked) {
+                                    player.seekTo((player.currentPosition - SEEK_INCREMENT_MS).coerceAtLeast(0L))
+                                    gestureMessage = "Rewind 10s"
+                                }
+                                true
+                            }
+                        }
+                        Key.DirectionRight -> {
+                            if (controlsVisible) false else {
+                                controlsVisible = true
+                                if (!locked) {
+                                    player.seekTo(player.currentPosition + SEEK_INCREMENT_MS)
+                                    gestureMessage = "Forward 10s"
+                                }
+                                true
+                            }
+                        }
+                        Key.DirectionUp, Key.DirectionDown -> {
+                            if (controlsVisible) false else {
+                                controlsVisible = true
+                                true
+                            }
                         }
                         else -> false
                     }
@@ -477,13 +514,24 @@ private fun PlayerMenu(title: String, modifier: Modifier = Modifier, content: @C
 
 @Composable
 private fun MenuRow(text: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        text = if (selected) "✓ $text" else text,
-        color = if (selected) MiruroColors.Accent else Color.White,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(12.dp),
-        fontSize = 16.sp,
-        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-    )
+    FocusableSurface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        unfocusedBackground = if (selected) MiruroColors.Accent.copy(alpha = 0.18f) else Color.Transparent,
+        focusedBackground = Color.White
+    ) { focused ->
+        Text(
+            text = if (selected) "✓ $text" else text,
+            color = when {
+                focused -> Color.Black
+                selected -> MiruroColors.Accent
+                else -> Color.White
+            },
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            fontSize = 16.sp,
+            fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Normal
+        )
+    }
 }
 
 private fun sourceDisplayLabel(source: PlaybackSource): String {

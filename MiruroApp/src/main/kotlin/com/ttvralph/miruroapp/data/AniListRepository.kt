@@ -58,8 +58,9 @@ class AniListRepository {
         val seasons = chain.mapIndexed { index, entry ->
             val dates = episodeAirDates(entry.id)
             val episodeData = runCatching { miruro.episodeData(entry.id) }.getOrDefault(emptyMap())
-            val episodes = (1..(entry.episodes ?: 0).coerceAtMost(2000)).flatMap { ep ->
-                val metadata = episodeData[ep]?.metadata ?: EpisodeMetadata()
+            val episodeCount = resolvedEpisodeCount(entry, episodeData)
+            val episodes = (1..episodeCount).flatMap { ep ->
+                val metadata = episodeData[ep]?.metadata?.takeIf { isMetadataSafeForSeason(it, entry) } ?: EpisodeMetadata()
                 val epCandidates = episodeData[ep]?.candidates.orEmpty()
                 val episodeTitle = metadata.title ?: "Episode $ep"
                 val grouped = epCandidates.groupBy { it.category.lowercase(Locale.ROOT) }
@@ -78,6 +79,23 @@ class AniListRepository {
         AnimeDetails(id, title, text(media, "coverImage", "extraLarge") ?: text(media, "coverImage", "large"), text(media, "bannerImage"), clean(text(media, "description")), text(media, "status")?.pretty(), media.path("startDate").path("year").asInt(0).takeIf { it > 0 } ?: media.path("seasonYear").asInt(0).takeIf { it > 0 }, media.path("averageScore").asInt(0).takeIf { it > 0 }?.let { "$it% AniList" }, media.path("genres").mapNotNull { it.asText(null) }, seasons)
     }
 
+
+
+    private fun resolvedEpisodeCount(entry: SeasonEntry, episodeData: Map<Int, EpisodeMetadataWithSources>): Int {
+        val anilistCount = entry.episodes?.takeIf { it > 0 }
+        val sourceCount = episodeData.keys.maxOrNull()?.takeIf { it > 0 }
+        return (anilistCount ?: sourceCount ?: 0).coerceAtMost(2000)
+    }
+
+    private fun isMetadataSafeForSeason(metadata: EpisodeMetadata, entry: SeasonEntry): Boolean {
+        val title = metadata.title ?: return true
+        val seasonHint = Regex("""(?i)\b(?:season|s)\s*(\d+)\b""").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: Regex("""(?i)\b(\d+)(?:st|nd|rd|th)\s+season\b""").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: return true
+        val entrySeasonHint = Regex("""(?i)\b(?:season|s)\s*(\d+)\b""").find(entry.title)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: Regex("""(?i)\b(\d+)(?:st|nd|rd|th)\s+season\b""").find(entry.title)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        return entrySeasonHint == null || seasonHint == entrySeasonHint
+    }
 
     private suspend fun mediaPage(vars: Map<String, Any?>): List<AnimeItem> = withContext(Dispatchers.IO) {
         anilist(PAGE_QUERY, vars).path("Page").path("media").mapNotNull { it.toAnimeItem() }
