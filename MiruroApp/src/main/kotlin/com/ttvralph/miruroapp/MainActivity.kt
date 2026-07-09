@@ -91,6 +91,10 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val fullScreenRoute = currentRoute == Routes.Player.route || currentRoute == Routes.Details.route
+    val horizontalPadding = when (currentRoute) {
+        Routes.Home.route -> 0.dp
+        else -> if (fullScreenRoute) 0.dp else 58.dp
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
         Column(
@@ -115,10 +119,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 startDestination = Routes.Home.route,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(
-                        horizontal = if (fullScreenRoute) 0.dp else 58.dp,
-                        vertical = if (fullScreenRoute) 0.dp else 8.dp
-                    )
+                    .padding(horizontal = horizontalPadding, vertical = if (fullScreenRoute) 0.dp else 8.dp)
             ) {
                 composable(Routes.Home.route) {
                     HomeScreen(
