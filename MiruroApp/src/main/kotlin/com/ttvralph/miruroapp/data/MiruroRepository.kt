@@ -80,6 +80,7 @@ class MiruroRepository {
         }
 
         var lastReason = "No playable stream found for this episode."
+        val playableSources = mutableListOf<PlaybackSource>()
         candidates.forEach { candidate ->
             val sources = runCatching { fetchSources(candidate, anilistId) }
                 .onFailure { e ->
@@ -101,30 +102,36 @@ class MiruroRepository {
             }.orEmpty()
 
             val ranked = streamsNode.sortedByDescending { streamRank(it) }
+            var candidateHadUrl = false
             for (stream in ranked) {
                 val rawUrl = streamUrl(stream) ?: continue
                 if (!isValidStreamUrl(rawUrl)) continue
+                candidateHadUrl = true
                 val typeStr = streamType(stream)?.lowercase(Locale.ROOT)
                 val type = playbackType(typeStr, rawUrl)
                 Log.d(
                     TAG,
-                    "resolveSource: selected provider=${candidate.provider} type=$type quality=${streamQuality(stream)} " +
+                    "resolveSource: candidate provider=${candidate.provider} type=$type quality=${streamQuality(stream)} " +
                         "subtitles=${subtitles.size}"
                 )
-                return@withContext SourceResolution.Found(
-                    PlaybackSource(
+                playbackHeaderOptions(candidate.provider).forEach { (headerLabel, headers) ->
+                    playableSources += PlaybackSource(
                         url = rawUrl,
-                        label = "${candidate.provider.uppercase(Locale.ROOT)} ${streamQuality(stream)}",
+                        label = "${candidate.provider.uppercase(Locale.ROOT)} ${streamQuality(stream)}$headerLabel",
                         type = type,
-                        headers = playbackHeaders(),
+                        headers = headers,
                         subtitleTracks = subtitles
                     )
-                )
+                }
             }
-            lastReason = "${candidate.provider}: no valid stream URL in response."
-            Log.w(TAG, "resolveSource: no valid stream URL for provider=${candidate.provider}")
+            if (!candidateHadUrl) {
+                lastReason = "${candidate.provider}: no valid stream URL in response."
+                Log.w(TAG, "resolveSource: no valid stream URL for provider=${candidate.provider}")
+            }
         }
-        SourceResolution.NotFound(lastReason)
+
+        val first = playableSources.firstOrNull() ?: return@withContext SourceResolution.NotFound(lastReason)
+        SourceResolution.Found(first.copy(fallbackSources = playableSources.drop(1)))
     }
 
     private fun fetchSources(candidate: EpisodeSourceCandidate, anilistId: Int): JsonNode {
@@ -281,13 +288,32 @@ class MiruroRepository {
         return formatScore + qualityRank(streamQuality(node))
     }
 
-    // Matches MiruroProvider.kt (the known-good Cloudstream extension): always Miruro's own
-    // Referer/Origin, regardless of which upstream provider served the stream.
-    private fun playbackHeaders(): Map<String, String> = mapOf(
-        "Referer" to "$MIRURO_URL/",
-        "Origin" to MIRURO_URL,
-        "User-Agent" to headers.getValue("User-Agent")
-    )
+    private fun playbackHeaderOptions(provider: String): List<Pair<String, Map<String, String>>> {
+        val userAgent = headers.getValue("User-Agent")
+        val miruroRefererOnly = mapOf(
+            "Referer" to "$MIRURO_URL/",
+            "User-Agent" to userAgent
+        )
+        val miruroWithOrigin = miruroRefererOnly + mapOf("Origin" to MIRURO_URL)
+        val providerReferer = when (provider.lowercase(Locale.ROOT)) {
+            "animepahe" -> "https://kwik.si/"
+            "gogoanime" -> "https://gogocdn.net/"
+            else -> null
+        }
+        val providerHeaders = providerReferer?.let { referer ->
+            " provider-headers" to mapOf(
+                "Referer" to referer,
+                "Origin" to referer.trimEnd('/'),
+                "User-Agent" to userAgent
+            )
+        }
+        return listOfNotNull(
+            "" to miruroRefererOnly,
+            " miruro-origin" to miruroWithOrigin,
+            providerHeaders,
+            " no-headers" to emptyMap()
+        ).distinctBy { it.second }
+    }
 
     private fun providerRank(provider: String): Int {
         val index = PROVIDER_PRIORITY.indexOf(provider.lowercase(Locale.ROOT))
