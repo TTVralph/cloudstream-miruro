@@ -110,8 +110,10 @@ private fun VideoPlayer(source: PlaybackSource, episode: AnimeEpisode, viewModel
     var speedMenuVisible by remember(source) { mutableStateOf(false) }
     val activeSource = sources[sourceIndex]
     val settings = viewModel.settings.collectAsState().value
-    val preferredSubtitleIndex = remember(source, settings.subtitleLanguage) { preferredSubtitleIndex(source.subtitleTracks, settings.subtitleLanguage) }
-    var subtitleIndex by remember(source, preferredSubtitleIndex) { mutableIntStateOf(preferredSubtitleIndex) }
+    val preferredSubtitleIndex = remember(activeSource, settings.subtitleLanguage) {
+        preferredSubtitleIndex(activeSource.subtitleTracks, settings.subtitleLanguage)
+    }
+    var subtitleIndex by remember(activeSource, preferredSubtitleIndex) { mutableIntStateOf(preferredSubtitleIndex) }
     val savedProgress = viewModel.watchProgress.collectAsState().value.firstOrNull {
         it.animeId == episode.anilistId && it.seasonNumber == episode.seasonNumber && it.episodeNumber == episode.episodeNumber && it.audioType == episode.audioType
     }
