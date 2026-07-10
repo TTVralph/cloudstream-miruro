@@ -493,6 +493,10 @@ private fun CinematicCard(
         label = "cardScale"
     )
 
+    LaunchedEffect(focused) {
+        if (focused) onFocused()
+    }
+
     val focusModifier = when {
         focusRequester != null && upFocusRequester != null -> Modifier
             .focusRequester(focusRequester)
@@ -519,7 +523,6 @@ private fun CinematicCard(
                 indication = null,
                 onClick = onClick
             )
-            .onFocusChanged { if (it.isFocused) onFocused() }
     ) {
         AsyncImage(
             model = item.bannerUrl ?: item.posterUrl,
