@@ -58,7 +58,7 @@ internal object ContinueWatchingMetadataStore {
                 .filterNot { it in _items.value }
                 .take(MAX_BATCH_SIZE)
                 .toList()
-            if (missing.isEmpty()) return
+            if (missing.isEmpty()) return@withLock
 
             val fetched = runCatching { fetch(missing) }.getOrDefault(emptyList())
             if (fetched.isNotEmpty()) {
