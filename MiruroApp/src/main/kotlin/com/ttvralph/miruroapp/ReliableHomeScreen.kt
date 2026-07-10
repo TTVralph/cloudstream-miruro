@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeType
+import com.ttvralph.miruroapp.data.HomeRow
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.LoadingState
@@ -52,7 +53,7 @@ fun ReliableHomeScreen(
     var automaticRetries by remember { mutableIntStateOf(0) }
 
     val rows = remember(state) {
-        (state as? UiState.Success)
+        (state as? UiState.Success<List<HomeRow>>)
             ?.data
             ?.takeIf { it.isNotEmpty() }
             ?.let(HomePresentationRows::collapsed)
