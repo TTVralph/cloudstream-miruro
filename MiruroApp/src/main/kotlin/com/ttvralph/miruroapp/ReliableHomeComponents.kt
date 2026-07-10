@@ -1,7 +1,5 @@
 package com.ttvralph.miruroapp
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -37,21 +35,34 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.ui.MiruroColors
 import java.util.Locale
 
 @Composable
 internal fun ReliableBackdrop(item: AnimeItem, dim: Float) {
+    val context = LocalContext.current
+    val artwork = item.bannerUrl ?: item.posterUrl
+    val imageRequest = remember(artwork) {
+        ImageRequest.Builder(context)
+            .data(artwork)
+            .size(1280, 720)
+            .crossfade(false)
+            .allowHardware(true)
+            .build()
+    }
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AsyncImage(
-            model = item.bannerUrl ?: item.posterUrl,
+            model = imageRequest,
             contentDescription = item.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
@@ -234,11 +245,18 @@ internal fun ReliableHomeCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (focused) 1.08f else 1f,
-        animationSpec = tween(150),
-        label = "reliableCardScale"
-    )
+    val scale = if (focused) 1.04f else 1f
+    val context = LocalContext.current
+    val artwork = item.bannerUrl ?: item.posterUrl
+    val imageRequest = remember(artwork) {
+        ImageRequest.Builder(context)
+            .data(artwork)
+            .size(456, 256)
+            .crossfade(false)
+            .allowHardware(true)
+            .build()
+    }
+
     var modifier = Modifier
         .width(ReliableCardWidth)
         .height(ReliableCardHeight)
@@ -256,7 +274,7 @@ internal fun ReliableHomeCard(
 
     Box(modifier) {
         AsyncImage(
-            model = item.bannerUrl ?: item.posterUrl,
+            model = imageRequest,
             contentDescription = item.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()

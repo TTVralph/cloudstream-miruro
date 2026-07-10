@@ -1,7 +1,5 @@
 package com.ttvralph.miruroapp
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +38,8 @@ import com.ttvralph.miruroapp.ui.StateMessage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private const val HOME_PROGRESS_METADATA_LIMIT = 8
+
 @Composable
 fun ReliableHomeScreen(
     viewModel: MiruroViewModel,
@@ -60,12 +60,19 @@ fun ReliableHomeScreen(
     val metadataVersion by viewModel.itemMetadataVersion.collectAsState()
     val context = LocalContext.current
     val cache = remember(context) { HomeCatalogueCache(context.applicationContext) }
-    var savedRows by remember(cache) { mutableStateOf(cache.read().collapseHomeFranchises()) }
+    var savedRows by remember(cache) { mutableStateOf<List<HomeRow>>(emptyList()) }
     var automaticRetries by remember { mutableIntStateOf(0) }
 
-    val networkRows = (state as? UiState.Success<List<HomeRow>>)
-        ?.data
-        ?.collapseHomeFranchises()
+    LaunchedEffect(cache) {
+        val cachedRows = cache.read().collapseHomeFranchises()
+        if (cachedRows.isNotEmpty()) savedRows = cachedRows
+    }
+
+    val networkRows = remember(state) {
+        (state as? UiState.Success<List<HomeRow>>)
+            ?.data
+            ?.collapseHomeFranchises()
+    }
     val rows = networkRows?.takeIf { it.isNotEmpty() } ?: savedRows
 
     LaunchedEffect(networkRows) {
@@ -84,7 +91,7 @@ fun ReliableHomeScreen(
         }
     }
 
-    val unfinished = remember(progress, settings.preferredAudio, metadataVersion) {
+    val unfinished = remember(progress, settings.preferredAudio) {
         progress.filterNot { it.watched }
             .groupBy { Triple(it.animeId, it.seasonNumber, it.episodeNumber) }
             .mapNotNull { (_, versions) ->
@@ -92,10 +99,7 @@ fun ReliableHomeScreen(
                     ?: versions.maxByOrNull { it.updatedAtMs }
             }
             .sortedByDescending { it.updatedAtMs }
-            .take(20)
-    }
-    LaunchedEffect(progress.map { it.animeId }.toSet()) {
-        viewModel.resolveProgressMetadata(progress)
+            .take(HOME_PROGRESS_METADATA_LIMIT)
     }
 
     if (rows.isEmpty()) {
@@ -110,10 +114,12 @@ fun ReliableHomeScreen(
         return
     }
 
-    val initial = rows.asSequence()
-        .flatMap { it.items.asSequence() }
-        .firstOrNull { !it.bannerUrl.isNullOrBlank() }
-        ?: rows.first().items.first()
+    val initial = remember(rows) {
+        rows.asSequence()
+            .flatMap { it.items.asSequence() }
+            .firstOrNull { !it.bannerUrl.isNullOrBlank() }
+            ?: rows.asSequence().flatMap { it.items.asSequence() }.first()
+    }
     val resumeItems = remember(unfinished, metadataVersion) {
         unfinished.map { saved ->
             ReliableResumeItem(
@@ -128,74 +134,43 @@ fun ReliableHomeScreen(
             )
         }
     }
-    val allItems = remember(rows, resumeItems, initial) {
-        (listOf(initial) + resumeItems.map { it.anime } + rows.flatMap { it.items })
-            .distinctBy { it.id }
-    }
+
     val listState = rememberLazyListState()
     val playFocus = remember { FocusRequester() }
     val firstRowFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
-    var activeRow by remember(initial.id) { mutableIntStateOf(-1) }
-    var pendingHeroId by remember(initial.id) { mutableIntStateOf(initial.id) }
-    var activeHeroId by remember(initial.id) { mutableIntStateOf(initial.id) }
-    var movingToFirstRow by remember { mutableStateOf(false) }
-    val activeHero = allItems.firstOrNull { it.id == activeHeroId } ?: initial
-    val contentRowCount = rows.size + if (resumeItems.isNotEmpty()) 1 else 0
+    var browsingRows by remember(initial.id) { mutableStateOf(false) }
 
+    val showHero: () -> Unit = {
+        if (browsingRows) {
+            browsingRows = false
+            scope.launch { runCatching { listState.scrollToItem(0) } }
+        }
+    }
     val moveToFirstRow: () -> Unit = {
-        if (!movingToFirstRow && contentRowCount > 0) {
-            movingToFirstRow = true
-            scope.launch {
-                activeRow = 0
-                runCatching { listState.scrollToItem(1) }
-                delay(70L)
-                runCatching { firstRowFocus.requestFocus() }
-                delay(140L)
-                movingToFirstRow = false
-            }
-        }
+        runCatching { firstRowFocus.requestFocus() }
     }
 
-    LaunchedEffect(pendingHeroId) {
-        delay(360L)
-        activeHeroId = pendingHeroId
-    }
-    LaunchedEffect(activeRow, contentRowCount) {
-        delay(110L)
-        val target = if (activeRow < 0) 0 else (activeRow + 1).coerceIn(1, contentRowCount)
-        if (listState.firstVisibleItemIndex != target) {
-            runCatching { listState.scrollToItem(target) }
-        }
-    }
     LaunchedEffect(Unit) {
-        delay(240L)
+        delay(200L)
         runCatching { playFocus.requestFocus() }
     }
 
-    val heroAlpha by animateFloatAsState(
-        targetValue = if (activeRow < 0) 1f else 0f,
-        animationSpec = tween(170),
-        label = "reliableHeroAlpha"
-    )
-    val backdropDim by animateFloatAsState(
-        targetValue = if (activeRow < 0) 0.26f else 0.86f,
-        animationSpec = tween(190),
-        label = "reliableBackdropDim"
-    )
+    val heroAlpha = if (browsingRows) 0f else 1f
+    val backdropDim = if (browsingRows) 0.90f else 0.30f
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        ReliableBackdrop(activeHero, backdropDim)
+        ReliableBackdrop(initial, backdropDim)
         ReliableHero(
-            item = activeHero,
-            inList = activeHero.id in favorites,
+            item = initial,
+            inList = initial.id in favorites,
             alpha = heroAlpha,
             playFocus = playFocus,
             firstRowFocus = firstRowFocus,
-            onFocused = { if (activeRow != -1) activeRow = -1 },
+            onFocused = showHero,
             onMoveDown = moveToFirstRow,
-            onPlay = { onOpenDetails(activeHero.id) },
-            onList = { viewModel.toggleFavorite(activeHero.id) }
+            onPlay = { onOpenDetails(initial.id) },
+            onList = { viewModel.toggleFavorite(initial.id) }
         )
 
         LazyColumn(
@@ -207,7 +182,8 @@ fun ReliableHomeScreen(
             item("reliable-hero-space") { Spacer(Modifier.height(405.dp)) }
             var rowNumber = 0
             if (resumeItems.isNotEmpty()) {
-                val row = rowNumber++
+                val first = rowNumber == 0
+                rowNumber += 1
                 item("reliable-resume") {
                     ReliableHomeRow("Continue Watching") {
                         LazyRow(
@@ -225,12 +201,9 @@ fun ReliableHomeScreen(
                                     item = item.anime,
                                     progress = item.progress.percent,
                                     supportingText = "S${item.progress.seasonNumber} E${item.progress.episodeNumber}",
-                                    focusRequester = if (index == 0) firstRowFocus else null,
-                                    upFocusRequester = playFocus,
-                                    onFocused = {
-                                        if (activeRow != row) activeRow = row
-                                        pendingHeroId = item.anime.id
-                                    },
+                                    focusRequester = if (first && index == 0) firstRowFocus else null,
+                                    upFocusRequester = if (first) playFocus else null,
+                                    onFocused = { if (!browsingRows) browsingRows = true },
                                     onClick = { onPlayProgress(item.progress) }
                                 )
                             }
@@ -239,8 +212,8 @@ fun ReliableHomeScreen(
                 }
             }
             rows.forEach { homeRow ->
-                val row = rowNumber++
-                val first = row == 0
+                val first = rowNumber == 0
+                rowNumber += 1
                 item("reliable-row-${homeRow.title}") {
                     ReliableHomeRow(homeRow.title) {
                         LazyRow(
@@ -258,10 +231,7 @@ fun ReliableHomeScreen(
                                     item = anime,
                                     focusRequester = if (first && index == 0) firstRowFocus else null,
                                     upFocusRequester = if (first) playFocus else null,
-                                    onFocused = {
-                                        if (activeRow != row) activeRow = row
-                                        pendingHeroId = anime.id
-                                    },
+                                    onFocused = { if (!browsingRows) browsingRows = true },
                                     onClick = { onOpenDetails(anime.id) }
                                 )
                             }
