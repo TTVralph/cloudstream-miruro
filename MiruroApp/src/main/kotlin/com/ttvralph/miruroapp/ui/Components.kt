@@ -123,8 +123,6 @@ fun TopBar(
         Spacer(Modifier.weight(1f))
         HeaderIcon(Icons.Filled.Search, "Search", selected = current == "Search", onClick = onSearch)
         Spacer(Modifier.width(14.dp))
-        HeaderBadge("•")
-        Spacer(Modifier.width(14.dp))
         HeaderIcon(Icons.Filled.Settings, "Settings", selected = current == "Settings", onClick = onSettings)
         Spacer(Modifier.width(16.dp))
         AvatarDot()
@@ -145,12 +143,39 @@ fun Logo(modifier: Modifier = Modifier) {
 
 @Composable
 private fun NavPill(label: String, selected: Boolean, onClick: () -> Unit) {
-    FocusableSurface(onClick = onClick, modifier = Modifier.height(48.dp).width(if (label.length > 8) 154.dp else 92.dp), shape = RoundedCornerShape(999.dp), unfocusedBackground = Color.Transparent, focusedBackground = Color.White.copy(alpha = 0.10f)) { focused ->
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(label, color = if (selected || focused) MiruroColors.Text else MiruroColors.Muted, fontSize = 16.sp, fontWeight = if (selected) FontWeight.Black else FontWeight.Bold, maxLines = 1)
-            Spacer(Modifier.height(5.dp))
-            Box(Modifier.width(32.dp).height(3.dp).clip(RoundedCornerShape(99.dp)).background(if (selected) MiruroColors.Accent else Color.Transparent))
-        }
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val scale by animateFloatAsState(if (focused) 1.06f else 1f, label = "navFocusScale")
+    Column(
+        modifier = Modifier
+            .height(48.dp)
+            .width(if (label.length > 8) 150.dp else 88.dp)
+            .scale(scale)
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            label,
+            color = when {
+                focused -> MiruroColors.AccentSoft
+                selected -> MiruroColors.Text
+                else -> MiruroColors.Muted
+            },
+            fontSize = 16.sp,
+            fontWeight = if (selected || focused) FontWeight.Black else FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(5.dp))
+        Box(
+            Modifier
+                .width(if (selected || focused) 34.dp else 0.dp)
+                .height(3.dp)
+                .clip(RoundedCornerShape(99.dp))
+                .background(if (focused) MiruroColors.AccentSoft else if (selected) MiruroColors.Accent else Color.Transparent)
+        )
     }
 }
 
@@ -160,13 +185,6 @@ private fun HeaderIcon(icon: ImageVector, label: String, selected: Boolean = fal
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = label, tint = if (focused) Color.Black else MiruroColors.Text, modifier = Modifier.size(23.dp))
         }
-    }
-}
-
-@Composable
-private fun HeaderBadge(text: String) {
-    Box(Modifier.size(42.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.04f)), contentAlignment = Alignment.Center) {
-        Text(text, color = MiruroColors.AccentSoft, fontSize = 28.sp, fontWeight = FontWeight.Black)
     }
 }
 

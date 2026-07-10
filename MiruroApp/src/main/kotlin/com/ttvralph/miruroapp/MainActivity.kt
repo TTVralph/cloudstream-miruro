@@ -91,10 +91,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val fullScreenRoute = currentRoute == Routes.Player.route || currentRoute == Routes.Details.route
-    val horizontalPadding = when (currentRoute) {
-        Routes.Home.route -> 0.dp
-        else -> if (fullScreenRoute) 0.dp else 58.dp
-    }
+    val horizontalPadding = if (fullScreenRoute) 0.dp else 58.dp
 
     Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
         Column(
@@ -203,8 +200,8 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
 
 private fun findEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType): AnimeEpisode? {
     val episodes = viewModel.cachedDetails(animeId)?.seasons?.firstOrNull { it.seasonNumber == season }?.episodes.orEmpty()
-    return episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == viewModel.settings.value.preferredAudio }
-        ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
+    return episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
+        ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == viewModel.settings.value.preferredAudio }
         ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.sourceCandidates.isNotEmpty() }
 }
 
