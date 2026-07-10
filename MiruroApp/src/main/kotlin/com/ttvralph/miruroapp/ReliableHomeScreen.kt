@@ -101,14 +101,6 @@ fun ReliableHomeScreen(
             .sortedByDescending { it.updatedAtMs }
             .take(HOME_PROGRESS_METADATA_LIMIT)
     }
-    val progressAnimeIds = remember(unfinished) { unfinished.map { it.animeId }.toSet() }
-    LaunchedEffect(progressAnimeIds) {
-        if (unfinished.isNotEmpty()) {
-            // Let the catalogue and first visible artwork settle before starting details lookups.
-            delay(1_500L)
-            viewModel.resolveProgressMetadata(unfinished)
-        }
-    }
 
     if (rows.isEmpty()) {
         when (val current = state) {
@@ -126,7 +118,7 @@ fun ReliableHomeScreen(
         rows.asSequence()
             .flatMap { it.items.asSequence() }
             .firstOrNull { !it.bannerUrl.isNullOrBlank() }
-            ?: rows.first().items.first()
+            ?: rows.asSequence().flatMap { it.items.asSequence() }.first()
     }
     val resumeItems = remember(unfinished, metadataVersion) {
         unfinished.map { saved ->
@@ -168,8 +160,6 @@ fun ReliableHomeScreen(
     val backdropDim = if (browsingRows) 0.90f else 0.30f
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        // Keep one backdrop for the whole Home visit. Swapping a full-screen image on every
-        // focused card was the largest source of frame drops and memory pressure on TV devices.
         ReliableBackdrop(initial, backdropDim)
         ReliableHero(
             item = initial,
