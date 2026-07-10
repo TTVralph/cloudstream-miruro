@@ -20,13 +20,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeType
 import com.ttvralph.miruroapp.data.HomeRow
@@ -42,13 +41,6 @@ private const val HOME_PROGRESS_METADATA_LIMIT = 8
 @Composable
 fun ReliableHomeScreen(
     viewModel: MiruroViewModel,
-    onHome: () -> Unit,
-    onAnime: () -> Unit,
-    onMovies: () -> Unit,
-    onDiscover: () -> Unit,
-    onMyList: () -> Unit,
-    onSearch: () -> Unit,
-    onSettings: () -> Unit,
     onOpenDetails: (Int) -> Unit,
     onPlayProgress: (WatchProgress) -> Unit
 ) {
@@ -130,13 +122,20 @@ fun ReliableHomeScreen(
     val playFocus = remember { FocusRequester() }
     val firstRowFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
-    var browsingRows by remember(initial.id) { mutableStateOf(false) }
+    var browsingRows by rememberSaveable(initial.id) { mutableStateOf(false) }
     var movingToRows by remember(initial.id) { mutableStateOf(false) }
+    var movingToHero by remember(initial.id) { mutableStateOf(false) }
 
-    val showHero: () -> Unit = {
-        if (browsingRows) {
-            browsingRows = false
-            scope.launch { runCatching { listState.scrollToItem(0) } }
+    val showHero: () -> Unit = show@{
+        if (!browsingRows || movingToHero) return@show
+        movingToHero = true
+        scope.launch {
+            try {
+                runCatching { listState.scrollToItem(0) }
+                browsingRows = false
+            } finally {
+                movingToHero = false
+            }
         }
     }
     val moveToFirstRow: () -> Unit = move@{
@@ -154,9 +153,11 @@ fun ReliableHomeScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        delay(200L)
-        runCatching { playFocus.requestFocus() }
+    LaunchedEffect(initial.id, browsingRows) {
+        if (!browsingRows) {
+            delay(160L)
+            runCatching { playFocus.requestFocus() }
+        }
     }
 
     val heroAlpha = if (browsingRows) 0f else 1f
@@ -243,17 +244,5 @@ fun ReliableHomeScreen(
                 }
             }
         }
-
-        ReliableTopBar(
-            current = "Home",
-            onHome = onHome,
-            onAnime = onAnime,
-            onMovies = onMovies,
-            onDiscover = onDiscover,
-            onMyList = onMyList,
-            onSearch = onSearch,
-            onSettings = onSettings,
-            modifier = Modifier.align(Alignment.TopCenter).zIndex(10f)
-        )
     }
 }
