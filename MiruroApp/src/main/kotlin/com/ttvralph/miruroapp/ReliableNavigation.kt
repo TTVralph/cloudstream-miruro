@@ -97,12 +97,14 @@ internal class HomeCatalogueCache(context: Context) {
     private val preferences = context.getSharedPreferences("anistream_home_catalogue", Context.MODE_PRIVATE)
     private val mapper = jacksonObjectMapper()
 
-    fun read(): List<HomeRow> = runCatching {
-        val json = preferences.getString(KEY_ROWS, null) ?: return emptyList()
-        mapper.readValue(json, object : TypeReference<List<HomeRow>>() {})
-    }.getOrElse {
-        preferences.edit().remove(KEY_ROWS).apply()
-        emptyList()
+    suspend fun read(): List<HomeRow> = withContext(Dispatchers.IO) {
+        val json = preferences.getString(KEY_ROWS, null) ?: return@withContext emptyList()
+        runCatching {
+            mapper.readValue(json, object : TypeReference<List<HomeRow>>() {})
+        }.getOrElse {
+            preferences.edit().remove(KEY_ROWS).apply()
+            emptyList()
+        }
     }
 
     suspend fun write(rows: List<HomeRow>) = withContext(Dispatchers.IO) {
