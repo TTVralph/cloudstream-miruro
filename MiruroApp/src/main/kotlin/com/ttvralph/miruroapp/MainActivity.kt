@@ -92,7 +92,9 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val fullScreenRoute = currentRoute == Routes.Player.route || currentRoute == Routes.Details.route
-    val edgeToEdgeRoute = fullScreenRoute || currentRoute == Routes.Home.route
+    val homeRoute = currentRoute == Routes.Home.route
+    val edgeToEdgeRoute = fullScreenRoute || homeRoute
+    val showTopBar = !fullScreenRoute && !homeRoute
     val horizontalPadding = if (edgeToEdgeRoute) 0.dp else 58.dp
     val verticalPadding = if (edgeToEdgeRoute) 0.dp else 8.dp
 
@@ -102,7 +104,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 .fillMaxSize()
                 .background(MiruroColors.Background)
         ) {
-            if (!fullScreenRoute) {
+            if (showTopBar) {
                 FollowupTopBar(
                     current = navLabelFor(currentRoute),
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
@@ -122,8 +124,15 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             ) {
                 composable(Routes.Home.route) {
-                    FollowupHomeScreen(
+                    CinematicHomeScreen(
                         viewModel = viewModel,
+                        onHome = { navController.navigateTopLevel(Routes.Home.route) },
+                        onAnime = { navController.navigateTopLevel(Routes.Series.route) },
+                        onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
+                        onNewPopular = { navController.navigateTopLevel(Routes.Genres.route) },
+                        onMyList = { navController.navigateTopLevel(Routes.Favorites.route) },
+                        onSearch = { navController.navigateTopLevel(Routes.Search.route) },
+                        onSettings = { navController.navigateTopLevel(Routes.Settings.route) },
                         onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
                         onPlayProgress = { progress ->
                             navController.navigate(
