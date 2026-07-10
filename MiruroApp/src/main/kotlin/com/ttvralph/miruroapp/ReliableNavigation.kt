@@ -57,7 +57,9 @@ internal object ReliableHomeFocusBridge {
     var playRequester: FocusRequester? = null
 
     fun requestPlay(): Boolean = runCatching {
-        playRequester?.requestFocus() == true
+        val requester = playRequester ?: return@runCatching false
+        requester.requestFocus()
+        true
     }.getOrDefault(false)
 }
 
