@@ -124,7 +124,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             ) {
                 composable(Routes.Home.route) {
-                    CinematicHomeScreen(
+                    StitchHomeScreen(
                         viewModel = viewModel,
                         onHome = { navController.navigateTopLevel(Routes.Home.route) },
                         onAnime = { navController.navigateTopLevel(Routes.Series.route) },
