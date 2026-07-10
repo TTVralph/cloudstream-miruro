@@ -129,7 +129,11 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     SearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Favorites.route) {
-                    FavoritesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    WatchManagementScreen(
+                        viewModel = viewModel,
+                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
+                        onPlayProgress = { progress -> navController.navigate(Routes.Player.path(progress.animeId, progress.seasonNumber, progress.episodeNumber, progress.audioType)) }
+                    )
                 }
                 composable(Routes.Movies.route) {
                     MoviesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
