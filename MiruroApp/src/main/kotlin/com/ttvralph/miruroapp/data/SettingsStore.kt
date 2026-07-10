@@ -46,7 +46,9 @@ class SettingsStore(private val context: Context) {
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
         AppSettings(
             preferredAudio = prefs[Keys.preferredAudio]?.let { runCatching { AudioType.valueOf(it) }.getOrNull() } ?: AudioType.SUB,
-            preferredProvider = prefs[Keys.preferredProvider] ?: "Auto",
+            // Provider availability changes per title and episode. Always resolve in Auto mode so
+            // an old saved provider cannot strand playback on a dead source such as Kiwi.
+            preferredProvider = "Auto",
             themeMode = prefs[Keys.themeMode]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.DARK,
             posterGridDensity = prefs[Keys.posterGridDensity]?.let { runCatching { PosterGridDensity.valueOf(it) }.getOrNull() } ?: PosterGridDensity.COMFORTABLE,
             autoPlayNext = prefs[Keys.autoPlayNext] ?: false,
@@ -60,7 +62,11 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun updatePreferredAudio(value: AudioType) { context.settingsDataStore.edit { it[Keys.preferredAudio] = value.name } }
-    suspend fun updatePreferredProvider(value: String) { context.settingsDataStore.edit { it[Keys.preferredProvider] = value } }
+    suspend fun updatePreferredProvider(value: String) {
+        // Keep the key for backwards compatibility, but Auto is the only global mode. Provider
+        // choices are exposed by the player after all providers for the episode have resolved.
+        context.settingsDataStore.edit { it[Keys.preferredProvider] = "Auto" }
+    }
     suspend fun updateThemeMode(value: ThemeMode) { context.settingsDataStore.edit { it[Keys.themeMode] = value.name } }
     suspend fun updatePosterGridDensity(value: PosterGridDensity) { context.settingsDataStore.edit { it[Keys.posterGridDensity] = value.name } }
     suspend fun updateAutoPlayNext(value: Boolean) { context.settingsDataStore.edit { it[Keys.autoPlayNext] = value } }
