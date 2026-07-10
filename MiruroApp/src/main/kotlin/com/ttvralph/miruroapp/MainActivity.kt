@@ -91,7 +91,9 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val fullScreenRoute = currentRoute == Routes.Player.route || currentRoute == Routes.Details.route
+    val fullScreenRoute = currentRoute == Routes.Player.route ||
+        currentRoute == Routes.Details.route ||
+        currentRoute == Routes.Episode.route
     val homeRoute = currentRoute == Routes.Home.route
     val edgeToEdgeRoute = fullScreenRoute || homeRoute
     val showTopBar = !fullScreenRoute && !homeRoute
@@ -105,7 +107,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 .background(MiruroColors.Background)
         ) {
             if (showTopBar) {
-                FollowupTopBar(
+                StableTopBar(
                     current = navLabelFor(currentRoute),
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
                     onAnime = { navController.navigateTopLevel(Routes.Series.route) },
@@ -124,7 +126,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             ) {
                 composable(Routes.Home.route) {
-                    StitchHomeScreen(
+                    StableHomeScreen(
                         viewModel = viewModel,
                         onHome = { navController.navigateTopLevel(Routes.Home.route) },
                         onAnime = { navController.navigateTopLevel(Routes.Series.route) },
@@ -147,16 +149,26 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     )
                 }
                 composable(Routes.Search.route) {
-                    FollowupSearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    StableSearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Favorites.route) {
                     FavoritesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Movies.route) {
-                    MoviesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    StableBrowseScreen(
+                        title = "Movies",
+                        format = "MOVIE",
+                        viewModel = viewModel,
+                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) }
+                    )
                 }
                 composable(Routes.Series.route) {
-                    SeriesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    StableBrowseScreen(
+                        title = "Anime",
+                        format = "TV",
+                        viewModel = viewModel,
+                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) }
+                    )
                 }
                 composable(Routes.Genres.route) {
                     TvGenresScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
@@ -169,7 +181,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     arguments = listOf(navArgument(Args.ID) { type = NavType.IntType })
                 ) { entry ->
                     val id = entry.arguments?.getInt(Args.ID) ?: return@composable
-                    TvDetailsScreen(
+                    StableDetailsScreen(
                         viewModel = viewModel,
                         animeId = id,
                         onBack = { navController.popBackStack() },
@@ -197,9 +209,14 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                         ?.let { runCatching { AudioType.valueOf(it) }.getOrNull() }
                         ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
-                    FollowupEpisodeDetailsScreen(episode, viewModel) {
-                        navController.navigate(Routes.Player.path(id, season, episodeNumber, audio))
-                    }
+                    StableEpisodeDetailsScreen(
+                        episode = episode,
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() },
+                        onPlay = {
+                            navController.navigate(Routes.Player.path(id, season, episodeNumber, audio))
+                        }
+                    )
                 }
                 composable(
                     Routes.Player.route,
