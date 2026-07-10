@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeType
+import com.ttvralph.miruroapp.data.HomeRow
 import com.ttvralph.miruroapp.data.PosterGridDensity
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.LoadingState
@@ -48,35 +49,36 @@ fun ReliableBrowseScreen(
 ) {
     val moviesState by viewModel.movies.collectAsState()
     val seriesState by viewModel.series.collectAsState()
+    val homeState by viewModel.homeRows.collectAsState()
     val state = if (format == "MOVIE") moviesState else seriesState
     val settings by viewModel.settings.collectAsState()
     val context = LocalContext.current
     val cache = remember(context, format) {
         BrowseCatalogueCache(context.applicationContext, format)
     }
-    val homeFallback = remember(context, format) {
-        HomeCatalogueCache(context.applicationContext)
-            .read()
-            .flatMap { it.items }
-            .filter { item ->
-                if (format == "MOVIE") item.type == AnimeType.MOVIE
-                else item.type == AnimeType.TV
-            }
-            .distinctBy { it.id }
+    val persistedHomeFallback = remember(context, format) {
+        catalogueItemsForFormat(
+            HomeCatalogueCache(context.applicationContext).read(),
+            format
+        )
+    }
+    val liveHomeFallback = remember(homeState, format) {
+        val rows = (homeState as? UiState.Success<List<HomeRow>>)?.data.orEmpty()
+        catalogueItemsForFormat(rows, format)
     }
     var savedItems by remember(cache, format) {
-        val cached = cache.read().ifEmpty { homeFallback }
-        mutableStateOf(
-            if (format == "TV") cached.collapseSeasonEntries() else cached
-        )
+        val cached = cache.read().ifEmpty { persistedHomeFallback }
+        mutableStateOf(normalizeBrowseItems(cached, format))
     }
     var automaticRetries by remember(format) { mutableIntStateOf(0) }
 
     val networkItems = (state as? UiState.Success<List<AnimeItem>>)
         ?.data
-        ?.let { if (format == "TV") it.collapseSeasonEntries() else it }
+        ?.let { normalizeBrowseItems(it, format) }
         .orEmpty()
-    val visibleItems = networkItems.ifEmpty { savedItems }
+    val visibleItems = networkItems
+        .ifEmpty { savedItems }
+        .ifEmpty { liveHomeFallback }
 
     LaunchedEffect(format) {
         if (format == "MOVIE") viewModel.loadMovies() else viewModel.loadSeries()
@@ -122,7 +124,7 @@ fun ReliableBrowseScreen(
 
         if (state is UiState.Error) {
             Text(
-                "Showing the last available catalogue while AniList reconnects.",
+                "Showing available saved titles while AniList reconnects.",
                 color = MiruroColors.Subtle,
                 fontSize = 13.sp
             )
@@ -154,3 +156,16 @@ fun ReliableBrowseScreen(
         }
     }
 }
+
+private fun catalogueItemsForFormat(rows: List<HomeRow>, format: String): List<AnimeItem> =
+    normalizeBrowseItems(
+        rows.flatMap { it.items }.filter { item ->
+            if (format == "MOVIE") item.type == AnimeType.MOVIE
+            else item.type == AnimeType.TV
+        },
+        format
+    )
+
+private fun normalizeBrowseItems(items: List<AnimeItem>, format: String): List<AnimeItem> =
+    if (format == "TV") items.collapseSeasonEntries()
+    else items.distinctBy { it.id }
