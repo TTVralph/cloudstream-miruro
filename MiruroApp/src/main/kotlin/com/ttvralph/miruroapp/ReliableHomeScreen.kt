@@ -28,7 +28,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeType
-import com.ttvralph.miruroapp.data.HomeRow
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.LoadingState
@@ -49,22 +48,17 @@ fun ReliableHomeScreen(
     val progress by viewModel.watchProgress.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val metadataVersion by viewModel.itemMetadataVersion.collectAsState()
-    var sessionRows by remember { mutableStateOf<List<HomeRow>>(emptyList()) }
+    val resumeMetadata by ContinueWatchingMetadataStore.items.collectAsState()
     var automaticRetries by remember { mutableIntStateOf(0) }
 
-    val networkRows = remember(state) {
-        (state as? UiState.Success<List<HomeRow>>)
+    val rows = remember(state) {
+        (state as? UiState.Success)
             ?.data
-            ?.collapseHomeFranchises()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let(HomePresentationRows::collapsed)
+            .orEmpty()
     }
-    val rows = networkRows?.takeIf { it.isNotEmpty() } ?: sessionRows
 
-    LaunchedEffect(networkRows) {
-        if (!networkRows.isNullOrEmpty()) {
-            automaticRetries = 0
-            sessionRows = networkRows
-        }
-    }
     LaunchedEffect(state) {
         if (state is UiState.Error && automaticRetries < 3) {
             val waitMs = listOf(1_500L, 3_500L, 7_000L)[automaticRetries]
@@ -87,7 +81,9 @@ fun ReliableHomeScreen(
 
     LaunchedEffect(unfinished) {
         if (unfinished.isNotEmpty()) {
-            viewModel.resolveProgressMetadata(unfinished)
+            // Let Home draw and receive focus before doing one small metadata request.
+            delay(300L)
+            ContinueWatchingMetadataStore.resolve(unfinished.map { it.animeId }.toSet())
         }
     }
 
@@ -109,16 +105,18 @@ fun ReliableHomeScreen(
             .firstOrNull { !it.bannerUrl.isNullOrBlank() }
             ?: rows.asSequence().flatMap { it.items.asSequence() }.first()
     }
-    val resumeItems = remember(unfinished, metadataVersion) {
+    val resumeItems = remember(unfinished, metadataVersion, resumeMetadata) {
         unfinished.map { saved ->
             ReliableResumeItem(
-                viewModel.cachedItem(saved.animeId) ?: AnimeItem(
-                    saved.animeId,
-                    "Saved anime",
-                    null,
-                    null,
-                    AnimeType.UNKNOWN
-                ),
+                resumeMetadata[saved.animeId]
+                    ?: viewModel.cachedItem(saved.animeId)
+                    ?: AnimeItem(
+                        saved.animeId,
+                        "Saved anime",
+                        null,
+                        null,
+                        AnimeType.UNKNOWN
+                    ),
                 saved
             )
         }
