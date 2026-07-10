@@ -6,16 +6,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -104,35 +105,25 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
         currentRoute == Routes.Details.route ||
         currentRoute == Routes.Episode.route
     val homeRoute = currentRoute == Routes.Home.route
-    val edgeToEdgeRoute = fullScreenRoute || homeRoute
-    val showTopBar = !fullScreenRoute && !homeRoute
-    val horizontalPadding = if (edgeToEdgeRoute) 0.dp else 58.dp
-    val verticalPadding = if (edgeToEdgeRoute) 0.dp else 8.dp
+    val currentLabel = navLabelFor(currentRoute)
+    val topLevelRoute = currentLabel.isNotEmpty()
+    val horizontalPadding = if (fullScreenRoute || homeRoute) 0.dp else 58.dp
+    val topPadding = if (topLevelRoute && !homeRoute) ReliableNavHeight + 8.dp else 0.dp
+    val bottomPadding = if (topLevelRoute && !homeRoute) 8.dp else 0.dp
 
     Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MiruroColors.Background)
-        ) {
-            if (showTopBar) {
-                ReliableTopBar(
-                    current = navLabelFor(currentRoute),
-                    onHome = { navController.navigateTopLevel(Routes.Home.route) },
-                    onAnime = { navController.navigateTopLevel(Routes.Series.route) },
-                    onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
-                    onDiscover = { navController.navigateTopLevel(Routes.Genres.route) },
-                    onMyList = { navController.navigateTopLevel(Routes.Favorites.route) },
-                    onSearch = { navController.navigateTopLevel(Routes.Search.route) },
-                    onSettings = { navController.navigateTopLevel(Routes.Settings.route) }
-                )
-            }
+        Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
                 navController = navController,
                 startDestination = Routes.Home.route,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+                    .padding(
+                        start = horizontalPadding,
+                        top = topPadding,
+                        end = horizontalPadding,
+                        bottom = bottomPadding
+                    ),
                 enterTransition = { EnterTransition.None },
                 exitTransition = { ExitTransition.None },
                 popEnterTransition = { EnterTransition.None },
@@ -141,13 +132,6 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 composable(Routes.Home.route) {
                     ReliableHomeScreen(
                         viewModel = viewModel,
-                        onHome = { navController.navigateTopLevel(Routes.Home.route) },
-                        onAnime = { navController.navigateTopLevel(Routes.Series.route) },
-                        onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
-                        onDiscover = { navController.navigateTopLevel(Routes.Genres.route) },
-                        onMyList = { navController.navigateTopLevel(Routes.Favorites.route) },
-                        onSearch = { navController.navigateTopLevel(Routes.Search.route) },
-                        onSettings = { navController.navigateTopLevel(Routes.Settings.route) },
                         onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
                         onPlayProgress = { progress ->
                             navController.navigate(
@@ -272,6 +256,22 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                         }
                     )
                 }
+            }
+
+            if (topLevelRoute) {
+                ReliableTopBar(
+                    current = currentLabel,
+                    onHome = { navController.navigateTopLevel(Routes.Home.route) },
+                    onAnime = { navController.navigateTopLevel(Routes.Series.route) },
+                    onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
+                    onDiscover = { navController.navigateTopLevel(Routes.Genres.route) },
+                    onMyList = { navController.navigateTopLevel(Routes.Favorites.route) },
+                    onSearch = { navController.navigateTopLevel(Routes.Search.route) },
+                    onSettings = { navController.navigateTopLevel(Routes.Settings.route) },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .zIndex(100f)
+                )
             }
         }
     }
