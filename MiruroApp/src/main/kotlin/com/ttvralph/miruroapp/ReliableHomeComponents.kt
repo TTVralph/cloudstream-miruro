@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -109,6 +110,15 @@ internal fun ReliableHero(
     onPlay: () -> Unit,
     onList: () -> Unit
 ) {
+    DisposableEffect(playFocus) {
+        ReliableHomeFocusBridge.playRequester = playFocus
+        onDispose {
+            if (ReliableHomeFocusBridge.playRequester === playFocus) {
+                ReliableHomeFocusBridge.playRequester = null
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .padding(start = ReliableSafeX, top = 188.dp)
@@ -196,8 +206,7 @@ internal fun ReliableHeroButton(
     Box(
         modifier = modifier
             .height(52.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (primary || focused) Color.White else Color(0xFF4A4A4A).copy(alpha = 0.88f))
+            .onFocusChanged { if (it.hasFocus) onFocused() }
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
                     onDown()
@@ -206,8 +215,9 @@ internal fun ReliableHeroButton(
                     false
                 }
             }
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .onFocusChanged { if (it.hasFocus) onFocused() },
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (primary || focused) Color.White else Color(0xFF4A4A4A).copy(alpha = 0.88f))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -260,6 +270,27 @@ internal fun ReliableHomeCard(
     var modifier = Modifier
         .width(ReliableCardWidth)
         .height(ReliableCardHeight)
+
+    if (focusRequester != null) {
+        modifier = modifier.focusRequester(focusRequester)
+    }
+    if (upFocusRequester != null) {
+        modifier = modifier.focusProperties { up = upFocusRequester }
+    }
+
+    modifier = modifier
+        .onFocusChanged { if (it.hasFocus) onFocused() }
+        .onPreviewKeyEvent { event ->
+            if (
+                upFocusRequester != null &&
+                event.type == KeyEventType.KeyDown &&
+                event.key == Key.DirectionUp
+            ) {
+                runCatching { upFocusRequester.requestFocus() }.getOrDefault(false)
+            } else {
+                false
+            }
+        }
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
@@ -268,9 +299,6 @@ internal fun ReliableHomeCard(
         .clip(RoundedCornerShape(ReliableRadius))
         .background(Color(0xFF171717))
         .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-        .onFocusChanged { if (it.hasFocus) onFocused() }
-    if (focusRequester != null) modifier = modifier.focusRequester(focusRequester)
-    if (upFocusRequester != null) modifier = modifier.focusProperties { up = upFocusRequester }
 
     Box(modifier) {
         AsyncImage(
