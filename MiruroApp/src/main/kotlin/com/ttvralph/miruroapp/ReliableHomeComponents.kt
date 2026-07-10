@@ -286,7 +286,10 @@ internal fun ReliableHomeCard(
                 event.type == KeyEventType.KeyDown &&
                 event.key == Key.DirectionUp
             ) {
-                runCatching { upFocusRequester.requestFocus() }.getOrDefault(false)
+                runCatching {
+                    upFocusRequester.requestFocus()
+                    true
+                }.getOrDefault(false)
             } else {
                 false
             }
