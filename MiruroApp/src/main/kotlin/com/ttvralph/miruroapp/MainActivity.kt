@@ -75,6 +75,12 @@ private fun NavHostController.navigateTopLevel(route: String) {
     }
 }
 
+private fun NavHostController.backOrHome() {
+    if (!popBackStack()) {
+        navigateTopLevel(Routes.Home.route)
+    }
+}
+
 private fun navLabelFor(route: String?): String = when (route) {
     Routes.Home.route -> "Home"
     Routes.Search.route -> "Search"
@@ -149,10 +155,14 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     )
                 }
                 composable(Routes.Search.route) {
-                    AuditSearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    AuditSearchScreen(viewModel) { id ->
+                        navController.navigate(Routes.Details.path(id))
+                    }
                 }
                 composable(Routes.Favorites.route) {
-                    FavoritesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    FavoritesScreen(viewModel) { id ->
+                        navController.navigate(Routes.Details.path(id))
+                    }
                 }
                 composable(Routes.Movies.route) {
                     ReliableBrowseScreen(
@@ -171,7 +181,9 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     )
                 }
                 composable(Routes.Genres.route) {
-                    ReliableDiscoverScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    ReliableDiscoverScreen(viewModel) { id ->
+                        navController.navigate(Routes.Details.path(id))
+                    }
                 }
                 composable(Routes.Settings.route) {
                     AuditSettingsScreen(viewModel)
@@ -184,7 +196,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     AuditDetailsScreen(
                         viewModel = viewModel,
                         animeId = id,
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.backOrHome() },
                         onOpenEpisode = { season, episode, audio ->
                             navController.navigate(Routes.Episode.path(id, season, episode, audio))
                         },
@@ -209,10 +221,10 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                         ?.let { runCatching { AudioType.valueOf(it) }.getOrNull() }
                         ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
-                    AuditEpisodeDetailsScreen(
+                    AutomaticEpisodeDetailsScreen(
                         episode = episode,
                         viewModel = viewModel,
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.backOrHome() },
                         onPlay = {
                             navController.navigate(Routes.Player.path(id, season, episodeNumber, audio))
                         }
@@ -235,11 +247,11 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                         ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
                     val nextEpisode = findNextEpisode(viewModel, id, season, episodeNumber, audio)
-                    TvPlayerScreen(
+                    GuardedTvPlayerScreen(
                         viewModel = viewModel,
                         episode = episode,
                         nextEpisode = nextEpisode,
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.backOrHome() },
                         onPlayNext = { next ->
                             navController.popBackStack()
                             navController.navigate(
@@ -272,9 +284,12 @@ private fun findEpisode(
         .orEmpty()
     return episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
         ?: episodes.firstOrNull {
-            it.episodeNumber == episodeNumber && it.audioType == viewModel.settings.value.preferredAudio
+            it.episodeNumber == episodeNumber &&
+                it.audioType == viewModel.settings.value.preferredAudio
         }
-        ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.sourceCandidates.isNotEmpty() }
+        ?: episodes.firstOrNull {
+            it.episodeNumber == episodeNumber && it.sourceCandidates.isNotEmpty()
+        }
 }
 
 private fun findNextEpisode(
@@ -292,11 +307,16 @@ private fun findNextEpisode(
                 .groupBy { it.episodeNumber }
                 .mapNotNull { (_, versions) ->
                     versions.firstOrNull { it.audioType == audio }
-                        ?: versions.firstOrNull { it.audioType == viewModel.settings.value.preferredAudio }
+                        ?: versions.firstOrNull {
+                            it.audioType == viewModel.settings.value.preferredAudio
+                        }
                         ?: versions.firstOrNull()
                 }
         }
-        .sortedWith(compareBy<AnimeEpisode> { it.seasonNumber }.thenBy { it.episodeNumber })
+        .sortedWith(
+            compareBy<AnimeEpisode> { it.seasonNumber }
+                .thenBy { it.episodeNumber }
+        )
         .firstOrNull {
             it.seasonNumber > season ||
                 (it.seasonNumber == season && it.episodeNumber > episodeNumber)
