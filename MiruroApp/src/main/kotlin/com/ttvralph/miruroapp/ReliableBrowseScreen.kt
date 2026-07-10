@@ -56,19 +56,15 @@ fun ReliableBrowseScreen(
     val cache = remember(context, format) {
         BrowseCatalogueCache(context.applicationContext, format)
     }
-    val persistedHomeFallback = remember(context, format) {
-        catalogueItemsForFormat(
-            HomeCatalogueCache(context.applicationContext).read(),
-            format
-        )
+    var persistedHomeFallback by remember(context, format) {
+        mutableStateOf<List<AnimeItem>>(emptyList())
     }
     val liveHomeFallback = remember(homeState, format) {
         val rows = (homeState as? UiState.Success<List<HomeRow>>)?.data.orEmpty()
         catalogueItemsForFormat(rows, format)
     }
     var savedItems by remember(cache, format) {
-        val cached = cache.read().ifEmpty { persistedHomeFallback }
-        mutableStateOf(normalizeBrowseItems(cached, format))
+        mutableStateOf(normalizeBrowseItems(cache.read(), format))
     }
     var automaticRetries by remember(format) { mutableIntStateOf(0) }
 
@@ -78,8 +74,15 @@ fun ReliableBrowseScreen(
         .orEmpty()
     val visibleItems = networkItems
         .ifEmpty { savedItems }
+        .ifEmpty { persistedHomeFallback }
         .ifEmpty { liveHomeFallback }
 
+    LaunchedEffect(context, format) {
+        persistedHomeFallback = catalogueItemsForFormat(
+            HomeCatalogueCache(context.applicationContext).read(),
+            format
+        )
+    }
     LaunchedEffect(format) {
         if (format == "MOVIE") viewModel.loadMovies() else viewModel.loadSeries()
     }
