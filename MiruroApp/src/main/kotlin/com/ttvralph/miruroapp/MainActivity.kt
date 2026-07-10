@@ -247,7 +247,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                         ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
                     val nextEpisode = findNextEpisode(viewModel, id, season, episodeNumber, audio)
-                    TvPlayerScreen(
+                    GuardedTvPlayerScreen(
                         viewModel = viewModel,
                         episode = episode,
                         nextEpisode = nextEpisode,
