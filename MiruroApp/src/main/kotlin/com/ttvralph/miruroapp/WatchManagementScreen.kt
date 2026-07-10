@@ -54,10 +54,12 @@ fun WatchManagementScreen(
     val progress by viewModel.watchProgress.collectAsState()
     val settings by viewModel.settings.collectAsState()
     var showClearHistoryDialog by remember { mutableStateOf(false) }
+    var showClearCompletedDialog by remember { mutableStateOf(false) }
 
     val favoriteIds = remember(entries) { entries.map { it.id }.toSet() }
     val progressIds = remember(progress) { progress.map { it.animeId }.toSet() }
     val unfinished = remember(progress) { progress.filterNot { it.watched }.take(20) }
+    val completed = remember(progress) { progress.filter { it.watched } }
 
     LaunchedEffect(favoriteIds) { viewModel.resolveFavoriteMetadata(favoriteIds) }
     LaunchedEffect(progressIds) { viewModel.resolveProgressMetadata(progress) }
@@ -66,7 +68,7 @@ fun WatchManagementScreen(
         AlertDialog(
             onDismissRequest = { showClearHistoryDialog = false },
             title = { Text("Clear all watch history?") },
-            text = { Text("This removes every saved episode position and Continue Watching entry. Your My List items stay saved.") },
+            text = { Text("This removes every saved episode position, Continue Watching entry, and completed episode. Your My List items stay saved.") },
             confirmButton = {
                 SecondaryButton(
                     text = "Clear all",
@@ -87,6 +89,33 @@ fun WatchManagementScreen(
         )
     }
 
+    if (showClearCompletedDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearCompletedDialog = false },
+            title = { Text("Clear completed history?") },
+            text = { Text("This removes completed episodes from Recently Watched. Unfinished Continue Watching progress and My List stay unchanged.") },
+            confirmButton = {
+                SecondaryButton(
+                    text = "Clear completed",
+                    modifier = Modifier.width(190.dp),
+                    onClick = {
+                        completed.forEach { item ->
+                            viewModel.setEpisodeWatched(item.toEpisodeStub(), false)
+                        }
+                        showClearCompletedDialog = false
+                    }
+                )
+            },
+            dismissButton = {
+                SecondaryButton(
+                    text = "Cancel",
+                    modifier = Modifier.width(130.dp),
+                    onClick = { showClearCompletedDialog = false }
+                )
+            }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 40.dp)
@@ -94,7 +123,7 @@ fun WatchManagementScreen(
         item {
             SectionTitle("My List & Watch History")
             Text(
-                text = "Resume episodes, clean up Continue Watching, and manage saved anime without changing playback or source behavior.",
+                text = "Resume unfinished episodes, replay completed ones, and manage saved anime in one place.",
                 color = MiruroColors.Muted,
                 fontSize = 15.sp,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -178,6 +207,91 @@ fun WatchManagementScreen(
         }
 
         item {
+            SectionTitle(
+                text = "Recently Watched",
+                badge = "HISTORY",
+                trailing = if (completed.isNotEmpty()) {
+                    {
+                        SecondaryButton(
+                            text = "Clear completed",
+                            modifier = Modifier.width(185.dp),
+                            onClick = { showClearCompletedDialog = true }
+                        )
+                    }
+                } else {
+                    null
+                }
+            )
+        }
+
+        if (completed.isEmpty()) {
+            item { StateMessage("Completed episodes will appear here, newest first.") }
+        } else {
+            item {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(22.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp)
+                ) {
+                    items(completed.take(20), key = { it.key }) { item ->
+                        val anime = viewModel.cachedItem(item.animeId) ?: item.toFallbackAnimeItem()
+                        Column(modifier = Modifier.width(330.dp)) {
+                            LandscapeCard(
+                                item = anime,
+                                width = 330.dp,
+                                height = 180.dp,
+                                progressPercent = 1f,
+                                onClick = { onPlayProgress(item) }
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = item.progressLabel(),
+                                color = MiruroColors.AccentSoft,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Watched ${formatHistoryDate(item.updatedAtMs)}",
+                                color = MiruroColors.Muted,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SecondaryButton(
+                                    text = "Replay",
+                                    modifier = Modifier.width(150.dp),
+                                    onClick = { onPlayProgress(item) }
+                                )
+                                SecondaryButton(
+                                    text = "Details",
+                                    modifier = Modifier.width(150.dp),
+                                    onClick = { onOpenDetails(item.animeId) }
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                SecondaryButton(
+                                    text = "Mark unwatched",
+                                    modifier = Modifier.width(190.dp),
+                                    onClick = { markProgressUnwatched(viewModel, item) }
+                                )
+                                SecondaryButton(
+                                    text = "Remove",
+                                    modifier = Modifier.width(110.dp),
+                                    onClick = { viewModel.setEpisodeWatched(item.toEpisodeStub(), false) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
             SectionTitle("My List", "SAVED")
         }
 
@@ -230,10 +344,11 @@ fun WatchManagementScreen(
                                     text = if (latestProgress.watched) "Mark episode unwatched" else "Mark episode watched",
                                     modifier = Modifier.fillMaxWidth(),
                                     onClick = {
-                                        viewModel.setEpisodeWatched(
-                                            latestProgress.toEpisodeStub(),
-                                            !latestProgress.watched
-                                        )
+                                        if (latestProgress.watched) {
+                                            markProgressUnwatched(viewModel, latestProgress)
+                                        } else {
+                                            viewModel.setEpisodeWatched(latestProgress.toEpisodeStub(), true)
+                                        }
                                     }
                                 )
                             }
@@ -260,6 +375,12 @@ private fun sortWatchlist(
     }
 
     WatchlistSort.RECENTLY_ADDED -> entries.sortedByDescending { it.addedAtMs }
+}
+
+private fun markProgressUnwatched(viewModel: MiruroViewModel, item: WatchProgress) {
+    val duration = item.durationMs.coerceAtLeast(10_000L)
+    val position = minOf(item.positionMs, duration / 2L).coerceAtLeast(1_000L)
+    viewModel.saveProgress(item.toEpisodeStub(), position, duration)
 }
 
 private fun WatchProgress.toEpisodeStub(): AnimeEpisode = AnimeEpisode(
@@ -312,6 +433,9 @@ private fun formatTimeShort(milliseconds: Long): String {
 
 private fun formatSavedDate(milliseconds: Long): String =
     SimpleDateFormat("MMM d, yyyy", Locale.US).format(Date(milliseconds))
+
+private fun formatHistoryDate(milliseconds: Long): String =
+    SimpleDateFormat("MMM d • h:mm a", Locale.US).format(Date(milliseconds))
 
 private fun posterWidth(density: PosterGridDensity) = when (density) {
     PosterGridDensity.COMPACT -> 150.dp
