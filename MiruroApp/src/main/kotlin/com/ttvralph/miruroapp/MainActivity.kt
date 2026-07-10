@@ -103,7 +103,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 .background(MiruroColors.Background)
         ) {
             if (!fullScreenRoute) {
-                TvTopBar(
+                FollowupTopBar(
                     current = navLabelFor(currentRoute),
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
                     onAnime = { navController.navigateTopLevel(Routes.Series.route) },
@@ -122,7 +122,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             ) {
                 composable(Routes.Home.route) {
-                    TvHomeScreen(
+                    FollowupHomeScreen(
                         viewModel = viewModel,
                         onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
                         onPlayProgress = { progress ->
@@ -138,7 +138,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     )
                 }
                 composable(Routes.Search.route) {
-                    TvSearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    FollowupSearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Favorites.route) {
                     FavoritesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
@@ -153,7 +153,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     TvGenresScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Settings.route) {
-                    TvSettingsScreen(viewModel)
+                    FollowupSettingsScreen(viewModel)
                 }
                 composable(
                     Routes.Details.route,
@@ -188,7 +188,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                         ?.let { runCatching { AudioType.valueOf(it) }.getOrNull() }
                         ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
-                    EpisodeDetailsScreen(episode, viewModel) {
+                    FollowupEpisodeDetailsScreen(episode, viewModel) {
                         navController.navigate(Routes.Player.path(id, season, episodeNumber, audio))
                     }
                 }

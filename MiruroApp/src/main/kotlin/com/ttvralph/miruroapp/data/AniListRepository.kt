@@ -8,6 +8,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -40,9 +41,7 @@ class AniListRepository {
                 HomeRow(title, mediaPage(variables + mapOf("page" to 1, "perPage" to 20)))
             }.onSuccess { row ->
                 if (row.items.isNotEmpty()) rows += row
-            }.onFailure { error ->
-                lastFailure = error
-            }
+            }.onFailure { lastFailure = it }
         }
         if (rows.isEmpty() && lastFailure != null) {
             throw IOException("AniList could not load the home catalogue.", lastFailure)
@@ -51,33 +50,47 @@ class AniListRepository {
     }
 
     suspend fun search(filters: AnimeSearchFilters): List<AnimeItem> {
-        val sort = if (filters.sort == AnimeSort.SEARCH_MATCH && filters.query.isBlank()) {
-            AnimeSort.POPULARITY
-        } else {
-            filters.sort
-        }
-        return mediaPage(
-            mapOf(
-                "search" to filters.query.takeIf { it.isNotBlank() },
-                "format" to filters.format,
-                "seasonYear" to filters.year,
-                "genreIn" to filters.genres.takeIf { it.isNotEmpty() },
-                "status" to filters.status,
-                "page" to filters.page,
-                "perPage" to 30,
-                "sort" to listOf(sort.aniList)
+        val query = filters.query.trim()
+        val variables = linkedMapOf<String, Any?>(
+            "page" to filters.page,
+            "perPage" to 30
+        ).apply {
+            query.takeIf { it.isNotBlank() }?.let { put("search", it) }
+            filters.format?.let { put("format", it) }
+            filters.year?.let { put("seasonYear", it) }
+            filters.genres.takeIf { it.isNotEmpty() }?.let { put("genreIn", it) }
+            filters.status?.let { put("status", it) }
+            put(
+                "sort",
+                listOf(
+                    when {
+                        query.isBlank() && filters.sort == AnimeSort.SEARCH_MATCH -> AnimeSort.POPULARITY.aniList
+                        else -> filters.sort.aniList
+                    }
+                )
             )
-        )
+        }
+
+        val first = mediaPage(variables)
+        if (first.isNotEmpty() || query.isBlank()) return first
+
+        delay(180L)
+        val retryVariables = variables.toMutableMap().apply {
+            put("search", query.lowercase(Locale.ROOT))
+            remove("sort")
+        }
+        return mediaPage(retryVariables)
     }
 
-    suspend fun browse(format: String, page: Int = 1): List<AnimeItem> = mediaPage(
-        mapOf(
-            "format" to format,
-            "page" to page,
-            "perPage" to 30,
-            "sort" to listOf("POPULARITY_DESC")
+    suspend fun browse(format: String, page: Int = 1): List<AnimeItem> =
+        mediaPage(
+            linkedMapOf(
+                "format" to format,
+                "page" to page,
+                "perPage" to 30,
+                "sort" to listOf("POPULARITY_DESC")
+            )
         )
-    )
 
     suspend fun browseGenre(
         genres: List<String>,
@@ -86,17 +99,35 @@ class AniListRepository {
         sort: AnimeSort = AnimeSort.POPULARITY,
         status: String? = null,
         year: Int? = null
-    ): List<AnimeItem> = mediaPage(
-        mapOf(
-            "genreIn" to genres.takeIf { it.isNotEmpty() },
-            "format" to format,
+    ): List<AnimeItem> {
+        val variables = linkedMapOf<String, Any?>(
             "page" to page,
             "perPage" to 30,
-            "sort" to listOf(sort.aniList),
-            "status" to status,
-            "seasonYear" to year
-        )
-    )
+            "sort" to listOf(
+                if (sort == AnimeSort.SEARCH_MATCH) AnimeSort.POPULARITY.aniList else sort.aniList
+            )
+        ).apply {
+            genres.takeIf { it.isNotEmpty() }?.let { put("genreIn", it) }
+            format?.let { put("format", it) }
+            status?.let { put("status", it) }
+            year?.let { put("seasonYear", it) }
+        }
+
+        val first = mediaPage(variables)
+        if (first.isNotEmpty()) return first
+
+        if (genres.isEmpty() && format == null && status == null && year == null) {
+            delay(180L)
+            return mediaPage(
+                linkedMapOf(
+                    "page" to page,
+                    "perPage" to 30,
+                    "sort" to listOf("TRENDING_DESC")
+                )
+            )
+        }
+        return first
+    }
 
     suspend fun resolveEpisodeSource(episode: AnimeEpisode, provider: String? = null): SourceResolution =
         miruro.resolveSource(
@@ -117,6 +148,7 @@ class AniListRepository {
         val chain = runCatching { findSeasonChain(root) }
             .getOrDefault(listOf(root))
             .ifEmpty { listOf(root) }
+
         val seasons = chain.mapIndexed { index, entry ->
             val dates = episodeAirDates(entry.id)
             val episodeData = runCatching { miruro.episodeData(entry.id) }.getOrDefault(emptyMap())
@@ -129,6 +161,7 @@ class AniListRepository {
                 val candidates = episodeData[episodeNumber]?.candidates.orEmpty()
                 val episodeTitle = metadata.title ?: "Episode $episodeNumber"
                 val grouped = candidates.groupBy { it.category.lowercase(Locale.ROOT) }
+
                 when {
                     grouped.isEmpty() -> listOf(
                         AnimeEpisode(
@@ -188,6 +221,7 @@ class AniListRepository {
             }
             AnimeSeason(entry.id, index + 1, entry.title, entry.year, episodes)
         }
+
         AnimeDetails(
             id = id,
             title = title,
@@ -213,8 +247,7 @@ class AniListRepository {
     }
 
     private fun contiguousEpisodeCount(numbers: Collection<Int>): Int {
-        val sorted = numbers
-            .asSequence()
+        val sorted = numbers.asSequence()
             .filter { it in 1..MAX_EPISODES_PER_SEASON }
             .distinct()
             .sorted()
@@ -224,8 +257,7 @@ class AniListRepository {
         var lastAccepted = 0
         for (number in sorted) {
             if (number <= lastAccepted) continue
-            val missingBetween = number - lastAccepted - 1
-            if (missingBetween > MAX_ALLOWED_EPISODE_GAP) break
+            if (number - lastAccepted - 1 > MAX_ALLOWED_EPISODE_GAP) break
             lastAccepted = number
         }
         return lastAccepted
@@ -245,12 +277,13 @@ class AniListRepository {
         return entrySeasonHint == null || seasonHint == entrySeasonHint
     }
 
-    private suspend fun mediaPage(variables: Map<String, Any?>): List<AnimeItem> = withContext(Dispatchers.IO) {
-        val page = anilist(PAGE_QUERY, variables).path("Page")
-        val media = page.path("media")
-        if (!media.isArray) throw IOException("AniList returned an invalid catalogue response.")
-        media.mapNotNull { it.toAnimeItem() }
-    }
+    private suspend fun mediaPage(variables: Map<String, Any?>): List<AnimeItem> =
+        withContext(Dispatchers.IO) {
+            val page = anilist(PAGE_QUERY, variables.filterValues { it != null }).path("Page")
+            val media = page.path("media")
+            if (!media.isArray) throw IOException("AniList returned an invalid catalogue response.")
+            media.mapNotNull { it.toAnimeItem() }
+        }
 
     private fun JsonNode.toAnimeItem(): AnimeItem? {
         val id = path("id").asInt(0).takeIf { it > 0 } ?: return null
@@ -309,15 +342,18 @@ class AniListRepository {
         )
     }
 
-    private suspend fun episodeAirDates(id: Int): Map<Int, String> = dateCache[id] ?: runCatching {
-        anilist(AIRING_QUERY, mapOf("mediaId" to id))
-            .path("Page")
-            .path("airingSchedules")
-            .associate { it.path("episode").asInt() to epochDate(it.path("airingAt").asLong()) }
-    }.getOrDefault(emptyMap()).also { dateCache[id] = it }
+    private suspend fun episodeAirDates(id: Int): Map<Int, String> =
+        dateCache[id] ?: runCatching {
+            anilist(AIRING_QUERY, mapOf("mediaId" to id))
+                .path("Page")
+                .path("airingSchedules")
+                .associate { it.path("episode").asInt() to epochDate(it.path("airingAt").asLong()) }
+        }.getOrDefault(emptyMap()).also { dateCache[id] = it }
 
     private fun anilist(query: String, variables: Map<String, Any?>): JsonNode {
-        val requestBody = mapper.writeValueAsString(mapOf("query" to query, "variables" to variables))
+        val requestBody = mapper.writeValueAsString(
+            mapOf("query" to query, "variables" to variables.filterValues { it != null })
+        )
         val request = Request.Builder()
             .url("https://graphql.anilist.co")
             .post(requestBody.toRequestBody(jsonType))
