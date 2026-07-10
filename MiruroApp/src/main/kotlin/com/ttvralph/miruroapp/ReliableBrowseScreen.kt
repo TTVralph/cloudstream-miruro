@@ -24,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,48 +51,35 @@ fun ReliableBrowseScreen(
     val homeState by viewModel.homeRows.collectAsState()
     val state = if (format == "MOVIE") moviesState else seriesState
     val settings by viewModel.settings.collectAsState()
-    val context = LocalContext.current
-    val cache = remember(context, format) {
-        BrowseCatalogueCache(context.applicationContext, format)
+    var sessionItems by remember(format) { mutableStateOf<List<AnimeItem>>(emptyList()) }
+    var automaticRetries by remember(format) { mutableIntStateOf(0) }
+
+    val networkItems = remember(state, format) {
+        (state as? UiState.Success<List<AnimeItem>>)
+            ?.data
+            ?.let { normalizeBrowseItems(it, format) }
+            .orEmpty()
     }
     val liveHomeFallback = remember(homeState, format) {
         val rows = (homeState as? UiState.Success<List<HomeRow>>)?.data.orEmpty()
         catalogueItemsForFormat(rows, format)
     }
-    var savedItems by remember(cache, format) {
-        mutableStateOf<List<AnimeItem>>(emptyList())
-    }
-    var automaticRetries by remember(format) { mutableIntStateOf(0) }
-
-    val networkItems = (state as? UiState.Success<List<AnimeItem>>)
-        ?.data
-        ?.let { normalizeBrowseItems(it, format) }
-        .orEmpty()
     val visibleItems = networkItems
-        .ifEmpty { savedItems }
+        .ifEmpty { sessionItems }
         .ifEmpty { liveHomeFallback }
 
-    LaunchedEffect(cache, context, format) {
-        val persistedHomeFallback = catalogueItemsForFormat(
-            HomeCatalogueCache(context.applicationContext).read(),
-            format
-        )
-        val cachedItems = cache.read().ifEmpty { persistedHomeFallback }
-        savedItems = normalizeBrowseItems(cachedItems, format)
-    }
     LaunchedEffect(format) {
         if (format == "MOVIE") viewModel.loadMovies() else viewModel.loadSeries()
     }
     LaunchedEffect(networkItems) {
         if (networkItems.isNotEmpty()) {
             automaticRetries = 0
-            savedItems = networkItems
-            cache.write(networkItems)
+            sessionItems = networkItems
         }
     }
     LaunchedEffect(state) {
-        if (state is UiState.Error && automaticRetries < 3) {
-            val waitMs = listOf(1_200L, 3_000L, 6_000L)[automaticRetries]
+        if (state is UiState.Error && automaticRetries < 2) {
+            val waitMs = listOf(1_200L, 3_000L)[automaticRetries]
             automaticRetries += 1
             delay(waitMs)
             if (format == "MOVIE") viewModel.loadMovies(force = true)
@@ -125,7 +111,7 @@ fun ReliableBrowseScreen(
 
         if (state is UiState.Error) {
             Text(
-                "Showing available saved titles while AniList reconnects.",
+                "Showing titles already loaded in this app session while AniList reconnects.",
                 color = MiruroColors.Subtle,
                 fontSize = 13.sp
             )
