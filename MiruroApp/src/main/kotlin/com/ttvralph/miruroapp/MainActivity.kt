@@ -221,7 +221,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                         ?.let { runCatching { AudioType.valueOf(it) }.getOrNull() }
                         ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
-                    AuditEpisodeDetailsScreen(
+                    AutomaticEpisodeDetailsScreen(
                         episode = episode,
                         viewModel = viewModel,
                         onBack = { navController.backOrHome() },
