@@ -26,7 +26,6 @@ import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AudioType
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.MiruroTheme
-import com.ttvralph.miruroapp.ui.TopBar
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MiruroViewModel by viewModels()
@@ -59,10 +58,12 @@ private sealed class Routes(val route: String) {
         fun path(id: Int) = "details/$id"
     }
     data object Episode : Routes("episode/{${Args.ID}}/{${Args.SEASON}}/{${Args.EPISODE}}/{${Args.AUDIO}}") {
-        fun path(id: Int, season: Int, episode: Int, audio: AudioType) = "episode/$id/$season/$episode/${audio.name}"
+        fun path(id: Int, season: Int, episode: Int, audio: AudioType) =
+            "episode/$id/$season/$episode/${audio.name}"
     }
     data object Player : Routes("player/{${Args.ID}}/{${Args.SEASON}}/{${Args.EPISODE}}/{${Args.AUDIO}}") {
-        fun path(id: Int, season: Int, episode: Int, audio: AudioType) = "player/$id/$season/$episode/${audio.name}"
+        fun path(id: Int, season: Int, episode: Int, audio: AudioType) =
+            "player/$id/$season/$episode/${audio.name}"
     }
 }
 
@@ -91,7 +92,9 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val fullScreenRoute = currentRoute == Routes.Player.route || currentRoute == Routes.Details.route
-    val horizontalPadding = if (fullScreenRoute) 0.dp else 58.dp
+    val edgeToEdgeRoute = fullScreenRoute || currentRoute == Routes.Home.route
+    val horizontalPadding = if (edgeToEdgeRoute) 0.dp else 58.dp
+    val verticalPadding = if (edgeToEdgeRoute) 0.dp else 8.dp
 
     Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
         Column(
@@ -100,7 +103,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 .background(MiruroColors.Background)
         ) {
             if (!fullScreenRoute) {
-                TopBar(
+                TvTopBar(
                     current = navLabelFor(currentRoute),
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
                     onAnime = { navController.navigateTopLevel(Routes.Series.route) },
@@ -116,24 +119,29 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 startDestination = Routes.Home.route,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = horizontalPadding, vertical = if (fullScreenRoute) 0.dp else 8.dp)
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             ) {
                 composable(Routes.Home.route) {
-                    HomeScreen(
+                    TvHomeScreen(
                         viewModel = viewModel,
                         onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
-                        onPlayProgress = { progress -> navController.navigate(Routes.Player.path(progress.animeId, progress.seasonNumber, progress.episodeNumber, progress.audioType)) }
+                        onPlayProgress = { progress ->
+                            navController.navigate(
+                                Routes.Player.path(
+                                    progress.animeId,
+                                    progress.seasonNumber,
+                                    progress.episodeNumber,
+                                    progress.audioType
+                                )
+                            )
+                        }
                     )
                 }
                 composable(Routes.Search.route) {
-                    SearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    TvSearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Favorites.route) {
-                    WatchManagementScreen(
-                        viewModel = viewModel,
-                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
-                        onPlayProgress = { progress -> navController.navigate(Routes.Player.path(progress.animeId, progress.seasonNumber, progress.episodeNumber, progress.audioType)) }
-                    )
+                    FavoritesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Movies.route) {
                     MoviesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
@@ -142,20 +150,26 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     SeriesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Genres.route) {
-                    GenresScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    TvGenresScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
-                composable(Routes.Settings.route) { SettingsScreen(viewModel) }
+                composable(Routes.Settings.route) {
+                    TvSettingsScreen(viewModel)
+                }
                 composable(
                     Routes.Details.route,
                     arguments = listOf(navArgument(Args.ID) { type = NavType.IntType })
                 ) { entry ->
                     val id = entry.arguments?.getInt(Args.ID) ?: return@composable
-                    DetailsScreen(
+                    TvDetailsScreen(
                         viewModel = viewModel,
                         animeId = id,
                         onBack = { navController.popBackStack() },
-                        onOpenEpisode = { season, episode, audio -> navController.navigate(Routes.Episode.path(id, season, episode, audio)) },
-                        onPlayEpisode = { season, episode, audio -> navController.navigate(Routes.Player.path(id, season, episode, audio)) }
+                        onOpenEpisode = { season, episode, audio ->
+                            navController.navigate(Routes.Episode.path(id, season, episode, audio))
+                        },
+                        onPlayEpisode = { season, episode, audio ->
+                            navController.navigate(Routes.Player.path(id, season, episode, audio))
+                        }
                     )
                 }
                 composable(
@@ -170,7 +184,9 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     val id = entry.arguments?.getInt(Args.ID) ?: return@composable
                     val season = entry.arguments?.getInt(Args.SEASON) ?: return@composable
                     val episodeNumber = entry.arguments?.getInt(Args.EPISODE) ?: return@composable
-                    val audio = entry.arguments?.getString(Args.AUDIO)?.let { runCatching { AudioType.valueOf(it) }.getOrNull() } ?: AudioType.SUB
+                    val audio = entry.arguments?.getString(Args.AUDIO)
+                        ?.let { runCatching { AudioType.valueOf(it) }.getOrNull() }
+                        ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
                     EpisodeDetailsScreen(episode, viewModel) {
                         navController.navigate(Routes.Player.path(id, season, episodeNumber, audio))
@@ -188,13 +204,27 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     val id = entry.arguments?.getInt(Args.ID) ?: return@composable
                     val season = entry.arguments?.getInt(Args.SEASON) ?: return@composable
                     val episodeNumber = entry.arguments?.getInt(Args.EPISODE) ?: return@composable
-                    val audio = entry.arguments?.getString(Args.AUDIO)?.let { runCatching { AudioType.valueOf(it) }.getOrNull() } ?: AudioType.SUB
+                    val audio = entry.arguments?.getString(Args.AUDIO)
+                        ?.let { runCatching { AudioType.valueOf(it) }.getOrNull() }
+                        ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
-                    PlayerScreen(
+                    val nextEpisode = findNextEpisode(viewModel, id, season, episodeNumber, audio)
+                    TvPlayerScreen(
                         viewModel = viewModel,
                         episode = episode,
+                        nextEpisode = nextEpisode,
                         onBack = { navController.popBackStack() },
-                        onNextEpisode = { findNextEpisode(viewModel, id, season, episodeNumber, audio)?.let { next -> navController.navigate(Routes.Player.path(id, next.seasonNumber, next.episodeNumber, next.audioType)) } }
+                        onPlayNext = { next ->
+                            navController.popBackStack()
+                            navController.navigate(
+                                Routes.Player.path(
+                                    id,
+                                    next.seasonNumber,
+                                    next.episodeNumber,
+                                    next.audioType
+                                )
+                            )
+                        }
                     )
                 }
             }
@@ -202,17 +232,47 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
     }
 }
 
-private fun findEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType): AnimeEpisode? {
-    val episodes = viewModel.cachedDetails(animeId)?.seasons?.firstOrNull { it.seasonNumber == season }?.episodes.orEmpty()
+private fun findEpisode(
+    viewModel: MiruroViewModel,
+    animeId: Int,
+    season: Int,
+    episodeNumber: Int,
+    audio: AudioType
+): AnimeEpisode? {
+    val episodes = viewModel.cachedDetails(animeId)
+        ?.seasons
+        ?.firstOrNull { it.seasonNumber == season }
+        ?.episodes
+        .orEmpty()
     return episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == audio }
-        ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.audioType == viewModel.settings.value.preferredAudio }
+        ?: episodes.firstOrNull {
+            it.episodeNumber == episodeNumber && it.audioType == viewModel.settings.value.preferredAudio
+        }
         ?: episodes.firstOrNull { it.episodeNumber == episodeNumber && it.sourceCandidates.isNotEmpty() }
 }
 
-private fun findNextEpisode(viewModel: MiruroViewModel, animeId: Int, season: Int, episodeNumber: Int, audio: AudioType) =
-    viewModel.cachedDetails(animeId)
-        ?.seasons
-        ?.flatMap { it.episodes }
-        ?.filter { it.sourceCandidates.isNotEmpty() }
-        ?.sortedWith(compareBy<AnimeEpisode> { it.seasonNumber }.thenBy { it.episodeNumber }.thenBy { if (it.audioType == audio) 0 else 1 })
-        ?.firstOrNull { it.seasonNumber > season || (it.seasonNumber == season && it.episodeNumber > episodeNumber) }
+private fun findNextEpisode(
+    viewModel: MiruroViewModel,
+    animeId: Int,
+    season: Int,
+    episodeNumber: Int,
+    audio: AudioType
+): AnimeEpisode? {
+    val details = viewModel.cachedDetails(animeId) ?: return null
+    return details.seasons
+        .flatMap { animeSeason ->
+            animeSeason.episodes
+                .filter { it.sourceCandidates.isNotEmpty() }
+                .groupBy { it.episodeNumber }
+                .mapNotNull { (_, versions) ->
+                    versions.firstOrNull { it.audioType == audio }
+                        ?: versions.firstOrNull { it.audioType == viewModel.settings.value.preferredAudio }
+                        ?: versions.firstOrNull()
+                }
+        }
+        .sortedWith(compareBy<AnimeEpisode> { it.seasonNumber }.thenBy { it.episodeNumber })
+        .firstOrNull {
+            it.seasonNumber > season ||
+                (it.seasonNumber == season && it.episodeNumber > episodeNumber)
+        }
+}
