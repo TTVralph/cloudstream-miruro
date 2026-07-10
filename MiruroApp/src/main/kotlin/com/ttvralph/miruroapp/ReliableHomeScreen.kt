@@ -25,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.ttvralph.miruroapp.data.AnimeItem
@@ -58,28 +57,20 @@ fun ReliableHomeScreen(
     val progress by viewModel.watchProgress.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val metadataVersion by viewModel.itemMetadataVersion.collectAsState()
-    val context = LocalContext.current
-    val cache = remember(context) { HomeCatalogueCache(context.applicationContext) }
-    var savedRows by remember(cache) { mutableStateOf<List<HomeRow>>(emptyList()) }
+    var sessionRows by remember { mutableStateOf<List<HomeRow>>(emptyList()) }
     var automaticRetries by remember { mutableIntStateOf(0) }
-
-    LaunchedEffect(cache) {
-        val cachedRows = cache.read().collapseHomeFranchises()
-        if (cachedRows.isNotEmpty()) savedRows = cachedRows
-    }
 
     val networkRows = remember(state) {
         (state as? UiState.Success<List<HomeRow>>)
             ?.data
             ?.collapseHomeFranchises()
     }
-    val rows = networkRows?.takeIf { it.isNotEmpty() } ?: savedRows
+    val rows = networkRows?.takeIf { it.isNotEmpty() } ?: sessionRows
 
     LaunchedEffect(networkRows) {
         if (!networkRows.isNullOrEmpty()) {
             automaticRetries = 0
-            savedRows = networkRows
-            cache.write(networkRows)
+            sessionRows = networkRows
         }
     }
     LaunchedEffect(state) {
@@ -140,6 +131,7 @@ fun ReliableHomeScreen(
     val firstRowFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     var browsingRows by remember(initial.id) { mutableStateOf(false) }
+    var movingToRows by remember(initial.id) { mutableStateOf(false) }
 
     val showHero: () -> Unit = {
         if (browsingRows) {
@@ -147,8 +139,19 @@ fun ReliableHomeScreen(
             scope.launch { runCatching { listState.scrollToItem(0) } }
         }
     }
-    val moveToFirstRow: () -> Unit = {
-        runCatching { firstRowFocus.requestFocus() }
+    val moveToFirstRow: () -> Unit = move@{
+        if (movingToRows) return@move
+        movingToRows = true
+        scope.launch {
+            try {
+                browsingRows = true
+                listState.scrollToItem(1)
+                delay(48L)
+                runCatching { firstRowFocus.requestFocus() }
+            } finally {
+                movingToRows = false
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
