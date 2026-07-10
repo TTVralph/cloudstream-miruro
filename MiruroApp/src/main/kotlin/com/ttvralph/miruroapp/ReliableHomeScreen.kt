@@ -85,6 +85,12 @@ fun ReliableHomeScreen(
             .take(HOME_PROGRESS_METADATA_LIMIT)
     }
 
+    LaunchedEffect(unfinished) {
+        if (unfinished.isNotEmpty()) {
+            viewModel.resolveProgressMetadata(unfinished)
+        }
+    }
+
     if (rows.isEmpty()) {
         when (val current = state) {
             is UiState.Loading -> LoadingState("Loading AniStream…")
@@ -108,7 +114,7 @@ fun ReliableHomeScreen(
             ReliableResumeItem(
                 viewModel.cachedItem(saved.animeId) ?: AnimeItem(
                     saved.animeId,
-                    "Anime #${saved.animeId}",
+                    "Saved anime",
                     null,
                     null,
                     AnimeType.UNKNOWN

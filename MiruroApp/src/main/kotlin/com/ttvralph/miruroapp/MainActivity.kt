@@ -2,6 +2,7 @@ package com.ttvralph.miruroapp
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.animation.EnterTransition
@@ -11,8 +12,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -27,8 +32,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AudioType
+import com.ttvralph.miruroapp.ui.ErrorState
+import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.MiruroTheme
+import com.ttvralph.miruroapp.ui.StateMessage
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MiruroViewModel by viewModels()
@@ -236,12 +245,12 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     val audio = entry.arguments?.getString(Args.AUDIO)
                         ?.let { runCatching { AudioType.valueOf(it) }.getOrNull() }
                         ?: AudioType.SUB
-                    val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
-                    val nextEpisode = findNextEpisode(viewModel, id, season, episodeNumber, audio)
-                    GuardedTvPlayerScreen(
+                    ResolvedPlayerRoute(
                         viewModel = viewModel,
-                        episode = episode,
-                        nextEpisode = nextEpisode,
+                        animeId = id,
+                        season = season,
+                        episodeNumber = episodeNumber,
+                        audio = audio,
                         onBack = { navController.backOrHome() },
                         onPlayNext = { next ->
                             navController.popBackStack()
@@ -274,6 +283,83 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ResolvedPlayerRoute(
+    viewModel: MiruroViewModel,
+    animeId: Int,
+    season: Int,
+    episodeNumber: Int,
+    audio: AudioType,
+    onBack: () -> Unit,
+    onPlayNext: (AnimeEpisode) -> Unit
+) {
+    val detailsState by viewModel.details.collectAsState()
+    val metadataVersion by viewModel.itemMetadataVersion.collectAsState()
+    var requestSettled by remember(animeId, season, episodeNumber, audio) {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(animeId, season, episodeNumber, audio) {
+        requestSettled = false
+        if (findEpisode(viewModel, animeId, season, episodeNumber, audio) == null) {
+            viewModel.loadDetails(animeId)
+            delay(80L)
+        }
+        requestSettled = true
+    }
+
+    val episode = remember(
+        animeId,
+        season,
+        episodeNumber,
+        audio,
+        detailsState,
+        metadataVersion
+    ) {
+        findEpisode(viewModel, animeId, season, episodeNumber, audio)
+    }
+    val detailsAvailable = remember(animeId, detailsState, metadataVersion) {
+        viewModel.cachedDetails(animeId) != null
+    }
+
+    if (episode == null) {
+        BackHandler(onBack = onBack)
+    }
+
+    when {
+        episode != null -> {
+            val nextEpisode = remember(episode, metadataVersion) {
+                findNextEpisode(
+                    viewModel,
+                    animeId,
+                    episode.seasonNumber,
+                    episode.episodeNumber,
+                    episode.audioType
+                )
+            }
+            GuardedTvPlayerScreen(
+                viewModel = viewModel,
+                episode = episode,
+                nextEpisode = nextEpisode,
+                onBack = onBack,
+                onPlayNext = onPlayNext
+            )
+        }
+        detailsAvailable -> StateMessage(
+            "This saved episode is no longer available. Press Back to choose another episode."
+        )
+        !requestSettled || detailsState is UiState.Loading -> {
+            LoadingState("Loading saved episode…")
+        }
+        detailsState is UiState.Error -> {
+            ErrorState("Could not load this saved episode.") {
+                viewModel.loadDetails(animeId)
+            }
+        }
+        else -> LoadingState("Loading saved episode…")
     }
 }
 
