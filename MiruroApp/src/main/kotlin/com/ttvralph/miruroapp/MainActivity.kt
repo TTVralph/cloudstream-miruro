@@ -81,7 +81,7 @@ private fun navLabelFor(route: String?): String = when (route) {
     Routes.Favorites.route -> "My List"
     Routes.Movies.route -> "Movies"
     Routes.Series.route -> "Anime"
-    Routes.Genres.route -> "New & Popular"
+    Routes.Genres.route -> "Discover"
     Routes.Settings.route -> "Settings"
     else -> ""
 }
@@ -107,12 +107,12 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 .background(MiruroColors.Background)
         ) {
             if (showTopBar) {
-                StableTopBar(
+                ReliableTopBar(
                     current = navLabelFor(currentRoute),
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
                     onAnime = { navController.navigateTopLevel(Routes.Series.route) },
                     onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
-                    onNewPopular = { navController.navigateTopLevel(Routes.Genres.route) },
+                    onDiscover = { navController.navigateTopLevel(Routes.Genres.route) },
                     onMyList = { navController.navigateTopLevel(Routes.Favorites.route) },
                     onSearch = { navController.navigateTopLevel(Routes.Search.route) },
                     onSettings = { navController.navigateTopLevel(Routes.Settings.route) }
@@ -126,12 +126,12 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             ) {
                 composable(Routes.Home.route) {
-                    AuditHomeScreen(
+                    ReliableHomeScreen(
                         viewModel = viewModel,
                         onHome = { navController.navigateTopLevel(Routes.Home.route) },
                         onAnime = { navController.navigateTopLevel(Routes.Series.route) },
                         onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
-                        onNewPopular = { navController.navigateTopLevel(Routes.Genres.route) },
+                        onDiscover = { navController.navigateTopLevel(Routes.Genres.route) },
                         onMyList = { navController.navigateTopLevel(Routes.Favorites.route) },
                         onSearch = { navController.navigateTopLevel(Routes.Search.route) },
                         onSettings = { navController.navigateTopLevel(Routes.Settings.route) },
@@ -155,7 +155,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     FavoritesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Movies.route) {
-                    StableBrowseScreen(
+                    ReliableBrowseScreen(
                         title = "Movies",
                         format = "MOVIE",
                         viewModel = viewModel,
@@ -163,7 +163,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     )
                 }
                 composable(Routes.Series.route) {
-                    StableBrowseScreen(
+                    ReliableBrowseScreen(
                         title = "Anime",
                         format = "TV",
                         viewModel = viewModel,
@@ -171,7 +171,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     )
                 }
                 composable(Routes.Genres.route) {
-                    TvGenresScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    ReliableDiscoverScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Settings.route) {
                     AuditSettingsScreen(viewModel)
