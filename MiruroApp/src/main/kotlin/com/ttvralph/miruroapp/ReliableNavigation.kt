@@ -28,7 +28,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -47,6 +53,14 @@ internal val ReliableRadius = 5.dp
 
 internal data class ReliableResumeItem(val anime: AnimeItem, val progress: WatchProgress)
 
+internal object ReliableHomeFocusBridge {
+    var playRequester: FocusRequester? = null
+
+    fun requestPlay(): Boolean = runCatching {
+        playRequester?.requestFocus() == true
+    }.getOrDefault(false)
+}
+
 @Composable
 fun ReliableTopBar(
     current: String,
@@ -59,6 +73,12 @@ fun ReliableTopBar(
     onSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val onMoveDown = if (current == "Home") {
+        { ReliableHomeFocusBridge.requestPlay() }
+    } else {
+        null
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -69,15 +89,15 @@ fun ReliableTopBar(
     ) {
         Logo()
         Spacer(Modifier.width(30.dp))
-        ReliableNavText("Home", current == "Home", onHome)
-        ReliableNavText("Anime", current == "Anime", onAnime)
-        ReliableNavText("Movies", current == "Movies", onMovies)
-        ReliableNavText("Discover", current == "Discover", onDiscover, 104.dp)
-        ReliableNavText("My List", current == "My List", onMyList)
+        ReliableNavText("Home", current == "Home", onHome, onDown = onMoveDown)
+        ReliableNavText("Anime", current == "Anime", onAnime, onDown = onMoveDown)
+        ReliableNavText("Movies", current == "Movies", onMovies, onDown = onMoveDown)
+        ReliableNavText("Discover", current == "Discover", onDiscover, 104.dp, onMoveDown)
+        ReliableNavText("My List", current == "My List", onMyList, onDown = onMoveDown)
         Spacer(Modifier.weight(1f))
-        ReliableNavIcon(Icons.Filled.Search, "Search", current == "Search", onSearch)
+        ReliableNavIcon(Icons.Filled.Search, "Search", current == "Search", onSearch, onMoveDown)
         Spacer(Modifier.width(10.dp))
-        ReliableNavIcon(Icons.Filled.Settings, "Settings", current == "Settings", onSettings)
+        ReliableNavIcon(Icons.Filled.Settings, "Settings", current == "Settings", onSettings, onMoveDown)
     }
 }
 
@@ -86,7 +106,8 @@ private fun ReliableNavText(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    width: Dp = 82.dp
+    width: Dp = 82.dp,
+    onDown: (() -> Boolean)? = null
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -94,6 +115,17 @@ private fun ReliableNavText(
         modifier = Modifier
             .width(width)
             .height(46.dp)
+            .onPreviewKeyEvent { event ->
+                if (
+                    onDown != null &&
+                    event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionDown
+                ) {
+                    onDown()
+                } else {
+                    false
+                }
+            }
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -121,11 +153,24 @@ private fun ReliableNavIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDown: (() -> Boolean)? = null
 ) {
     FocusableSurface(
         onClick = onClick,
-        modifier = Modifier.size(42.dp),
+        modifier = Modifier
+            .size(42.dp)
+            .onPreviewKeyEvent { event ->
+                if (
+                    onDown != null &&
+                    event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionDown
+                ) {
+                    onDown()
+                } else {
+                    false
+                }
+            },
         shape = RoundedCornerShape(999.dp),
         unfocusedBackground = if (selected) MiruroColors.Accent.copy(alpha = 0.35f) else Color.Transparent,
         focusedBackground = Color.White
