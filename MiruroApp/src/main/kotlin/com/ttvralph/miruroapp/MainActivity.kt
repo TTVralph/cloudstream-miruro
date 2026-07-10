@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -68,10 +70,11 @@ private sealed class Routes(val route: String) {
 }
 
 private fun NavHostController.navigateTopLevel(route: String) {
+    if (currentDestination?.route == route) return
     navigate(route) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
+        popUpTo(graph.findStartDestination().id) { saveState = false }
         launchSingleTop = true
-        restoreState = true
+        restoreState = false
     }
 }
 
@@ -129,7 +132,11 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                 startDestination = Routes.Home.route,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding)
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { ExitTransition.None }
             ) {
                 composable(Routes.Home.route) {
                     ReliableHomeScreen(
