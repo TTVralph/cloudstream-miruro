@@ -47,6 +47,8 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     private val settingsStore = SettingsStore(application)
     private val detailsCache = linkedMapOf<Int, AnimeDetails>()
     private val itemCache = linkedMapOf<Int, AnimeItem>()
+    private val _itemMetadataVersion = MutableStateFlow(0)
+    val itemMetadataVersion: StateFlow<Int> = _itemMetadataVersion.asStateFlow()
     private var homeJob: Job? = null
     private var searchJob: Job? = null
     private var moviesJob: Job? = null
@@ -259,8 +261,10 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun rememberItems(items: List<AnimeItem>) {
+        if (items.isEmpty()) return
         items.forEach { itemCache[it.id] = it }
         trimCache(itemCache, MAX_ITEM_CACHE_SIZE)
+        _itemMetadataVersion.value += 1
     }
 
     private fun <T> trimCache(cache: LinkedHashMap<Int, T>, maxSize: Int) {
