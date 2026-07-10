@@ -1,5 +1,6 @@
 package com.ttvralph.miruroapp
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -28,8 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ttvralph.miruroapp.data.AnimeItem
-import com.ttvralph.miruroapp.data.AnimeType
-import com.ttvralph.miruroapp.data.HomeRow
 import com.ttvralph.miruroapp.data.PosterGridDensity
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.LoadingState
@@ -48,7 +47,6 @@ fun ReliableBrowseScreen(
 ) {
     val moviesState by viewModel.movies.collectAsState()
     val seriesState by viewModel.series.collectAsState()
-    val homeState by viewModel.homeRows.collectAsState()
     val state = if (format == "MOVIE") moviesState else seriesState
     val settings by viewModel.settings.collectAsState()
     var sessionItems by remember(format) { mutableStateOf<List<AnimeItem>>(emptyList()) }
@@ -60,13 +58,7 @@ fun ReliableBrowseScreen(
             ?.let { normalizeBrowseItems(it, format) }
             .orEmpty()
     }
-    val liveHomeFallback = remember(homeState, format) {
-        val rows = (homeState as? UiState.Success<List<HomeRow>>)?.data.orEmpty()
-        catalogueItemsForFormat(rows, format)
-    }
-    val visibleItems = networkItems
-        .ifEmpty { sessionItems }
-        .ifEmpty { liveHomeFallback }
+    val visibleItems = networkItems.ifEmpty { sessionItems }
 
     LaunchedEffect(format) {
         if (format == "MOVIE") viewModel.loadMovies() else viewModel.loadSeries()
@@ -78,16 +70,19 @@ fun ReliableBrowseScreen(
         }
     }
     LaunchedEffect(state) {
-        if (state is UiState.Error && automaticRetries < 2) {
-            val waitMs = listOf(1_200L, 3_000L)[automaticRetries]
+        if (state is UiState.Error && automaticRetries < 1) {
             automaticRetries += 1
-            delay(waitMs)
+            delay(1_200L)
             if (format == "MOVIE") viewModel.loadMovies(force = true)
             else viewModel.loadSeries(force = true)
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(MiruroColors.Background)
+    ) {
         Text(
             title,
             color = Color.White,
@@ -111,7 +106,7 @@ fun ReliableBrowseScreen(
 
         if (state is UiState.Error) {
             Text(
-                "Showing titles already loaded in this app session while AniList reconnects.",
+                "Showing this tab's current-session results while AniList reconnects.",
                 color = MiruroColors.Subtle,
                 fontSize = 13.sp
             )
@@ -143,15 +138,6 @@ fun ReliableBrowseScreen(
         }
     }
 }
-
-private fun catalogueItemsForFormat(rows: List<HomeRow>, format: String): List<AnimeItem> =
-    normalizeBrowseItems(
-        rows.flatMap { it.items }.filter { item ->
-            if (format == "MOVIE") item.type == AnimeType.MOVIE
-            else item.type == AnimeType.TV
-        },
-        format
-    )
 
 private fun normalizeBrowseItems(items: List<AnimeItem>, format: String): List<AnimeItem> =
     if (format == "TV") items.collapseSeasonEntries()
