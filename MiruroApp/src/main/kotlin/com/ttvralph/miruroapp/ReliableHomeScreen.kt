@@ -60,8 +60,13 @@ fun ReliableHomeScreen(
     val metadataVersion by viewModel.itemMetadataVersion.collectAsState()
     val context = LocalContext.current
     val cache = remember(context) { HomeCatalogueCache(context.applicationContext) }
-    var savedRows by remember(cache) { mutableStateOf(cache.read().collapseHomeFranchises()) }
+    var savedRows by remember(cache) { mutableStateOf<List<HomeRow>>(emptyList()) }
     var automaticRetries by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(cache) {
+        val cachedRows = cache.read().collapseHomeFranchises()
+        if (cachedRows.isNotEmpty()) savedRows = cachedRows
+    }
 
     val networkRows = remember(state) {
         (state as? UiState.Success<List<HomeRow>>)
