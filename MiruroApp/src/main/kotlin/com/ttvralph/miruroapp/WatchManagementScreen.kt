@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,11 +31,13 @@ import androidx.compose.ui.unit.sp
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeType
+import com.ttvralph.miruroapp.data.AudioType
 import com.ttvralph.miruroapp.data.PosterGridDensity
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.data.WatchlistEntry
 import com.ttvralph.miruroapp.data.WatchlistSort
 import com.ttvralph.miruroapp.ui.LandscapeCard
+import com.ttvralph.miruroapp.ui.GenreChip
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PosterCard
 import com.ttvralph.miruroapp.ui.SecondaryButton
@@ -43,6 +46,20 @@ import com.ttvralph.miruroapp.ui.StateMessage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private enum class AudioFilter(val label: String) { ALL("All audio"), SUB("Sub"), DUB("Dub") }
+private enum class ContinueSort(val label: String) {
+    RECENT("Recent"), TITLE("Title"), MOST_PROGRESS("Most progress"), LEAST_PROGRESS("Least progress")
+}
+private enum class HistorySort(val label: String) {
+    NEWEST("Newest"), OLDEST("Oldest"), TITLE("Title"), EPISODE("Episode")
+}
+private enum class ListStateFilter(val label: String) {
+    ALL("All titles"), NOT_STARTED("Not started"), IN_PROGRESS("In progress"), COMPLETED("Completed")
+}
+private enum class ListSort(val label: String) {
+    RECENTLY_ADDED("Recently added"), TITLE("Title"), PROGRESS("Progress"), RECENT_ACTIVITY("Recent activity")
+}
 
 @Composable
 fun WatchManagementScreen(
@@ -53,13 +70,77 @@ fun WatchManagementScreen(
     val entries by viewModel.watchlistEntries.collectAsState()
     val progress by viewModel.watchProgress.collectAsState()
     val settings by viewModel.settings.collectAsState()
+    val itemMetadataVersion by viewModel.itemMetadataVersion.collectAsState()
     var showClearHistoryDialog by remember { mutableStateOf(false) }
     var showClearCompletedDialog by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var continueAudio by remember { mutableStateOf(AudioFilter.ALL) }
+    var continueSort by remember { mutableStateOf(ContinueSort.RECENT) }
+    var historyAudio by remember { mutableStateOf(AudioFilter.ALL) }
+    var historySort by remember { mutableStateOf(HistorySort.NEWEST) }
+    var listState by remember { mutableStateOf(ListStateFilter.ALL) }
+    var listSort by remember(settings.watchlistSort) {
+        mutableStateOf(
+            when (settings.watchlistSort) {
+                WatchlistSort.RECENTLY_ADDED -> ListSort.RECENTLY_ADDED
+                WatchlistSort.TITLE -> ListSort.TITLE
+                WatchlistSort.PROGRESS -> ListSort.PROGRESS
+            }
+        )
+    }
+    var showAllContinue by remember { mutableStateOf(false) }
+    var showAllHistory by remember { mutableStateOf(false) }
 
-    val favoriteIds = remember(entries) { entries.map { it.id }.toSet() }
+    val favoriteIds = remember(entries, itemMetadataVersion) { entries.map { it.id }.toSet() }
     val progressIds = remember(progress) { progress.map { it.animeId }.toSet() }
-    val unfinished = remember(progress) { progress.filterNot { it.watched }.take(20) }
+    val unfinished = remember(progress) { progress.filterNot { it.watched } }
     val completed = remember(progress) { progress.filter { it.watched } }
+    val normalizedQuery = query.trim()
+    fun titleFor(id: Int, fallback: String? = null): String =
+        viewModel.cachedItem(id)?.title ?: fallback ?: "Anime #$id"
+    fun matchesQuery(id: Int, fallback: String? = null): Boolean = normalizedQuery.isEmpty() ||
+        titleFor(id, fallback).contains(normalizedQuery, ignoreCase = true) || id.toString() == normalizedQuery
+    fun matchesAudio(item: WatchProgress, filter: AudioFilter): Boolean = when (filter) {
+        AudioFilter.ALL -> true
+        AudioFilter.SUB -> item.audioType == AudioType.SUB
+        AudioFilter.DUB -> item.audioType == AudioType.DUB
+    }
+    val matchingContinue = unfinished
+        .filter { matchesQuery(it.animeId) && matchesAudio(it, continueAudio) }
+        .let { items ->
+            when (continueSort) {
+                ContinueSort.RECENT -> items.sortedByDescending { it.updatedAtMs }
+                ContinueSort.TITLE -> items.sortedBy { titleFor(it.animeId).lowercase(Locale.ROOT) }
+                ContinueSort.MOST_PROGRESS -> items.sortedByDescending { it.percent }
+                ContinueSort.LEAST_PROGRESS -> items.sortedBy { it.percent }
+            }
+        }
+    val visibleContinue = if (showAllContinue) matchingContinue else matchingContinue.take(20)
+    val matchingHistory = completed
+        .filter { matchesQuery(it.animeId) && matchesAudio(it, historyAudio) }
+        .let { items ->
+            when (historySort) {
+                HistorySort.NEWEST -> items.sortedByDescending { it.updatedAtMs }
+                HistorySort.OLDEST -> items.sortedBy { it.updatedAtMs }
+                HistorySort.TITLE -> items.sortedBy { titleFor(it.animeId).lowercase(Locale.ROOT) }
+                HistorySort.EPISODE -> items.sortedWith(compareBy({ titleFor(it.animeId).lowercase(Locale.ROOT) }, { it.seasonNumber }, { it.episodeNumber }))
+            }
+        }
+    val visibleHistory = if (showAllHistory) matchingHistory else matchingHistory.take(20)
+    val visibleEntries = sortWatchlist(entries.filter { entry ->
+        val itemProgress = progress.filter { it.animeId == entry.id }
+        matchesQuery(entry.id, entry.title) && when (listState) {
+            ListStateFilter.ALL -> true
+            ListStateFilter.NOT_STARTED -> itemProgress.isEmpty()
+            ListStateFilter.IN_PROGRESS -> itemProgress.any { !it.watched }
+            ListStateFilter.COMPLETED -> itemProgress.isNotEmpty() && itemProgress.all { it.watched }
+        }
+    }, progress, listSort, viewModel)
+    val totalMatches = matchingContinue.size + matchingHistory.size + visibleEntries.size
+    val controlsActive = normalizedQuery.isNotEmpty() || continueAudio != AudioFilter.ALL ||
+        continueSort != ContinueSort.RECENT || historyAudio != AudioFilter.ALL ||
+        historySort != HistorySort.NEWEST || listState != ListStateFilter.ALL ||
+        listSort != ListSort.RECENTLY_ADDED || showAllContinue || showAllHistory
 
     LaunchedEffect(favoriteIds) { viewModel.resolveFavoriteMetadata(favoriteIds) }
     LaunchedEffect(progressIds) { viewModel.resolveProgressMetadata(progress) }
@@ -128,12 +209,47 @@ fun WatchManagementScreen(
                 fontSize = 15.sp,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("Search saved titles or AniList ID") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "$totalMatches matching • ${unfinished.size + completed.size + entries.size} total entries",
+                    color = MiruroColors.Muted,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 19.dp)
+                )
+                if (query.isNotEmpty()) {
+                    SecondaryButton("Clear search", Modifier.width(150.dp)) { query = "" }
+                }
+                if (controlsActive) {
+                    SecondaryButton("Reset controls", Modifier.width(165.dp)) {
+                        query = ""
+                        continueAudio = AudioFilter.ALL
+                        continueSort = ContinueSort.RECENT
+                        historyAudio = AudioFilter.ALL
+                        historySort = HistorySort.NEWEST
+                        listState = ListStateFilter.ALL
+                        listSort = ListSort.RECENTLY_ADDED
+                        showAllContinue = false
+                        showAllHistory = false
+                    }
+                }
+            }
+            if (normalizedQuery.isNotEmpty() && totalMatches == 0) {
+                StateMessage("No saved titles match “$normalizedQuery”. Clear search or change a filter.")
+            }
         }
 
         item {
             SectionTitle(
                 text = "Continue Watching",
-                badge = "RESUME",
+                badge = "${unfinished.size} RESUME",
                 trailing = if (progress.isNotEmpty()) {
                     {
                         SecondaryButton(
@@ -148,8 +264,20 @@ fun WatchManagementScreen(
             )
         }
 
-        if (unfinished.isEmpty()) {
-            item { StateMessage("Nothing is waiting in Continue Watching.") }
+        item {
+            FilterRow(AudioFilter.entries, continueAudio, { it.label }) { continueAudio = it }
+            FilterRow(ContinueSort.entries, continueSort, { it.label }) { continueSort = it }
+            if (unfinished.size > 20) {
+                SecondaryButton(
+                    text = if (showAllContinue) "Show first 20" else "Show all ${unfinished.size}",
+                    modifier = Modifier.width(180.dp),
+                    onClick = { showAllContinue = !showAllContinue }
+                )
+            }
+        }
+
+        if (visibleContinue.isEmpty()) {
+            item { StateMessage(if (unfinished.isEmpty()) "Nothing is waiting in Continue Watching." else "No Continue Watching entries match these controls.") }
         } else {
             item {
                 LazyRow(
@@ -157,7 +285,7 @@ fun WatchManagementScreen(
                     horizontalArrangement = Arrangement.spacedBy(22.dp),
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp)
                 ) {
-                    items(unfinished, key = { it.key }) { item ->
+                    items(visibleContinue, key = { it.key }) { item ->
                         val anime = viewModel.cachedItem(item.animeId) ?: item.toFallbackAnimeItem()
                         Column(modifier = Modifier.width(330.dp)) {
                             LandscapeCard(
@@ -177,9 +305,14 @@ fun WatchManagementScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "${formatTimeShort(item.positionMs)} of ${formatTimeShort(item.durationMs)}",
+                                text = "${formatTimeShort(item.positionMs)} of ${formatTimeShort(item.durationMs)} • ${formatRemaining(item)} left",
                                 color = MiruroColors.Muted,
                                 fontSize = 12.sp
+                            )
+                            Text(
+                                text = "${item.audioType.name} • ${formatRelativeActivity(item.updatedAtMs)}",
+                                color = MiruroColors.Muted,
+                                fontSize = 11.sp
                             )
                             Spacer(Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -209,7 +342,7 @@ fun WatchManagementScreen(
         item {
             SectionTitle(
                 text = "Recently Watched",
-                badge = "HISTORY",
+                badge = "${completed.size} HISTORY",
                 trailing = if (completed.isNotEmpty()) {
                     {
                         SecondaryButton(
@@ -224,8 +357,20 @@ fun WatchManagementScreen(
             )
         }
 
-        if (completed.isEmpty()) {
-            item { StateMessage("Completed episodes will appear here, newest first.") }
+        item {
+            FilterRow(AudioFilter.entries, historyAudio, { it.label }) { historyAudio = it }
+            FilterRow(HistorySort.entries, historySort, { it.label }) { historySort = it }
+            if (completed.size > 20) {
+                SecondaryButton(
+                    text = if (showAllHistory) "Show first 20" else "Show all ${completed.size}",
+                    modifier = Modifier.width(180.dp),
+                    onClick = { showAllHistory = !showAllHistory }
+                )
+            }
+        }
+
+        if (visibleHistory.isEmpty()) {
+            item { StateMessage(if (completed.isEmpty()) "Completed episodes will appear here, newest first." else "No Recently Watched entries match these controls.") }
         } else {
             item {
                 LazyRow(
@@ -233,7 +378,7 @@ fun WatchManagementScreen(
                     horizontalArrangement = Arrangement.spacedBy(22.dp),
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp)
                 ) {
-                    items(completed.take(20), key = { it.key }) { item ->
+                    items(visibleHistory, key = { it.key }) { item ->
                         val anime = viewModel.cachedItem(item.animeId) ?: item.toFallbackAnimeItem()
                         Column(modifier = Modifier.width(330.dp)) {
                             LandscapeCard(
@@ -253,7 +398,7 @@ fun WatchManagementScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "Watched ${formatHistoryDate(item.updatedAtMs)}",
+                                text = "${item.audioType.name} • Watched ${formatHistoryDate(item.updatedAtMs)}",
                                 color = MiruroColors.Muted,
                                 fontSize = 12.sp,
                                 maxLines = 1,
@@ -292,20 +437,21 @@ fun WatchManagementScreen(
         }
 
         item {
-            SectionTitle("My List", "SAVED")
+            SectionTitle("My List", "${entries.size} SAVED")
+            FilterRow(ListStateFilter.entries, listState, { it.label }) { listState = it }
+            FilterRow(ListSort.entries, listSort, { it.label }) { listSort = it }
         }
 
-        if (entries.isEmpty()) {
-            item { StateMessage("Your My List is empty. Add anime from Home or Details.") }
+        if (visibleEntries.isEmpty()) {
+            item { StateMessage(if (entries.isEmpty()) "Your My List is empty. Add anime from Home or Details." else "No My List titles match these controls.") }
         } else {
-            val sortedEntries = sortWatchlist(entries, progress, settings.watchlistSort, viewModel)
             item {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(22.dp),
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp)
                 ) {
-                    items(sortedEntries, key = { it.id }) { entry ->
+                    items(visibleEntries, key = { it.id }) { entry ->
                         val anime = viewModel.cachedItem(entry.id)
                             ?: entry.toFallbackAnimeItem()
                         val latestProgress = progress.firstOrNull { it.animeId == entry.id }
@@ -332,6 +478,14 @@ fun WatchManagementScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            latestProgress?.let {
+                                Text(
+                                    text = "Last activity ${formatRelativeActivity(it.updatedAtMs)}",
+                                    color = MiruroColors.Muted,
+                                    fontSize = 11.sp,
+                                    maxLines = 1
+                                )
+                            }
                             Spacer(Modifier.height(10.dp))
                             SecondaryButton(
                                 text = "Remove from My List",
@@ -363,18 +517,43 @@ fun WatchManagementScreen(
 private fun sortWatchlist(
     entries: List<WatchlistEntry>,
     progress: List<WatchProgress>,
-    sort: WatchlistSort,
+    sort: ListSort,
     viewModel: MiruroViewModel
 ): List<WatchlistEntry> = when (sort) {
-    WatchlistSort.TITLE -> entries.sortedBy { entry ->
+    ListSort.TITLE -> entries.sortedBy { entry ->
         viewModel.cachedItem(entry.id)?.title ?: entry.title.orEmpty()
     }
 
-    WatchlistSort.PROGRESS -> entries.sortedByDescending { entry ->
+    ListSort.PROGRESS -> entries.sortedByDescending { entry ->
         progress.firstOrNull { it.animeId == entry.id }?.percent ?: 0f
     }
 
-    WatchlistSort.RECENTLY_ADDED -> entries.sortedByDescending { it.addedAtMs }
+    ListSort.RECENTLY_ADDED -> entries.sortedByDescending { it.addedAtMs }
+    ListSort.RECENT_ACTIVITY -> entries.sortedByDescending { entry ->
+        progress.firstOrNull { it.animeId == entry.id }?.updatedAtMs ?: 0L
+    }
+}
+
+@Composable
+private fun <T> FilterRow(
+    options: Iterable<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelected: (T) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(vertical = 5.dp)
+    ) {
+        items(options.toList()) { option ->
+            GenreChip(
+                text = label(option),
+                selected = option == selected,
+                onClick = { onSelected(option) }
+            )
+        }
+    }
 }
 
 private fun markProgressUnwatched(viewModel: MiruroViewModel, item: WatchProgress) {
@@ -428,6 +607,20 @@ private fun formatTimeShort(milliseconds: Long): String {
         String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
     } else {
         String.format(Locale.US, "%d:%02d", minutes, seconds)
+    }
+}
+
+private fun formatRemaining(item: WatchProgress): String =
+    formatTimeShort((item.durationMs - item.positionMs).coerceAtLeast(0L))
+
+private fun formatRelativeActivity(milliseconds: Long): String {
+    val elapsedMinutes = ((System.currentTimeMillis() - milliseconds).coerceAtLeast(0L) / 60_000L)
+    return when {
+        elapsedMinutes < 1L -> "just now"
+        elapsedMinutes < 60L -> "${elapsedMinutes}m ago"
+        elapsedMinutes < 1_440L -> "${elapsedMinutes / 60L}h ago"
+        elapsedMinutes < 10_080L -> "${elapsedMinutes / 1_440L}d ago"
+        else -> formatSavedDate(milliseconds)
     }
 }
 
