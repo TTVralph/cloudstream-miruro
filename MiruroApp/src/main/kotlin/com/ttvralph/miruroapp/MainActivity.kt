@@ -126,7 +126,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             ) {
                 composable(Routes.Home.route) {
-                    StableHomeScreen(
+                    AuditHomeScreen(
                         viewModel = viewModel,
                         onHome = { navController.navigateTopLevel(Routes.Home.route) },
                         onAnime = { navController.navigateTopLevel(Routes.Series.route) },
@@ -149,7 +149,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     )
                 }
                 composable(Routes.Search.route) {
-                    StableSearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    AuditSearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Favorites.route) {
                     FavoritesScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
@@ -174,14 +174,14 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                     TvGenresScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
                 composable(Routes.Settings.route) {
-                    FollowupSettingsScreen(viewModel)
+                    AuditSettingsScreen(viewModel)
                 }
                 composable(
                     Routes.Details.route,
                     arguments = listOf(navArgument(Args.ID) { type = NavType.IntType })
                 ) { entry ->
                     val id = entry.arguments?.getInt(Args.ID) ?: return@composable
-                    StableDetailsScreen(
+                    AuditDetailsScreen(
                         viewModel = viewModel,
                         animeId = id,
                         onBack = { navController.popBackStack() },
@@ -209,7 +209,7 @@ private fun MiruroApp(viewModel: MiruroViewModel) {
                         ?.let { runCatching { AudioType.valueOf(it) }.getOrNull() }
                         ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
-                    StableEpisodeDetailsScreen(
+                    AuditEpisodeDetailsScreen(
                         episode = episode,
                         viewModel = viewModel,
                         onBack = { navController.popBackStack() },
