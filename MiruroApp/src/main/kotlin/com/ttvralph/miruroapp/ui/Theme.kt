@@ -9,20 +9,20 @@ import androidx.compose.ui.graphics.Color
 import com.ttvralph.miruroapp.data.ThemeMode
 
 object MiruroColors {
-    val Background = Color(0xFF07090D)
-    val Surface = Color(0xFF0D1118)
-    val Panel = Color(0xFF12171F)
-    val Card = Color(0xFF1F242E)
-    val CardHigh = Color(0xFF2B313D)
-    val Focused = Color(0xFF333A46)
+    val Background = Color(0xFF000000)
+    val Surface = Color(0xFF050505)
+    val Panel = Color(0xFF0A0A0A)
+    val Card = Color(0xFF141414)
+    val CardHigh = Color(0xFF1B1B1B)
+    val Focused = Color(0xFF2A2A2A)
     val Text = Color(0xFFFFFFFF)
-    val Muted = Color(0xFF9FB0BD)
-    val Subtle = Color(0xFF637380)
-    val Accent = Color(0xFFF40612)
-    val AccentSoft = Color(0xFFFF2838)
+    val Muted = Color(0xFFB3B3B3)
+    val Subtle = Color(0xFF808080)
+    val Accent = Color(0xFFE50914)
+    val AccentSoft = Color(0xFFFF3340)
     val Accent2 = Color(0xFFFFD235)
     val Danger = Color(0xFFFFB4AB)
-    val Border = Color(0x1AFFFFFF)
+    val Border = Color(0x26FFFFFF)
 }
 
 private val MiruroDarkColorScheme = darkColorScheme(
