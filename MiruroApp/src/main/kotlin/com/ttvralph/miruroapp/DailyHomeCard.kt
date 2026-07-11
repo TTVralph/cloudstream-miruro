@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,7 +32,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.nativeKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
@@ -45,6 +45,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.ui.MiruroColors
+
+private const val HOME_CARD_LONG_PRESS_MS = 520L
 
 @Composable
 internal fun DailyHomeCard(
@@ -71,6 +73,7 @@ internal fun DailyHomeCard(
             .allowHardware(true)
             .build()
     }
+    var confirmDownAtMs by remember(item.id) { mutableLongStateOf(0L) }
     var longPressConsumed by remember(item.id) { mutableStateOf(false) }
 
     var modifier = Modifier
@@ -81,23 +84,38 @@ internal fun DailyHomeCard(
     if (upFocusRequester != null) modifier = modifier.focusProperties { up = upFocusRequester }
 
     modifier = modifier
-        .onFocusChanged { if (it.hasFocus) onFocused() }
+        .onFocusChanged {
+            if (it.hasFocus) onFocused()
+            else {
+                confirmDownAtMs = 0L
+                longPressConsumed = false
+            }
+        }
         .onPreviewKeyEvent { event ->
             val confirmKey = event.key == Key.DirectionCenter ||
                 event.key == Key.Enter ||
                 event.key == Key.NumPadEnter
-            when {
-                !confirmKey -> false
-                event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount > 0 -> {
-                    if (!longPressConsumed) {
+            if (!confirmKey) return@onPreviewKeyEvent false
+
+            when (event.type) {
+                KeyEventType.KeyDown -> {
+                    val now = System.currentTimeMillis()
+                    if (confirmDownAtMs == 0L) {
+                        confirmDownAtMs = now
+                        false
+                    } else if (!longPressConsumed && now - confirmDownAtMs >= HOME_CARD_LONG_PRESS_MS) {
                         longPressConsumed = true
                         onLongClick()
+                        true
+                    } else {
+                        longPressConsumed
                     }
-                    true
                 }
-                event.type == KeyEventType.KeyUp && longPressConsumed -> {
+                KeyEventType.KeyUp -> {
+                    val consumed = longPressConsumed
+                    confirmDownAtMs = 0L
                     longPressConsumed = false
-                    true
+                    consumed
                 }
                 else -> false
             }
