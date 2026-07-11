@@ -82,6 +82,14 @@ jobs:
                       raise SystemExit(f'Missing import anchor in {filename}')
                   source = source.replace(anchor, anchor + import_line, 1)
                   candidate.write_text(source)
+
+          repository = Path('MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/data/DiscoveryRepository.kt')
+          repository_text = repository.read_text()
+          repository_text = repository_text.replace(
+              '    private fun dubbedAvailable(animeId: Int): Boolean = runCatching {',
+              '    private suspend fun dubbedAvailable(animeId: Int): Boolean = runCatching {'
+          )
+          repository.write_text(repository_text)
           PY
       - name: Commit wiring changes
         shell: bash
@@ -92,7 +100,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add MiruroApp/src/main/kotlin/com/ttvralph/miruroapp
-            git commit -m "Fix discovery screen wiring and Compose imports"
+            git commit -m "Fix discovery compile issues"
             git push origin HEAD:agent/discovery-improvements-pr-c
           fi
       - name: Assemble debug APK
