@@ -3,6 +3,7 @@ package com.ttvralph.miruroapp
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.ttvralph.miruroapp.data.AniListRepository
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.EngagementStore
@@ -12,9 +13,11 @@ import com.ttvralph.miruroapp.data.NetflixFeatureRepository
 import com.ttvralph.miruroapp.data.ProfileSession
 import com.ttvralph.miruroapp.data.ProfileState
 import com.ttvralph.miruroapp.data.ProfileStore
+import com.ttvralph.miruroapp.data.SettingsStore
 import com.ttvralph.miruroapp.data.SkipInterval
 import com.ttvralph.miruroapp.data.TitleExtras
 import com.ttvralph.miruroapp.data.TitleReaction
+import com.ttvralph.miruroapp.data.TrackingStatus
 import com.ttvralph.miruroapp.data.UpcomingEpisode
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.data.WatchProgressStore
@@ -30,7 +33,9 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
     private val profilesStore = ProfileStore(application)
     private val engagement = EngagementStore(application)
     private val progressStore = WatchProgressStore(application)
+    private val settingsStore = SettingsStore(application)
     private val repository = NetflixFeatureRepository()
+    private val animeRepository = AniListRepository()
 
     val profileState: StateFlow<ProfileState> = profilesStore.state.stateIn(
         viewModelScope, SharingStarted.Eagerly, ProfileState()
@@ -40,6 +45,9 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
     )
     val reminders: StateFlow<Set<Int>> = engagement.reminders.stateIn(
         viewModelScope, SharingStarted.Eagerly, emptySet()
+    )
+    val trackingStatuses: StateFlow<Map<Int, TrackingStatus>> = engagement.trackingStatuses.stateIn(
+        viewModelScope, SharingStarted.Eagerly, emptyMap()
     )
 
     private val _metadata = MutableStateFlow<Map<Int, AnimeItem>>(emptyMap())
@@ -96,6 +104,17 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
+    fun setTrackingStatus(animeId: Int, status: TrackingStatus?) {
+        viewModelScope.launch {
+            engagement.setTrackingStatus(animeId, status)
+            lastHomeSignature = null
+        }
+    }
+
+    fun updateNoSpoilerMode(enabled: Boolean) {
+        viewModelScope.launch { settingsStore.updateNoSpoilerMode(enabled) }
+    }
+
     fun loadMetadata(ids: Set<Int>) {
         val missing = ids.filterNot { it in _metadata.value }.toSet()
         if (missing.isEmpty()) return
@@ -128,12 +147,18 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
             it == TitleReaction.LIKE || it == TitleReaction.LOVE
         }.keys
         val disliked = reactions.value.filterValues { it == TitleReaction.DISLIKE }.keys
-        val seeds = (positive + favorites + progress.map { it.animeId } + reminders.value)
-            .filter { it > 0 }.toSet()
+        val seeds = (
+            positive +
+                favorites +
+                progress.map { it.animeId } +
+                reminders.value +
+                trackingStatuses.value.keys
+            ).filter { it > 0 }.toSet()
         val signature = listOf(
             profileState.value.activeId,
             seeds.sorted().joinToString(),
             disliked.sorted().joinToString(),
+            trackingStatuses.value.entries.sortedBy { it.key }.joinToString { "${it.key}:${it.value.name}" },
             catalogue.take(20).joinToString { it.id.toString() }
         ).joinToString("|")
         if (signature == lastHomeSignature) return
@@ -192,6 +217,66 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
     fun removeTitleProgress(animeIds: Set<Int>) {
         viewModelScope.launch { progressStore.deleteAnime(animeIds) }
     }
+
+    fun setSeasonWatched(episodes: List<AnimeEpisode>, watched: Boolean) {
+        viewModelScope.launch {
+            if (watched) {
+                selectUniqueEpisodes(episodes).forEach { episode ->
+                    progressStore.save(
+                        WatchProgress(
+                            animeId = episode.anilistId,
+                            seasonNumber = episode.seasonNumber,
+                            episodeNumber = episode.episodeNumber,
+                            audioType = episode.audioType,
+                            positionMs = 9_000L,
+                            durationMs = 10_000L,
+                            updatedAtMs = System.currentTimeMillis()
+                        )
+                    )
+                }
+            } else {
+                episodes.forEach { episode ->
+                    progressStore.delete(
+                        episode.anilistId,
+                        episode.seasonNumber,
+                        episode.episodeNumber,
+                        episode.audioType
+                    )
+                }
+            }
+        }
+    }
+
+    fun setTitleWatched(animeId: Int, watched: Boolean) {
+        viewModelScope.launch {
+            val details = runCatching { animeRepository.details(animeId) }.getOrNull() ?: return@launch
+            if (watched) {
+                details.seasons.forEach { season ->
+                    selectUniqueEpisodes(season.episodes).forEach { episode ->
+                        progressStore.save(
+                            WatchProgress(
+                                animeId = episode.anilistId,
+                                seasonNumber = episode.seasonNumber,
+                                episodeNumber = episode.episodeNumber,
+                                audioType = episode.audioType,
+                                positionMs = 9_000L,
+                                durationMs = 10_000L,
+                                updatedAtMs = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                }
+            } else {
+                progressStore.deleteAnime(details.seasons.map { it.id }.toSet() + details.id)
+            }
+        }
+    }
+
+    private fun selectUniqueEpisodes(episodes: List<AnimeEpisode>): List<AnimeEpisode> =
+        episodes.groupBy { it.episodeNumber }.mapNotNull { (_, versions) ->
+            versions.firstOrNull { it.sourceCandidates.isNotEmpty() }
+                ?: versions.firstOrNull()
+        }
 
     private fun resetProfilePresentation() {
         _personalizedRows.value = emptyList()
