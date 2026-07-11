@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeType
 import com.ttvralph.miruroapp.data.HomeRow
+import com.ttvralph.miruroapp.data.TitleReaction
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.LoadingState
@@ -41,6 +42,7 @@ private const val HOME_PROGRESS_METADATA_LIMIT = 8
 @Composable
 fun ReliableHomeScreen(
     viewModel: MiruroViewModel,
+    features: NetflixFeatureViewModel,
     onOpenDetails: (Int) -> Unit,
     onPlayProgress: (WatchProgress) -> Unit
 ) {
@@ -50,6 +52,10 @@ fun ReliableHomeScreen(
     val settings by viewModel.settings.collectAsState()
     val metadataVersion by viewModel.itemMetadataVersion.collectAsState()
     val resumeMetadata by ContinueWatchingMetadataStore.items.collectAsState()
+    val personalizedRows by features.personalizedRows.collectAsState()
+    val upcoming by features.upcoming.collectAsState()
+    val profileState by features.profileState.collectAsState()
+    val reactions by features.reactions.collectAsState()
     var automaticRetries by remember { mutableIntStateOf(0) }
 
     val rows = remember(state) {
@@ -82,9 +88,16 @@ fun ReliableHomeScreen(
 
     LaunchedEffect(unfinished) {
         if (unfinished.isNotEmpty()) {
-            // Let Home draw and receive focus before doing one small metadata request.
             delay(300L)
             ContinueWatchingMetadataStore.resolve(unfinished.map { it.animeId }.toSet())
+        }
+    }
+
+    LaunchedEffect(rows, progress, favorites, reactions, profileState.activeId) {
+        if (rows.isNotEmpty()) {
+            // Keep recommendation work behind the first Home frame and focus hand-off.
+            delay(650L)
+            features.loadHomeFeatures(rows.flatMap { it.items }, progress, favorites)
         }
     }
 
@@ -100,10 +113,32 @@ fun ReliableHomeScreen(
         return
     }
 
-    val initial = remember(rows) {
-        rows.asSequence()
-            .flatMap { it.items.asSequence() }
-            .firstOrNull { !it.bannerUrl.isNullOrBlank() }
+    val hiddenIds = remember(reactions) {
+        reactions.filterValues { it == TitleReaction.DISLIKE }.keys
+    }
+    val featureRows = remember(personalizedRows, upcoming, hiddenIds, profileState.activeId) {
+        val upcomingRow = upcoming
+            .map { it.anime }
+            .filterNot { it.id in hiddenIds }
+            .distinctBy { it.id }
+            .take(18)
+            .takeIf { it.isNotEmpty() }
+            ?.let { HomeRow("Upcoming for ${profileState.activeProfile.name}", it) }
+        (personalizedRows + listOfNotNull(upcomingRow))
+            .map { row -> row.copy(items = row.items.filterNot { it.id in hiddenIds }) }
+            .filter { it.items.isNotEmpty() }
+            .distinctBy { it.title }
+    }
+    val displayRows = remember(rows, featureRows, hiddenIds) {
+        val catalogue = rows
+            .map { row -> row.copy(items = row.items.filterNot { it.id in hiddenIds }) }
+            .filter { it.items.isNotEmpty() }
+        catalogue + featureRows
+    }
+
+    val initial = remember(rows, hiddenIds) {
+        val visible = rows.flatMap { it.items }.filterNot { it.id in hiddenIds }
+        visible.firstOrNull { !it.bannerUrl.isNullOrBlank() } ?: visible.firstOrNull()
             ?: rows.asSequence().flatMap { it.items.asSequence() }.first()
     }
     val resumeItems = remember(unfinished, metadataVersion, resumeMetadata) {
@@ -197,15 +232,9 @@ fun ReliableHomeScreen(
                     ReliableHomeRow("Continue Watching") {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(
-                                horizontal = ReliableSafeX,
-                                vertical = 12.dp
-                            )
+                            contentPadding = PaddingValues(horizontal = ReliableSafeX, vertical = 12.dp)
                         ) {
-                            itemsIndexed(
-                                resumeItems,
-                                key = { _, item -> item.progress.key }
-                            ) { index, item ->
+                            itemsIndexed(resumeItems, key = { _, item -> item.progress.key }) { index, item ->
                                 ReliableHomeCard(
                                     item = item.anime,
                                     progress = item.progress.percent,
@@ -220,22 +249,16 @@ fun ReliableHomeScreen(
                     }
                 }
             }
-            rows.forEach { homeRow ->
+            displayRows.forEach { homeRow ->
                 val first = rowNumber == 0
                 rowNumber += 1
                 item("reliable-row-${homeRow.title}") {
                     ReliableHomeRow(homeRow.title) {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            contentPadding = PaddingValues(
-                                horizontal = ReliableSafeX,
-                                vertical = 12.dp
-                            )
+                            contentPadding = PaddingValues(horizontal = ReliableSafeX, vertical = 12.dp)
                         ) {
-                            itemsIndexed(
-                                homeRow.items,
-                                key = { _, item -> item.id }
-                            ) { index, anime ->
+                            itemsIndexed(homeRow.items, key = { _, item -> item.id }) { index, anime ->
                                 ReliableHomeCard(
                                     item = anime,
                                     focusRequester = if (first && index == 0) firstRowFocus else null,
