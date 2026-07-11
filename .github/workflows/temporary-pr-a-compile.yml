@@ -1,0 +1,22 @@
+name: Temporary PR A compile
+
+on:
+  push:
+    branches:
+      - agent/daily-watching-pr-a
+  workflow_dispatch:
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Assemble debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew :MiruroApp:assembleDebug --stacktrace
