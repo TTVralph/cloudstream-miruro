@@ -207,7 +207,9 @@ private fun MiruroApp(viewModel: MiruroViewModel, features: NetflixFeatureViewMo
                 composable(Routes.Genres.route) {
                     ReliableDiscoverScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
                 }
-                composable(Routes.Settings.route) { AuditSettingsScreen(viewModel) }
+                composable(Routes.Settings.route) {
+                    EnhancedSettingsScreen(viewModel, features)
+                }
                 composable(
                     Routes.Details.route,
                     arguments = listOf(navArgument(Args.ID) { type = NavType.IntType })
@@ -258,6 +260,7 @@ private fun MiruroApp(viewModel: MiruroViewModel, features: NetflixFeatureViewMo
                         ?: AudioType.SUB
                     val episode = findEpisode(viewModel, id, season, episodeNumber, audio)
                     AutomaticEpisodeDetailsScreen(
+                        rootAnimeId = id,
                         episode = episode,
                         viewModel = viewModel,
                         onBack = { navController.backOrHome() },
