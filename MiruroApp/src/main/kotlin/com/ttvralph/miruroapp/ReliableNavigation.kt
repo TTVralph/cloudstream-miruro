@@ -95,7 +95,7 @@ fun ReliableTopBar(
         ReliableNavText("Anime", current == "Anime", onAnime, onDown = onMoveDown)
         ReliableNavText("Movies", current == "Movies", onMovies, onDown = onMoveDown)
         ReliableNavText("Discover", current == "Discover", onDiscover, 104.dp, onMoveDown)
-        ReliableNavText("My List", current == "My List", onMyList, onDown = onMoveDown)
+        ReliableNavText("My AniStream", current == "My AniStream", onMyList, 124.dp, onMoveDown)
         Spacer(Modifier.weight(1f))
         ReliableNavIcon(Icons.Filled.Search, "Search", current == "Search", onSearch, onMoveDown)
         Spacer(Modifier.width(10.dp))

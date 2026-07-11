@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 private val Context.watchlistDataStore by preferencesDataStore("watchlist")
@@ -15,7 +16,12 @@ data class WatchlistEntry(
     val posterUrl: String? = null,
     val addedAtMs: Long = System.currentTimeMillis()
 ) {
-    fun encoded(): String = listOf(id.toString(), addedAtMs.toString(), title.orEmpty().escape(), posterUrl.orEmpty().escape()).joinToString("|")
+    fun encoded(): String = listOf(
+        id.toString(),
+        addedAtMs.toString(),
+        title.orEmpty().escape(),
+        posterUrl.orEmpty().escape()
+    ).joinToString("|")
 
     companion object {
         fun decode(value: String): WatchlistEntry? {
@@ -34,20 +40,55 @@ data class WatchlistEntry(
     }
 }
 
+private data class ProfileWatchlistEntry(val profileId: String, val entry: WatchlistEntry) {
+    fun encoded(): String = "$profileId~${entry.encoded()}"
+}
+
+private fun decodeProfileWatchlistEntry(value: String): ProfileWatchlistEntry? {
+    val separator = value.indexOf('~')
+    return if (separator > 0) {
+        val entry = WatchlistEntry.decode(value.substring(separator + 1)) ?: return null
+        ProfileWatchlistEntry(value.substring(0, separator), entry)
+    } else {
+        // Legacy favourites remain attached to the default profile.
+        WatchlistEntry.decode(value)?.let { ProfileWatchlistEntry(DEFAULT_PROFILE_ID, it) }
+    }
+}
+
 class WatchlistStore(private val context: Context) {
     private val key = stringSetPreferencesKey("favorite_anime_ids")
-    val entries: Flow<List<WatchlistEntry>> = context.watchlistDataStore.data.map { prefs ->
-        prefs[key].orEmpty().mapNotNull(WatchlistEntry::decode).sortedByDescending { it.addedAtMs }
+
+    val entries: Flow<List<WatchlistEntry>> = combine(
+        context.watchlistDataStore.data,
+        ProfileSession.activeId
+    ) { preferences, activeProfile ->
+        preferences[key]
+            .orEmpty()
+            .mapNotNull(::decodeProfileWatchlistEntry)
+            .filter { it.profileId == activeProfile }
+            .map { it.entry }
+            .sortedByDescending { it.addedAtMs }
     }
-    val favoriteIds: Flow<Set<Int>> = entries.map { it.map(WatchlistEntry::id).toSet() }
+
+    val favoriteIds: Flow<Set<Int>> = entries.map { values -> values.map(WatchlistEntry::id).toSet() }
 
     suspend fun setFavorite(item: AnimeItem, favorite: Boolean) = setFavorite(item.id, favorite, item)
 
     suspend fun setFavorite(id: Int, favorite: Boolean, item: AnimeItem? = null) {
-        context.watchlistDataStore.edit { prefs ->
-            val next = prefs[key].orEmpty().mapNotNull(WatchlistEntry::decode).filterNot { it.id == id }.toMutableList()
-            if (favorite) next.add(WatchlistEntry(id, item?.title, item?.posterUrl, System.currentTimeMillis()))
-            prefs[key] = next.map { it.encoded() }.toSet()
+        val profileId = ProfileSession.activeId.value
+        context.watchlistDataStore.edit { preferences ->
+            val all = preferences[key]
+                .orEmpty()
+                .mapNotNull(::decodeProfileWatchlistEntry)
+                .filterNot { it.profileId == profileId && it.entry.id == id }
+                .toMutableList()
+            if (favorite) {
+                all += ProfileWatchlistEntry(
+                    profileId,
+                    WatchlistEntry(id, item?.title, item?.posterUrl, System.currentTimeMillis())
+                )
+            }
+            preferences[key] = all.map(ProfileWatchlistEntry::encoded).toSet()
         }
     }
 }

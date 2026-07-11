@@ -5,7 +5,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 
 private val Context.watchProgressDataStore by preferencesDataStore("watch_progress")
 
@@ -63,46 +63,87 @@ data class WatchProgress(
     }
 }
 
+private data class ProfileProgress(val profileId: String, val progress: WatchProgress) {
+    fun encoded(): String = "$profileId~${progress.encoded()}"
+}
+
+private fun decodeProfileProgress(value: String): ProfileProgress? {
+    val separator = value.indexOf('~')
+    return if (separator > 0) {
+        val profileId = value.substring(0, separator)
+        val progress = WatchProgress.decode(value.substring(separator + 1)) ?: return null
+        ProfileProgress(profileId, progress)
+    } else {
+        // Data saved before profiles existed belongs to the default profile.
+        WatchProgress.decode(value)?.let { ProfileProgress(DEFAULT_PROFILE_ID, it) }
+    }
+}
+
 class WatchProgressStore(private val context: Context) {
     private val key = stringSetPreferencesKey("episode_progress")
 
-    val progress: Flow<List<WatchProgress>> = context.watchProgressDataStore.data.map { preferences ->
+    val progress: Flow<List<WatchProgress>> = combine(
+        context.watchProgressDataStore.data,
+        ProfileSession.activeId
+    ) { preferences, activeProfile ->
         preferences[key]
             .orEmpty()
-            .mapNotNull(WatchProgress::decode)
+            .mapNotNull(::decodeProfileProgress)
+            .filter { it.profileId == activeProfile }
+            .map { it.progress }
             .sortedByDescending { it.updatedAtMs }
     }
 
     suspend fun save(progress: WatchProgress) {
+        val profileId = ProfileSession.activeId.value
         context.watchProgressDataStore.edit { preferences ->
-            val next = preferences[key]
+            val all = preferences[key]
                 .orEmpty()
-                .mapNotNull(WatchProgress::decode)
-                .filterNot { it.key == progress.key }
+                .mapNotNull(::decodeProfileProgress)
                 .toMutableList()
-            next.add(progress)
-            preferences[key] = next
-                .sortedByDescending { it.updatedAtMs }
-                .take(MAX_SAVED_PROGRESS)
-                .map { it.encoded() }
+            all.removeAll { it.profileId == profileId && it.progress.key == progress.key }
+            all += ProfileProgress(profileId, progress)
+            preferences[key] = all
+                .groupBy { it.profileId }
+                .flatMap { (_, entries) ->
+                    entries.sortedByDescending { it.progress.updatedAtMs }.take(MAX_SAVED_PROGRESS)
+                }
+                .map(ProfileProgress::encoded)
                 .toSet()
         }
     }
 
     suspend fun delete(animeId: Int, seasonNumber: Int, episodeNumber: Int, audioType: AudioType) {
+        val profileId = ProfileSession.activeId.value
         val deleteKey = WatchProgress.makeKey(animeId, seasonNumber, episodeNumber, audioType)
-        context.watchProgressDataStore.edit { preferences ->
-            preferences[key] = preferences[key]
-                .orEmpty()
-                .mapNotNull(WatchProgress::decode)
-                .filterNot { it.key == deleteKey }
-                .map { it.encoded() }
-                .toSet()
+        updateEntries { entry ->
+            entry.profileId == profileId && entry.progress.key == deleteKey
+        }
+    }
+
+    suspend fun deleteAnime(animeIds: Set<Int>) {
+        if (animeIds.isEmpty()) return
+        val profileId = ProfileSession.activeId.value
+        updateEntries { entry ->
+            entry.profileId == profileId && entry.progress.animeId in animeIds
         }
     }
 
     suspend fun clear() {
-        context.watchProgressDataStore.edit { it.remove(key) }
+        val profileId = ProfileSession.activeId.value
+        updateEntries { it.profileId == profileId }
+    }
+
+    private suspend fun updateEntries(removeWhen: (ProfileProgress) -> Boolean) {
+        context.watchProgressDataStore.edit { preferences ->
+            val remaining = preferences[key]
+                .orEmpty()
+                .mapNotNull(::decodeProfileProgress)
+                .filterNot(removeWhen)
+                .map(ProfileProgress::encoded)
+                .toSet()
+            if (remaining.isEmpty()) preferences.remove(key) else preferences[key] = remaining
+        }
     }
 
     companion object {
