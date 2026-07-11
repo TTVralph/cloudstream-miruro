@@ -17,7 +17,7 @@ fun GuardedTvPlayerScreen(
     onPlayNext: (AnimeEpisode) -> Unit
 ) {
     Box(Modifier.fillMaxSize()) {
-        TvPlayerScreen(
+        ImprovedTvPlayerScreen(
             viewModel = viewModel,
             episode = episode,
             nextEpisode = nextEpisode,
