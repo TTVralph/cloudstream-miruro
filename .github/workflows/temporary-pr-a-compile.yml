@@ -20,6 +20,15 @@ jobs:
           java-version: '17'
           cache: gradle
       - name: Assemble debug APK
+        shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :MiruroApp:assembleDebug --stacktrace
+          set +e
+          ./gradlew :MiruroApp:assembleDebug --stacktrace > gradle-build.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "--- compiler diagnostics ---"
+            grep -E "(^e: |^w: |FAILURE:|What went wrong|Execution failed|Compilation error|error:)" gradle-build.log | tail -n 240 || tail -n 240 gradle-build.log
+            exit "$status"
+          fi
+          tail -n 40 gradle-build.log
