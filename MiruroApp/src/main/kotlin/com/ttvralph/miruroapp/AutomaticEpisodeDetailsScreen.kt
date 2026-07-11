@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +43,7 @@ import java.util.Locale
 
 @Composable
 fun AutomaticEpisodeDetailsScreen(
+    rootAnimeId: Int,
     episode: AnimeEpisode?,
     viewModel: MiruroViewModel,
     onBack: () -> Unit,
@@ -53,12 +55,22 @@ fun AutomaticEpisodeDetailsScreen(
     }
 
     val progress by viewModel.watchProgress.collectAsState()
+    val settings by viewModel.settings.collectAsState()
     val saved = progress.firstOrNull {
         it.animeId == episode.anilistId &&
             it.seasonNumber == episode.seasonNumber &&
             it.episodeNumber == episode.episodeNumber &&
             it.audioType == episode.audioType
     }
+    val details = viewModel.cachedDetails(rootAnimeId)
+    val hiddenKeys = details?.let {
+        dailySpoilerHiddenKeys(it, progress, settings.preferredAudio, settings.noSpoilerMode)
+    }.orEmpty()
+    val hideSpoilers = dailyProgressKey(
+        episode.anilistId,
+        episode.seasonNumber,
+        episode.episodeNumber
+    ) in hiddenKeys
     val providers = episode.sourceCandidates
         .map { it.provider.lowercase(Locale.ROOT) }
         .distinct()
@@ -73,9 +85,7 @@ fun AutomaticEpisodeDetailsScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        item {
-            SecondaryButton("Back", Modifier.width(112.dp), onBack)
-        }
+        item { SecondaryButton("Back", Modifier.width(112.dp), onBack) }
         item {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(28.dp),
@@ -88,12 +98,27 @@ fun AutomaticEpisodeDetailsScreen(
                         .clip(RoundedCornerShape(6.dp))
                         .background(MiruroColors.CardHigh)
                 ) {
-                    episode.thumbnailUrl?.let { image ->
-                        AsyncImage(
-                            model = image,
-                            contentDescription = episode.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                    if (!hideSpoilers) {
+                        episode.thumbnailUrl?.let { image ->
+                            AsyncImage(
+                                model = image,
+                                contentDescription = episode.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } else {
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.linearGradient(listOf(Color(0xFF171717), Color(0xFF303030)))
+                            )
+                        )
+                        Text(
+                            "Future thumbnail hidden",
+                            color = Color.White.copy(alpha = 0.62f),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.Center)
                         )
                     }
                 }
@@ -106,13 +131,22 @@ fun AutomaticEpisodeDetailsScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        episode.title ?: "Episode ${episode.episodeNumber}",
+                        if (hideSpoilers) "Episode ${episode.episodeNumber}" else episode.title ?: "Episode ${episode.episodeNumber}",
                         color = Color.White.copy(alpha = 0.76f),
                         fontSize = 19.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (hideSpoilers) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "No-spoiler mode is hiding details until you reach this episode.",
+                            color = MiruroColors.AccentSoft,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                     Spacer(Modifier.height(16.dp))
                     Text(
                         "AniStream will try every available provider automatically and switch sources if one fails. Resolutions and manual choices appear in Quality & Source during playback.",
@@ -150,9 +184,7 @@ fun AutomaticEpisodeDetailsScreen(
                 }
             }
         } else {
-            item {
-                StateMessage("No playable source is currently available for this episode.")
-            }
+            item { StateMessage("No playable source is currently available for this episode.") }
         }
     }
 }

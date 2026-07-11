@@ -56,7 +56,9 @@ fun ReliableHomeScreen(
     val upcoming by features.upcoming.collectAsState()
     val profileState by features.profileState.collectAsState()
     val reactions by features.reactions.collectAsState()
+    val trackingStatuses by features.trackingStatuses.collectAsState()
     var automaticRetries by remember { mutableIntStateOf(0) }
+    var actionTarget by remember { mutableStateOf<HomeCardActionTarget?>(null) }
 
     val rows = remember(state) {
         (state as? UiState.Success<List<HomeRow>>)
@@ -93,9 +95,16 @@ fun ReliableHomeScreen(
         }
     }
 
-    LaunchedEffect(rows, progress, favorites, reactions, profileState.activeId) {
+    LaunchedEffect(favorites, trackingStatuses.keys, progress.map { it.animeId }.toSet()) {
+        val ids = (favorites + trackingStatuses.keys + progress.map { it.animeId })
+            .filter { it > 0 }
+            .take(20)
+            .toSet()
+        if (ids.isNotEmpty()) viewModel.resolveFavoriteMetadata(ids)
+    }
+
+    LaunchedEffect(rows, progress, favorites, reactions, trackingStatuses, profileState.activeId) {
         if (rows.isNotEmpty()) {
-            // Keep recommendation work behind the first Home frame and focus hand-off.
             delay(650L)
             features.loadHomeFeatures(rows.flatMap { it.items }, progress, favorites)
         }
@@ -158,6 +167,22 @@ fun ReliableHomeScreen(
         }
     }
 
+    fun actionFor(item: AnimeItem, explicitProgress: WatchProgress? = null): HomeCardActionTarget {
+        val details = viewModel.cachedDetails(item.id)
+        val seasonIds = details?.seasons?.map { it.id }?.toSet().orEmpty() + item.id
+        val resume = explicitProgress ?: progress
+            .filter { !it.watched && it.animeId in seasonIds }
+            .maxByOrNull { it.updatedAtMs }
+        val summary = details?.let { dailyTitleProgress(it, progress, settings.preferredAudio) }
+        return HomeCardActionTarget(item, resume, summary)
+    }
+
+    fun badgeFor(item: AnimeItem): String? {
+        val details = viewModel.cachedDetails(item.id) ?: return trackingStatuses[item.id]?.label?.uppercase()
+        return dailyTitleProgress(details, progress, settings.preferredAudio).badge
+            ?: trackingStatuses[item.id]?.label?.uppercase()
+    }
+
     val listState = rememberLazyListState()
     val playFocus = remember { FocusRequester() }
     val firstRowFocus = remember { FocusRequester() }
@@ -193,8 +218,8 @@ fun ReliableHomeScreen(
         }
     }
 
-    LaunchedEffect(initial.id, browsingRows) {
-        if (!browsingRows) {
+    LaunchedEffect(initial.id, browsingRows, actionTarget) {
+        if (!browsingRows && actionTarget == null) {
             delay(160L)
             runCatching { playFocus.requestFocus() }
         }
@@ -235,13 +260,15 @@ fun ReliableHomeScreen(
                             contentPadding = PaddingValues(horizontal = ReliableSafeX, vertical = 12.dp)
                         ) {
                             itemsIndexed(resumeItems, key = { _, item -> item.progress.key }) { index, item ->
-                                ReliableHomeCard(
+                                DailyHomeCard(
                                     item = item.anime,
                                     progress = item.progress.percent,
                                     supportingText = "S${item.progress.seasonNumber} E${item.progress.episodeNumber}",
+                                    badge = null,
                                     focusRequester = if (first && index == 0) firstRowFocus else null,
                                     upFocusRequester = if (first) playFocus else null,
                                     onFocused = { if (!browsingRows) browsingRows = true },
+                                    onLongClick = { actionTarget = actionFor(item.anime, item.progress) },
                                     onClick = { onPlayProgress(item.progress) }
                                 )
                             }
@@ -259,11 +286,13 @@ fun ReliableHomeScreen(
                             contentPadding = PaddingValues(horizontal = ReliableSafeX, vertical = 12.dp)
                         ) {
                             itemsIndexed(homeRow.items, key = { _, item -> item.id }) { index, anime ->
-                                ReliableHomeCard(
+                                DailyHomeCard(
                                     item = anime,
+                                    badge = badgeFor(anime),
                                     focusRequester = if (first && index == 0) firstRowFocus else null,
                                     upFocusRequester = if (first) playFocus else null,
                                     onFocused = { if (!browsingRows) browsingRows = true },
+                                    onLongClick = { actionTarget = actionFor(anime) },
                                     onClick = { onOpenDetails(anime.id) }
                                 )
                             }
@@ -271,6 +300,40 @@ fun ReliableHomeScreen(
                     }
                 }
             }
+        }
+
+        actionTarget?.let { target ->
+            HomeCardActionMenu(
+                target = target,
+                inList = target.item.id in favorites,
+                reaction = reactions[target.item.id],
+                trackingStatus = trackingStatuses[target.item.id],
+                onDismiss = { actionTarget = null },
+                onOpenDetails = {
+                    actionTarget = null
+                    onOpenDetails(target.item.id)
+                },
+                onPlay = {
+                    actionTarget = null
+                    target.resumeProgress?.let(onPlayProgress) ?: onOpenDetails(target.item.id)
+                },
+                onToggleList = {
+                    viewModel.toggleFavorite(target.item.id)
+                    actionTarget = null
+                },
+                onSetReaction = { reaction ->
+                    features.setReaction(target.item.id, reaction)
+                    actionTarget = null
+                },
+                onSetTrackingStatus = { status ->
+                    features.setTrackingStatus(target.item.id, status)
+                    actionTarget = null
+                },
+                onSetTitleWatched = { watched ->
+                    features.setTitleWatched(target.item.id, watched)
+                    actionTarget = null
+                }
+            )
         }
     }
 }

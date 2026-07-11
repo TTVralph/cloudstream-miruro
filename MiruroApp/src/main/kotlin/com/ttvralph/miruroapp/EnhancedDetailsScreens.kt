@@ -21,6 +21,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -51,12 +54,16 @@ fun EnhancedDetailsScreen(
 ) {
     val reactions by features.reactions.collectAsState()
     val reminders by features.reminders.collectAsState()
+    val trackingStatuses by features.trackingStatuses.collectAsState()
+    val settings by viewModel.settings.collectAsState()
     val extras by features.extras.collectAsState()
+    var showStatusPicker by remember(animeId) { mutableStateOf(false) }
     LaunchedEffect(animeId) { features.loadExtras(animeId) }
 
     Box(Modifier.fillMaxSize()) {
-        AuditDetailsScreen(
+        DailyDetailsScreen(
             viewModel = viewModel,
+            features = features,
             animeId = animeId,
             onBack = onBack,
             onOpenEpisode = onOpenEpisode,
@@ -82,21 +89,49 @@ fun EnhancedDetailsScreen(
                 ReactionButton("Not for me", reactions[animeId] == TitleReaction.DISLIKE) {
                     features.setReaction(animeId, TitleReaction.DISLIKE)
                 }
-                ReactionButton(if (animeId in reminders) "✓ Reminder" else "Remind me", animeId in reminders) {
-                    features.toggleReminder(animeId)
-                }
+                ReactionButton(
+                    if (animeId in reminders) "✓ Reminder" else "Remind me",
+                    animeId in reminders
+                ) { features.toggleReminder(animeId) }
                 PrimaryButton("More like this", Modifier.width(160.dp), onMoreLikeThis)
             }
-            val next = (extras as? UiState.Success<TitleExtras>)?.data?.nextAiring
-            next?.let {
-                Text(
-                    "Next: Episode ${it.episodeNumber} ${formatAiringTime(it.airingAtEpochSeconds)}",
-                    color = MiruroColors.AccentSoft,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 7.dp, end = 4.dp)
-                )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SecondaryButton(
+                    "Status: ${trackingStatuses[animeId]?.label ?: "None"}",
+                    Modifier.width(210.dp)
+                ) { showStatusPicker = true }
+                if (settings.noSpoilerMode) {
+                    Text(
+                        "No-spoiler mode is on",
+                        color = MiruroColors.AccentSoft,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                val next = (extras as? UiState.Success<TitleExtras>)?.data?.nextAiring
+                next?.let {
+                    Text(
+                        "Next: E${it.episodeNumber} ${formatAiringTime(it.airingAtEpochSeconds)}",
+                        color = MiruroColors.AccentSoft,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
+        }
+
+        if (showStatusPicker) {
+            TrackingStatusPicker(
+                title = "Track this anime",
+                selected = trackingStatuses[animeId],
+                onDismiss = { showStatusPicker = false },
+                onSelected = { status ->
+                    features.setTrackingStatus(animeId, status)
+                    showStatusPicker = false
+                }
+            )
         }
     }
 }

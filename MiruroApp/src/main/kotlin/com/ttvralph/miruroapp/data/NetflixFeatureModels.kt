@@ -22,6 +22,15 @@ enum class TitleReaction(val label: String) {
     DISLIKE("Not for me")
 }
 
+enum class TrackingStatus(val label: String) {
+    WATCHING("Watching"),
+    PLANNING("Planning"),
+    COMPLETED("Completed"),
+    ON_HOLD("On Hold"),
+    DROPPED("Dropped"),
+    REWATCHING("Rewatching")
+}
+
 data class UpcomingEpisode(
     val anime: AnimeItem,
     val episodeNumber: Int,
