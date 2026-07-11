@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -56,7 +57,7 @@ internal fun HomeCardActionMenu(
     onSetTitleWatched: (Boolean) -> Unit
 ) {
     BackHandler(onBack = onDismiss)
-    val firstFocus = FocusRequester()
+    val firstFocus = remember(target.item.id) { FocusRequester() }
     LaunchedEffect(target.item.id) {
         delay(90L)
         runCatching { firstFocus.requestFocus() }
@@ -145,9 +146,7 @@ internal fun HomeCardActionMenu(
                 SecondaryButton("Clear tracking status", Modifier.fillMaxWidth()) { onSetTrackingStatus(null) }
             }
 
-            item {
-                SecondaryButton("Close", Modifier.fillMaxWidth(), onDismiss)
-            }
+            item { SecondaryButton("Close", Modifier.fillMaxWidth(), onDismiss) }
         }
     }
 }
