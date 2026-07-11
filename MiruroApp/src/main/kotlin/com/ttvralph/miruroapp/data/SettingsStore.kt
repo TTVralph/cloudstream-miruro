@@ -15,6 +15,7 @@ enum class WatchlistSort { RECENTLY_ADDED, TITLE, PROGRESS }
 data class AppSettings(
     val preferredAudio: AudioType = AudioType.SUB,
     val preferredProvider: String = "Auto",
+    val preferredQuality: String = "Auto",
     val themeMode: ThemeMode = ThemeMode.DARK,
     val posterGridDensity: PosterGridDensity = PosterGridDensity.COMFORTABLE,
     val autoPlayNext: Boolean = false,
@@ -22,6 +23,11 @@ data class AppSettings(
     val subtitleLanguage: String = "English",
     val subtitleStyle: String = "Default",
     val subtitleChoice: String = "Auto",
+    val subtitleSize: String = "Medium",
+    val subtitleBackground: String = "Medium",
+    val largePlayerControls: Boolean = false,
+    val highContrastPlayerControls: Boolean = false,
+    val reducedPlayerMotion: Boolean = false,
     val hideWatchedEpisodes: Boolean = false,
     val noSpoilerMode: Boolean = false,
     val watchlistSort: WatchlistSort = WatchlistSort.RECENTLY_ADDED
@@ -36,6 +42,7 @@ class SettingsStore(private val context: Context) {
     private object Names {
         const val preferredAudio = "preferred_audio"
         const val preferredProvider = "preferred_provider"
+        const val preferredQuality = "preferred_quality"
         const val themeMode = "theme_mode"
         const val posterGridDensity = "poster_grid_density"
         const val autoPlayNext = "auto_play_next"
@@ -43,6 +50,11 @@ class SettingsStore(private val context: Context) {
         const val subtitleLanguage = "subtitle_language"
         const val subtitleStyle = "subtitle_style"
         const val subtitleChoice = "subtitle_choice"
+        const val subtitleSize = "subtitle_size"
+        const val subtitleBackground = "subtitle_background"
+        const val largePlayerControls = "large_player_controls"
+        const val highContrastPlayerControls = "high_contrast_player_controls"
+        const val reducedPlayerMotion = "reduced_player_motion"
         const val hideWatchedEpisodes = "hide_watched_episodes"
         const val noSpoilerMode = "no_spoiler_mode"
         const val watchlistSort = "watchlist_sort"
@@ -61,6 +73,7 @@ class SettingsStore(private val context: Context) {
                 ?: AudioType.SUB,
             // Provider availability changes per title and episode. Always resolve in Auto mode.
             preferredProvider = "Auto",
+            preferredQuality = string(Names.preferredQuality) ?: "Auto",
             themeMode = string(Names.themeMode)
                 ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
                 ?: ThemeMode.DARK,
@@ -72,6 +85,11 @@ class SettingsStore(private val context: Context) {
             subtitleLanguage = string(Names.subtitleLanguage) ?: "English",
             subtitleStyle = string(Names.subtitleStyle) ?: "Default",
             subtitleChoice = string(Names.subtitleChoice) ?: "Auto",
+            subtitleSize = string(Names.subtitleSize) ?: "Medium",
+            subtitleBackground = string(Names.subtitleBackground) ?: "Medium",
+            largePlayerControls = boolean(Names.largePlayerControls) ?: false,
+            highContrastPlayerControls = boolean(Names.highContrastPlayerControls) ?: false,
+            reducedPlayerMotion = boolean(Names.reducedPlayerMotion) ?: false,
             hideWatchedEpisodes = boolean(Names.hideWatchedEpisodes) ?: false,
             noSpoilerMode = boolean(Names.noSpoilerMode) ?: false,
             watchlistSort = string(Names.watchlistSort)
@@ -87,6 +105,7 @@ class SettingsStore(private val context: Context) {
         updateString(Names.preferredProvider, "Auto")
     }
 
+    suspend fun updatePreferredQuality(value: String) = updateString(Names.preferredQuality, value)
     suspend fun updateThemeMode(value: ThemeMode) = updateString(Names.themeMode, value.name)
     suspend fun updatePosterGridDensity(value: PosterGridDensity) = updateString(Names.posterGridDensity, value.name)
     suspend fun updateAutoPlayNext(value: Boolean) = updateBoolean(Names.autoPlayNext, value)
@@ -94,6 +113,11 @@ class SettingsStore(private val context: Context) {
     suspend fun updateSubtitleLanguage(value: String) = updateString(Names.subtitleLanguage, value)
     suspend fun updateSubtitleStyle(value: String) = updateString(Names.subtitleStyle, value)
     suspend fun updateSubtitleChoice(value: String) = updateString(Names.subtitleChoice, value)
+    suspend fun updateSubtitleSize(value: String) = updateString(Names.subtitleSize, value)
+    suspend fun updateSubtitleBackground(value: String) = updateString(Names.subtitleBackground, value)
+    suspend fun updateLargePlayerControls(value: Boolean) = updateBoolean(Names.largePlayerControls, value)
+    suspend fun updateHighContrastPlayerControls(value: Boolean) = updateBoolean(Names.highContrastPlayerControls, value)
+    suspend fun updateReducedPlayerMotion(value: Boolean) = updateBoolean(Names.reducedPlayerMotion, value)
     suspend fun updateHideWatchedEpisodes(value: Boolean) = updateBoolean(Names.hideWatchedEpisodes, value)
     suspend fun updateNoSpoilerMode(value: Boolean) = updateBoolean(Names.noSpoilerMode, value)
     suspend fun updateWatchlistSort(value: WatchlistSort) = updateString(Names.watchlistSort, value.name)
