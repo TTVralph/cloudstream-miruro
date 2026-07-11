@@ -5,3 +5,10 @@ local.properties
 .idea/
 *.iml
 .DS_Store
+
+# Android release signing must remain local.
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
