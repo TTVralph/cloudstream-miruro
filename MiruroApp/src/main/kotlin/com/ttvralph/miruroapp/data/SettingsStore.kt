@@ -23,6 +23,7 @@ data class AppSettings(
     val subtitleStyle: String = "Default",
     val subtitleChoice: String = "Auto",
     val hideWatchedEpisodes: Boolean = false,
+    val noSpoilerMode: Boolean = false,
     val watchlistSort: WatchlistSort = WatchlistSort.RECENTLY_ADDED
 )
 
@@ -43,6 +44,7 @@ class SettingsStore(private val context: Context) {
         const val subtitleStyle = "subtitle_style"
         const val subtitleChoice = "subtitle_choice"
         const val hideWatchedEpisodes = "hide_watched_episodes"
+        const val noSpoilerMode = "no_spoiler_mode"
         const val watchlistSort = "watchlist_sort"
     }
 
@@ -71,6 +73,7 @@ class SettingsStore(private val context: Context) {
             subtitleStyle = string(Names.subtitleStyle) ?: "Default",
             subtitleChoice = string(Names.subtitleChoice) ?: "Auto",
             hideWatchedEpisodes = boolean(Names.hideWatchedEpisodes) ?: false,
+            noSpoilerMode = boolean(Names.noSpoilerMode) ?: false,
             watchlistSort = string(Names.watchlistSort)
                 ?.let { runCatching { WatchlistSort.valueOf(it) }.getOrNull() }
                 ?: WatchlistSort.RECENTLY_ADDED
@@ -92,6 +95,7 @@ class SettingsStore(private val context: Context) {
     suspend fun updateSubtitleStyle(value: String) = updateString(Names.subtitleStyle, value)
     suspend fun updateSubtitleChoice(value: String) = updateString(Names.subtitleChoice, value)
     suspend fun updateHideWatchedEpisodes(value: Boolean) = updateBoolean(Names.hideWatchedEpisodes, value)
+    suspend fun updateNoSpoilerMode(value: Boolean) = updateBoolean(Names.noSpoilerMode, value)
     suspend fun updateWatchlistSort(value: WatchlistSort) = updateString(Names.watchlistSort, value.name)
 
     private suspend fun updateString(name: String, value: String) {
