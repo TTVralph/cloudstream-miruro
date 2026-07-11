@@ -1,0 +1,109 @@
+name: Temporary PR C apply and compile
+
+on:
+  push:
+    branches:
+      - agent/discovery-improvements-pr-c
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/discovery-improvements-pr-c
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Wire discovery screens
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/MainActivity.kt')
+          text = path.read_text()
+          replacements = [
+              (
+                  '    private val featureViewModel: NetflixFeatureViewModel by viewModels()\n',
+                  '    private val featureViewModel: NetflixFeatureViewModel by viewModels()\n    private val discoveryViewModel: DiscoveryFeatureViewModel by viewModels()\n'
+              ),
+              (
+                  '            MiruroTheme(settings.themeMode) { MiruroApp(viewModel, featureViewModel) }',
+                  '            MiruroTheme(settings.themeMode) { MiruroApp(viewModel, featureViewModel, discoveryViewModel) }'
+              ),
+              (
+                  'private fun MiruroApp(viewModel: MiruroViewModel, features: NetflixFeatureViewModel) {',
+                  'private fun MiruroApp(\n    viewModel: MiruroViewModel,\n    features: NetflixFeatureViewModel,\n    discovery: DiscoveryFeatureViewModel\n) {'
+              ),
+              (
+                  '                composable(Routes.Search.route) {\n                    AuditSearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }\n                }',
+                  '                composable(Routes.Search.route) {\n                    AdvancedSearchScreen(\n                        discovery = discovery,\n                        library = viewModel,\n                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) }\n                    )\n                }'
+              ),
+              (
+                  '                composable(Routes.Genres.route) {\n                    ReliableDiscoverScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }\n                }',
+                  '                composable(Routes.Genres.route) {\n                    DiscoveryHubScreen(\n                        viewModel = viewModel,\n                        features = features,\n                        discovery = discovery,\n                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },\n                        onPlayProgress = ::playProgress,\n                        onOpenSearch = { navController.navigateTopLevel(Routes.Search.route) }\n                    )\n                }'
+              ),
+              (
+                  '                    TitleExtrasScreen(\n                        features = features,\n                        animeId = id,\n                        onBack = { navController.backOrHome() },\n                        onOpenDetails = { relatedId ->\n                            navController.navigate(Routes.Details.path(relatedId))\n                        }\n                    )',
+                  '                    DiscoveryTitleScreen(\n                        discovery = discovery,\n                        library = viewModel,\n                        animeId = id,\n                        onBack = { navController.backOrHome() },\n                        onOpenDetails = { relatedId ->\n                            navController.navigate(Routes.Details.path(relatedId))\n                        }\n                    )'
+              )
+          ]
+          for old, new in replacements:
+              if new in text:
+                  continue
+              if old not in text:
+                  raise SystemExit(f'Missing MainActivity replacement target: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          details = Path('MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/EnhancedDetailsScreens.kt')
+          details_text = details.read_text()
+          details_text = details_text.replace('PrimaryButton("More like this", Modifier.width(160.dp), onMoreLikeThis)', 'PrimaryButton("Anime guide", Modifier.width(160.dp), onMoreLikeThis)')
+          details.write_text(details_text)
+          PY
+      - name: Commit wiring changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No wiring changes needed."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/MainActivity.kt MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/EnhancedDetailsScreens.kt
+            git commit -m "Wire discovery hub, advanced search, and anime guide"
+            git push origin HEAD:agent/discovery-improvements-pr-c
+          fi
+      - name: Assemble debug APK
+        id: build
+        shell: bash
+        run: |
+          chmod +x gradlew
+          set +e
+          ./gradlew :MiruroApp:assembleDebug --stacktrace > gradle-build.log 2>&1
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" -ne 0 ]; then
+            echo "--- compiler diagnostics ---"
+            grep -E "(^e: |^w: |FAILURE:|What went wrong|Execution failed|Compilation error|error:)" gradle-build.log | tail -n 260 || tail -n 260 gradle-build.log
+          else
+            tail -n 50 gradle-build.log
+          fi
+          exit 0
+      - name: Upload Gradle diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-c-gradle-log
+          path: gradle-build.log
+          retention-days: 1
+      - name: Fail unsuccessful build
+        if: steps.build.outputs.status != '0'
+        run: exit 1
