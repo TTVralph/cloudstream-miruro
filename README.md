@@ -1,58 +1,122 @@
-# Miruro Cloudstream Extension
+# AniStream TV and Miruro Cloudstream Extension
 
-A Cloudstream extension for browsing and watching anime through Miruro-backed sources with AniList metadata.
+This repository contains:
+
+- **AniStream TV**, a standalone Jetpack Compose Android TV app.
+- A Cloudstream extension backed by Miruro sources with AniList metadata.
 
 ## Features
 
 - Search anime and anime movies with AniList titles and posters.
-- Quick search support inside Cloudstream.
-- Browse homepage rows modeled after Miruro, including trending, current-season popular, top-rated, movies, genre rows, and completed anime.
-- Load anime details with posters, descriptions, status/year/score/genre metadata, sub/dub episode lists, episode thumbnails, episode descriptions, and corrected runtimes when available.
-- Resolve Miruro pipe sources into Cloudstream HLS/DASH links.
-- Load subtitles/tracks exposed by the source payload.
-- Try equivalent episodes across available providers, with a preferred provider order to reduce broken-link fallbacks.
+- Browse trending, currently airing, seasonal, top-rated, and movie rows.
+- View anime details, seasons, SUB/DUB episodes, thumbnails, dates, runtimes, and progress.
+- Resolve available Miruro-backed playback sources with provider fallback.
+- Load subtitles and tracks exposed by the source payload.
+- Persist My List, settings, watch progress, and Continue Watching locally.
+- Resume unfinished playback and mark episodes watched after 90% completion.
 
-## Android App Highlights
+## Android TV development build
 
-- Includes a standalone Jetpack Compose for TV app with Home, Search, Movies, Series, Library, Details, and Media3 playback screens.
-- Search runs automatically with a short debounce as users type and includes a clear action for quickly starting a new query.
-- Favorites are persisted locally with DataStore and can be toggled from hero/detail actions, with a dedicated Library screen for saved anime.
-- Episode watch progress is persisted locally, powers a Continue Watching home row, resumes unfinished playback, and marks episodes as watched after 90% completion.
-- Details show watched/progress badges on episode cards and route episode clicks through an episode/provider summary before playback.
-- Genre browsing is available from the side navigation with popular AniList genre chips and browse grids.
-- Settings includes playback/preference status plus a clear watch-history action.
+On Windows:
 
-## Not Included
+```powershell
+.\gradlew.bat clean :MiruroApp:assembleDebug
+```
 
-Download support is intentionally disabled for now. The extension exposes playable stream links, but `hasDownloadSupport` remains `false` until download behavior is tested safely against the supported HLS/DASH source types.
+The debug APK is written to:
 
-## Build
+```text
+MiruroApp\build\outputs\apk\debug\MiruroApp-debug.apk
+```
+
+Install or replace the debug build with ADB:
+
+```powershell
+adb install -r .\MiruroApp\build\outputs\apk\debug\MiruroApp-debug.apk
+```
+
+## Android TV release signing
+
+Release credentials are read from a local `keystore.properties` file at the repository root. The real file and common keystore formats are ignored by Git.
+
+Create a signing key once:
+
+```powershell
+New-Item -ItemType Directory -Force release
+keytool -genkeypair -v `
+  -keystore release\anistream-release.jks `
+  -alias anistream `
+  -keyalg RSA `
+  -keysize 2048 `
+  -validity 10000
+```
+
+Copy the template:
+
+```powershell
+Copy-Item keystore.properties.example keystore.properties
+```
+
+Then replace every placeholder in `keystore.properties`:
+
+```properties
+storeFile=release/anistream-release.jks
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=anistream
+keyPassword=YOUR_KEY_PASSWORD
+```
+
+Never commit `keystore.properties` or the keystore. Keep secure backups of both the keystore and its passwords. Losing the signing key prevents future APKs from updating the installed release.
+
+Build the signed release APK:
+
+```powershell
+.\gradlew.bat clean :MiruroApp:assembleRelease
+```
+
+With valid signing properties, the APK is written to:
+
+```text
+MiruroApp\build\outputs\apk\release\MiruroApp-release.apk
+```
+
+Without valid signing properties, Gradle may produce an unsigned release APK instead. Do not distribute an unsigned APK.
+
+Verify the final APK before installation or distribution:
+
+```powershell
+apksigner verify --verbose --print-certs .\MiruroApp\build\outputs\apk\release\MiruroApp-release.apk
+```
+
+A release signed with a different key cannot replace an existing debug installation. Uninstall the debug app before the first release install, or keep testing on a separate device/profile.
+
+## Cloudstream extension build
 
 ```bash
 ./gradlew :MiruroProvider:make
 ```
 
-If you only want to validate Kotlin compilation during development, run:
+To validate only the extension Kotlin compilation:
 
 ```bash
 ./gradlew :MiruroProvider:compileDebugKotlin
 ```
 
-## Install
+## Not Included
 
-1. Build the plugin with Gradle.
-2. Copy or publish the generated Cloudstream plugin artifact from the module build output.
-3. Add it to Cloudstream as a third-party extension/repository build.
+Download support is intentionally disabled. The extension exposes playable stream links, but `hasDownloadSupport` remains `false` until download behavior is tested safely against the supported HLS/DASH source types.
 
-## Known Notes
+## Release notes
 
+- AniStream TV currently uses version `1.0.0` with version code `1`.
+- Release shrinking and resource shrinking remain disabled until Jackson and Media3 playback paths are validated with R8 on a physical TV.
 - Metadata comes from AniList GraphQL.
 - Episodes and stream sources are requested through Miruro's secure pipe endpoint.
 - Miruro source payloads can change; if playback stops working, inspect the pipe response shape first.
-- Provider fallback is sorted by the hardcoded priority in `MiruroProvider.kt`, then by any remaining providers returned by Miruro.
 
-## Project Layout
+## Project layout
 
+- `MiruroApp/` contains the standalone Android TV application.
 - `MiruroProvider/src/main/kotlin/com/miruro/MiruroPlugin.kt` registers the Cloudstream plugin.
-- `MiruroProvider/src/main/kotlin/com/miruro/MiruroProvider.kt` contains search, homepage, metadata loading, episode mapping, subtitle loading, and stream resolving.
+- `MiruroProvider/src/main/kotlin/com/miruro/MiruroProvider.kt` contains extension search, metadata, episode mapping, subtitles, and stream resolution.
 - `MiruroProvider/build.gradle.kts` contains the extension metadata shown to Cloudstream.
