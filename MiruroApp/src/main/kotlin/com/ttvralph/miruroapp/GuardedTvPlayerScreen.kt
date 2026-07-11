@@ -24,7 +24,16 @@ fun GuardedTvPlayerScreen(
             onBack = onBack,
             onPlayNext = onPlayNext
         )
-        episode?.let { SkipPlayerOverlay(features, it) }
+        episode?.let { current ->
+            SkipPlayerOverlay(features, current)
+            EnhancedPostPlayOverlay(
+                viewModel = viewModel,
+                episode = current,
+                nextEpisode = nextEpisode,
+                onBack = onBack,
+                onPlayNext = onPlayNext
+            )
+        }
     }
 
     // Register after the player so the TV remote Back key always has a safe route out,
