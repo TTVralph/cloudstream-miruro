@@ -19,7 +19,7 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Compile Android app
+      - name: Assemble Android app
         run: |
           chmod +x gradlew
-          ./gradlew :MiruroApp:compileDebugKotlin --stacktrace
+          ./gradlew :MiruroApp:assembleDebug --stacktrace
