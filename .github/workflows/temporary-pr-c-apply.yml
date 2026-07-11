@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/discovery-improvements-pr-c
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -68,6 +71,17 @@ jobs:
           details_text = details.read_text()
           details_text = details_text.replace('PrimaryButton("More like this", Modifier.width(160.dp), onMoreLikeThis)', 'PrimaryButton("Anime guide", Modifier.width(160.dp), onMoreLikeThis)')
           details.write_text(details_text)
+
+          for filename in ('DiscoveryHubScreen.kt', 'AdvancedSearchScreen.kt', 'DiscoveryTitleScreen.kt'):
+              candidate = Path('MiruroApp/src/main/kotlin/com/ttvralph/miruroapp') / filename
+              source = candidate.read_text()
+              import_line = 'import androidx.compose.foundation.layout.weight\n'
+              if import_line not in source:
+                  anchor = 'import androidx.compose.foundation.layout.width\n'
+                  if anchor not in source:
+                      raise SystemExit(f'Missing import anchor in {filename}')
+                  source = source.replace(anchor, anchor + import_line, 1)
+                  candidate.write_text(source)
           PY
       - name: Commit wiring changes
         shell: bash
@@ -77,8 +91,8 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/MainActivity.kt MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/EnhancedDetailsScreens.kt
-            git commit -m "Wire discovery hub, advanced search, and anime guide"
+            git add MiruroApp/src/main/kotlin/com/ttvralph/miruroapp
+            git commit -m "Fix discovery screen wiring and Compose imports"
             git push origin HEAD:agent/discovery-improvements-pr-c
           fi
       - name: Assemble debug APK
