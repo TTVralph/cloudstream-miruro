@@ -263,7 +263,7 @@ class DiscoveryRepository {
         info
     }
 
-    private fun dubbedAvailable(animeId: Int): Boolean = runCatching {
+    private suspend fun dubbedAvailable(animeId: Int): Boolean = runCatching {
         miruro.episodeData(animeId).values.any { data ->
             data.candidates.any { it.category.equals("dub", ignoreCase = true) }
         }
