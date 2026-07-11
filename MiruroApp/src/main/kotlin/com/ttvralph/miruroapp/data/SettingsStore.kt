@@ -6,7 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 
 enum class ThemeMode { DARK, LIGHT, SYSTEM }
 enum class PosterGridDensity { COMPACT, COMFORTABLE, LARGE }
@@ -28,52 +28,83 @@ data class AppSettings(
 
 private val Context.settingsDataStore by preferencesDataStore("miruro_settings")
 
+private fun scopedSettingName(base: String, profileId: String): String =
+    if (profileId == DEFAULT_PROFILE_ID) base else "${base}__${profileId}"
+
 class SettingsStore(private val context: Context) {
-    private object Keys {
-        val preferredAudio = stringPreferencesKey("preferred_audio")
-        val preferredProvider = stringPreferencesKey("preferred_provider")
-        val themeMode = stringPreferencesKey("theme_mode")
-        val posterGridDensity = stringPreferencesKey("poster_grid_density")
-        val autoPlayNext = booleanPreferencesKey("auto_play_next")
-        val resumePlayback = booleanPreferencesKey("resume_playback")
-        val subtitleLanguage = stringPreferencesKey("subtitle_language")
-        val subtitleStyle = stringPreferencesKey("subtitle_style")
-        val subtitleChoice = stringPreferencesKey("subtitle_choice")
-        val hideWatchedEpisodes = booleanPreferencesKey("hide_watched_episodes")
-        val watchlistSort = stringPreferencesKey("watchlist_sort")
+    private object Names {
+        const val preferredAudio = "preferred_audio"
+        const val preferredProvider = "preferred_provider"
+        const val themeMode = "theme_mode"
+        const val posterGridDensity = "poster_grid_density"
+        const val autoPlayNext = "auto_play_next"
+        const val resumePlayback = "resume_playback"
+        const val subtitleLanguage = "subtitle_language"
+        const val subtitleStyle = "subtitle_style"
+        const val subtitleChoice = "subtitle_choice"
+        const val hideWatchedEpisodes = "hide_watched_episodes"
+        const val watchlistSort = "watchlist_sort"
     }
 
-    val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
+    val settings: Flow<AppSettings> = combine(
+        context.settingsDataStore.data,
+        ProfileSession.activeId
+    ) { preferences, profileId ->
+        fun string(name: String): String? = preferences[stringPreferencesKey(scopedSettingName(name, profileId))]
+        fun boolean(name: String): Boolean? = preferences[booleanPreferencesKey(scopedSettingName(name, profileId))]
+
         AppSettings(
-            preferredAudio = prefs[Keys.preferredAudio]?.let { runCatching { AudioType.valueOf(it) }.getOrNull() } ?: AudioType.SUB,
-            // Provider availability changes per title and episode. Always resolve in Auto mode so
-            // an old saved provider cannot strand playback on a dead source such as Kiwi.
+            preferredAudio = string(Names.preferredAudio)
+                ?.let { runCatching { AudioType.valueOf(it) }.getOrNull() }
+                ?: AudioType.SUB,
+            // Provider availability changes per title and episode. Always resolve in Auto mode.
             preferredProvider = "Auto",
-            themeMode = prefs[Keys.themeMode]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.DARK,
-            posterGridDensity = prefs[Keys.posterGridDensity]?.let { runCatching { PosterGridDensity.valueOf(it) }.getOrNull() } ?: PosterGridDensity.COMFORTABLE,
-            autoPlayNext = prefs[Keys.autoPlayNext] ?: false,
-            resumePlayback = prefs[Keys.resumePlayback] ?: true,
-            subtitleLanguage = prefs[Keys.subtitleLanguage] ?: "English",
-            subtitleStyle = prefs[Keys.subtitleStyle] ?: "Default",
-            subtitleChoice = prefs[Keys.subtitleChoice] ?: "Auto",
-            hideWatchedEpisodes = prefs[Keys.hideWatchedEpisodes] ?: false,
-            watchlistSort = prefs[Keys.watchlistSort]?.let { runCatching { WatchlistSort.valueOf(it) }.getOrNull() } ?: WatchlistSort.RECENTLY_ADDED
+            themeMode = string(Names.themeMode)
+                ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
+                ?: ThemeMode.DARK,
+            posterGridDensity = string(Names.posterGridDensity)
+                ?.let { runCatching { PosterGridDensity.valueOf(it) }.getOrNull() }
+                ?: PosterGridDensity.COMFORTABLE,
+            autoPlayNext = boolean(Names.autoPlayNext) ?: false,
+            resumePlayback = boolean(Names.resumePlayback) ?: true,
+            subtitleLanguage = string(Names.subtitleLanguage) ?: "English",
+            subtitleStyle = string(Names.subtitleStyle) ?: "Default",
+            subtitleChoice = string(Names.subtitleChoice) ?: "Auto",
+            hideWatchedEpisodes = boolean(Names.hideWatchedEpisodes) ?: false,
+            watchlistSort = string(Names.watchlistSort)
+                ?.let { runCatching { WatchlistSort.valueOf(it) }.getOrNull() }
+                ?: WatchlistSort.RECENTLY_ADDED
         )
     }
 
-    suspend fun updatePreferredAudio(value: AudioType) { context.settingsDataStore.edit { it[Keys.preferredAudio] = value.name } }
+    suspend fun updatePreferredAudio(value: AudioType) = updateString(Names.preferredAudio, value.name)
+
     suspend fun updatePreferredProvider(value: String) {
-        // Keep the key for backwards compatibility, but Auto is the only global mode. Provider
-        // choices are exposed by the player after all providers for the episode have resolved.
-        context.settingsDataStore.edit { it[Keys.preferredProvider] = "Auto" }
+        // Keep the value for backwards compatibility, but Auto is the only global mode.
+        updateString(Names.preferredProvider, "Auto")
     }
-    suspend fun updateThemeMode(value: ThemeMode) { context.settingsDataStore.edit { it[Keys.themeMode] = value.name } }
-    suspend fun updatePosterGridDensity(value: PosterGridDensity) { context.settingsDataStore.edit { it[Keys.posterGridDensity] = value.name } }
-    suspend fun updateAutoPlayNext(value: Boolean) { context.settingsDataStore.edit { it[Keys.autoPlayNext] = value } }
-    suspend fun updateResumePlayback(value: Boolean) { context.settingsDataStore.edit { it[Keys.resumePlayback] = value } }
-    suspend fun updateSubtitleLanguage(value: String) { context.settingsDataStore.edit { it[Keys.subtitleLanguage] = value } }
-    suspend fun updateSubtitleStyle(value: String) { context.settingsDataStore.edit { it[Keys.subtitleStyle] = value } }
-    suspend fun updateSubtitleChoice(value: String) { context.settingsDataStore.edit { it[Keys.subtitleChoice] = value } }
-    suspend fun updateHideWatchedEpisodes(value: Boolean) { context.settingsDataStore.edit { it[Keys.hideWatchedEpisodes] = value } }
-    suspend fun updateWatchlistSort(value: WatchlistSort) { context.settingsDataStore.edit { it[Keys.watchlistSort] = value.name } }
+
+    suspend fun updateThemeMode(value: ThemeMode) = updateString(Names.themeMode, value.name)
+    suspend fun updatePosterGridDensity(value: PosterGridDensity) = updateString(Names.posterGridDensity, value.name)
+    suspend fun updateAutoPlayNext(value: Boolean) = updateBoolean(Names.autoPlayNext, value)
+    suspend fun updateResumePlayback(value: Boolean) = updateBoolean(Names.resumePlayback, value)
+    suspend fun updateSubtitleLanguage(value: String) = updateString(Names.subtitleLanguage, value)
+    suspend fun updateSubtitleStyle(value: String) = updateString(Names.subtitleStyle, value)
+    suspend fun updateSubtitleChoice(value: String) = updateString(Names.subtitleChoice, value)
+    suspend fun updateHideWatchedEpisodes(value: Boolean) = updateBoolean(Names.hideWatchedEpisodes, value)
+    suspend fun updateWatchlistSort(value: WatchlistSort) = updateString(Names.watchlistSort, value.name)
+
+    private suspend fun updateString(name: String, value: String) {
+        val profileId = ProfileSession.activeId.value
+        context.settingsDataStore.edit { preferences ->
+            preferences[stringPreferencesKey(scopedSettingName(name, profileId))] = value
+        }
+    }
+
+    private suspend fun updateBoolean(name: String, value: Boolean) {
+        val profileId = ProfileSession.activeId.value
+        context.settingsDataStore.edit { preferences ->
+            preferences[booleanPreferencesKey(scopedSettingName(name, profileId))] = value
+        }
+    }
 }
