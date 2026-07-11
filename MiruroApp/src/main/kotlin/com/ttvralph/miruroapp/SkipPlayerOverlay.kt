@@ -3,6 +3,7 @@ package com.ttvralph.miruroapp
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -63,7 +64,9 @@ fun SkipPlayerOverlay(
 
     if (interval != null && player?.playbackState != Player.STATE_ENDED) {
         Box(
-            modifier = Modifier.padding(end = 54.dp, bottom = 118.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(end = 54.dp, bottom = 118.dp),
             contentAlignment = Alignment.BottomEnd
         ) {
             PrimaryButton(
