@@ -114,6 +114,30 @@ fun EnhancedSettingsScreen(
 
             item {
                 PlayerSettingToggle(
+                    title = "Large interface text",
+                    description = "Enlarges text and controls in Search, Discover, and anime guides.",
+                    enabled = settings.largeUiText
+                ) { enabled -> scope.launch { store.updateLargeUiText(enabled) } }
+            }
+
+            item {
+                PlayerSettingToggle(
+                    title = "High-contrast interface",
+                    description = "Adds brighter borders and stronger panels outside the player.",
+                    enabled = settings.highContrastUi
+                ) { enabled -> scope.launch { store.updateHighContrastUi(enabled) } }
+            }
+
+            item {
+                PlayerSettingToggle(
+                    title = "Reduce interface motion",
+                    description = "Disables focus scaling in the new discovery and search interfaces.",
+                    enabled = settings.reducedUiMotion
+                ) { enabled -> scope.launch { store.updateReducedUiMotion(enabled) } }
+            }
+
+            item {
+                PlayerSettingToggle(
                     title = "No-spoiler mode",
                     description = "Hides future episode titles and thumbnails until you reach them.",
                     enabled = settings.noSpoilerMode

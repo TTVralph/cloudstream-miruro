@@ -28,6 +28,9 @@ data class AppSettings(
     val largePlayerControls: Boolean = false,
     val highContrastPlayerControls: Boolean = false,
     val reducedPlayerMotion: Boolean = false,
+    val largeUiText: Boolean = false,
+    val highContrastUi: Boolean = false,
+    val reducedUiMotion: Boolean = false,
     val hideWatchedEpisodes: Boolean = false,
     val noSpoilerMode: Boolean = false,
     val watchlistSort: WatchlistSort = WatchlistSort.RECENTLY_ADDED
@@ -55,6 +58,9 @@ class SettingsStore(private val context: Context) {
         const val largePlayerControls = "large_player_controls"
         const val highContrastPlayerControls = "high_contrast_player_controls"
         const val reducedPlayerMotion = "reduced_player_motion"
+        const val largeUiText = "large_ui_text"
+        const val highContrastUi = "high_contrast_ui"
+        const val reducedUiMotion = "reduced_ui_motion"
         const val hideWatchedEpisodes = "hide_watched_episodes"
         const val noSpoilerMode = "no_spoiler_mode"
         const val watchlistSort = "watchlist_sort"
@@ -90,6 +96,9 @@ class SettingsStore(private val context: Context) {
             largePlayerControls = boolean(Names.largePlayerControls) ?: false,
             highContrastPlayerControls = boolean(Names.highContrastPlayerControls) ?: false,
             reducedPlayerMotion = boolean(Names.reducedPlayerMotion) ?: false,
+            largeUiText = boolean(Names.largeUiText) ?: false,
+            highContrastUi = boolean(Names.highContrastUi) ?: false,
+            reducedUiMotion = boolean(Names.reducedUiMotion) ?: false,
             hideWatchedEpisodes = boolean(Names.hideWatchedEpisodes) ?: false,
             noSpoilerMode = boolean(Names.noSpoilerMode) ?: false,
             watchlistSort = string(Names.watchlistSort)
@@ -118,6 +127,9 @@ class SettingsStore(private val context: Context) {
     suspend fun updateLargePlayerControls(value: Boolean) = updateBoolean(Names.largePlayerControls, value)
     suspend fun updateHighContrastPlayerControls(value: Boolean) = updateBoolean(Names.highContrastPlayerControls, value)
     suspend fun updateReducedPlayerMotion(value: Boolean) = updateBoolean(Names.reducedPlayerMotion, value)
+    suspend fun updateLargeUiText(value: Boolean) = updateBoolean(Names.largeUiText, value)
+    suspend fun updateHighContrastUi(value: Boolean) = updateBoolean(Names.highContrastUi, value)
+    suspend fun updateReducedUiMotion(value: Boolean) = updateBoolean(Names.reducedUiMotion, value)
     suspend fun updateHideWatchedEpisodes(value: Boolean) = updateBoolean(Names.hideWatchedEpisodes, value)
     suspend fun updateNoSpoilerMode(value: Boolean) = updateBoolean(Names.noSpoilerMode, value)
     suspend fun updateWatchlistSort(value: WatchlistSort) = updateString(Names.watchlistSort, value.name)

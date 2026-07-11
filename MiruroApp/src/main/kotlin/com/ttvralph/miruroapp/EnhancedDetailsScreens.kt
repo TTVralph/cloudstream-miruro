@@ -93,7 +93,7 @@ fun EnhancedDetailsScreen(
                     if (animeId in reminders) "✓ Reminder" else "Remind me",
                     animeId in reminders
                 ) { features.toggleReminder(animeId) }
-                PrimaryButton("More like this", Modifier.width(160.dp), onMoreLikeThis)
+                PrimaryButton("Anime guide", Modifier.width(160.dp), onMoreLikeThis)
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

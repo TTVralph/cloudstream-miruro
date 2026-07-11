@@ -43,12 +43,13 @@ import kotlinx.coroutines.delay
 class MainActivity : ComponentActivity() {
     private val viewModel: MiruroViewModel by viewModels()
     private val featureViewModel: NetflixFeatureViewModel by viewModels()
+    private val discoveryViewModel: DiscoveryFeatureViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             val settings by viewModel.settings.collectAsState()
-            MiruroTheme(settings.themeMode) { MiruroApp(viewModel, featureViewModel) }
+            MiruroTheme(settings.themeMode) { MiruroApp(viewModel, featureViewModel, discoveryViewModel) }
         }
     }
 }
@@ -109,7 +110,11 @@ private fun navLabelFor(route: String?): String = when (route) {
 }
 
 @Composable
-private fun MiruroApp(viewModel: MiruroViewModel, features: NetflixFeatureViewModel) {
+private fun MiruroApp(
+    viewModel: MiruroViewModel,
+    features: NetflixFeatureViewModel,
+    discovery: DiscoveryFeatureViewModel
+) {
     val profileState by features.profileState.collectAsState()
     var profileChosenThisSession by remember { mutableStateOf(false) }
     if (profileState.profiles.size > 1 && !profileChosenThisSession) {
@@ -178,7 +183,11 @@ private fun MiruroApp(viewModel: MiruroViewModel, features: NetflixFeatureViewMo
                     )
                 }
                 composable(Routes.Search.route) {
-                    AuditSearchScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    AdvancedSearchScreen(
+                        discovery = discovery,
+                        library = viewModel,
+                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) }
+                    )
                 }
                 composable(Routes.Favorites.route) {
                     MyAniStreamScreen(
@@ -205,7 +214,14 @@ private fun MiruroApp(viewModel: MiruroViewModel, features: NetflixFeatureViewMo
                     )
                 }
                 composable(Routes.Genres.route) {
-                    ReliableDiscoverScreen(viewModel) { id -> navController.navigate(Routes.Details.path(id)) }
+                    DiscoveryHubScreen(
+                        viewModel = viewModel,
+                        features = features,
+                        discovery = discovery,
+                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
+                        onPlayProgress = ::playProgress,
+                        onOpenSearch = { navController.navigateTopLevel(Routes.Search.route) }
+                    )
                 }
                 composable(Routes.Settings.route) {
                     EnhancedSettingsScreen(viewModel, features)
@@ -234,8 +250,9 @@ private fun MiruroApp(viewModel: MiruroViewModel, features: NetflixFeatureViewMo
                     arguments = listOf(navArgument(Args.ID) { type = NavType.IntType })
                 ) { entry ->
                     val id = entry.arguments?.getInt(Args.ID) ?: return@composable
-                    TitleExtrasScreen(
-                        features = features,
+                    DiscoveryTitleScreen(
+                        discovery = discovery,
+                        library = viewModel,
                         animeId = id,
                         onBack = { navController.backOrHome() },
                         onOpenDetails = { relatedId ->
