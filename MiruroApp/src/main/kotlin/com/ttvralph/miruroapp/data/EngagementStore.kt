@@ -39,10 +39,31 @@ private fun decodeReminder(value: String): StoredReminder? {
     return StoredReminder(parts[0], parts[1].toIntOrNull() ?: return null)
 }
 
+private data class StoredTrackingStatus(
+    val profileId: String,
+    val animeId: Int,
+    val status: TrackingStatus,
+    val updatedAtMs: Long
+) {
+    fun encoded(): String = "$profileId|$animeId|${status.name}|$updatedAtMs"
+}
+
+private fun decodeTrackingStatus(value: String): StoredTrackingStatus? {
+    val parts = value.split('|')
+    if (parts.size != 4) return null
+    return StoredTrackingStatus(
+        profileId = parts[0],
+        animeId = parts[1].toIntOrNull() ?: return null,
+        status = runCatching { TrackingStatus.valueOf(parts[2]) }.getOrNull() ?: return null,
+        updatedAtMs = parts[3].toLongOrNull() ?: 0L
+    )
+}
+
 class EngagementStore(private val context: Context) {
     private object Keys {
         val reactions = stringSetPreferencesKey("title_reactions")
         val reminders = stringSetPreferencesKey("airing_reminders")
+        val trackingStatuses = stringSetPreferencesKey("tracking_statuses")
     }
 
     val reactions: Flow<Map<Int, TitleReaction>> = combine(
@@ -67,6 +88,18 @@ class EngagementStore(private val context: Context) {
             .filter { it.profileId == activeProfile }
             .map { it.animeId }
             .toSet()
+    }
+
+    val trackingStatuses: Flow<Map<Int, TrackingStatus>> = combine(
+        context.engagementDataStore.data,
+        ProfileSession.activeId
+    ) { preferences, activeProfile ->
+        preferences[Keys.trackingStatuses]
+            .orEmpty()
+            .mapNotNull(::decodeTrackingStatus)
+            .filter { it.profileId == activeProfile }
+            .sortedBy { it.updatedAtMs }
+            .associate { it.animeId to it.status }
     }
 
     suspend fun setReaction(animeId: Int, reaction: TitleReaction?) {
@@ -95,6 +128,21 @@ class EngagementStore(private val context: Context) {
             all.removeAll { it.profileId == profileId && it.animeId == animeId }
             if (!exists) all += StoredReminder(profileId, animeId)
             preferences[Keys.reminders] = all.map(StoredReminder::encoded).toSet()
+        }
+    }
+
+    suspend fun setTrackingStatus(animeId: Int, status: TrackingStatus?) {
+        val profileId = ProfileSession.activeId.value
+        context.engagementDataStore.edit { preferences ->
+            val all = preferences[Keys.trackingStatuses]
+                .orEmpty()
+                .mapNotNull(::decodeTrackingStatus)
+                .filterNot { it.profileId == profileId && it.animeId == animeId }
+                .toMutableList()
+            if (status != null) {
+                all += StoredTrackingStatus(profileId, animeId, status, System.currentTimeMillis())
+            }
+            preferences[Keys.trackingStatuses] = all.map(StoredTrackingStatus::encoded).toSet()
         }
     }
 }
