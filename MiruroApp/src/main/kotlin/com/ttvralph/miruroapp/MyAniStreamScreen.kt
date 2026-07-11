@@ -32,6 +32,7 @@ import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeType
 import com.ttvralph.miruroapp.data.DEFAULT_PROFILE_ID
 import com.ttvralph.miruroapp.data.TitleReaction
+import com.ttvralph.miruroapp.data.TrackingStatus
 import com.ttvralph.miruroapp.data.UpcomingEpisode
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.ui.LandscapeCard
@@ -44,7 +45,10 @@ import com.ttvralph.miruroapp.ui.StateMessage
 import java.util.Locale
 
 private enum class MyAniStreamTab(val label: String) {
-    OVERVIEW("Overview"), LIBRARY("Library & history"), PROFILES("Profiles")
+    OVERVIEW("Overview"),
+    TRACKING("Tracking"),
+    LIBRARY("Library & history"),
+    PROFILES("Profiles")
 }
 
 @Composable
@@ -60,7 +64,7 @@ fun MyAniStreamScreen(
     Column(Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
                 "My AniStream • ${profileState.activeProfile.name}",
@@ -71,16 +75,18 @@ fun MyAniStreamScreen(
             )
             MyAniStreamTab.entries.forEach { option ->
                 val selected = option == tab
+                val width = if (option == MyAniStreamTab.LIBRARY) 190.dp else 150.dp
                 if (selected) {
-                    PrimaryButton(option.label, Modifier.width(190.dp)) { tab = option }
+                    PrimaryButton(option.label, Modifier.width(width)) { tab = option }
                 } else {
-                    SecondaryButton(option.label, Modifier.width(190.dp)) { tab = option }
+                    SecondaryButton(option.label, Modifier.width(width)) { tab = option }
                 }
             }
         }
 
         when (tab) {
             MyAniStreamTab.OVERVIEW -> MyAniStreamOverview(viewModel, features, onOpenDetails, onPlayProgress)
+            MyAniStreamTab.TRACKING -> MyAniStreamTracking(viewModel, features, onOpenDetails)
             MyAniStreamTab.LIBRARY -> WatchManagementScreen(viewModel, onOpenDetails, onPlayProgress)
             MyAniStreamTab.PROFILES -> MyAniStreamProfiles(features)
         }
@@ -98,16 +104,17 @@ private fun MyAniStreamOverview(
     val favorites by viewModel.favoriteIds.collectAsState()
     val reactions by features.reactions.collectAsState()
     val reminders by features.reminders.collectAsState()
+    val trackingStatuses by features.trackingStatuses.collectAsState()
     val featureMetadata by features.metadata.collectAsState()
     val upcoming by features.upcoming.collectAsState()
     val unfinished = remember(progress) { progress.filterNot { it.watched }.sortedByDescending { it.updatedAtMs } }
     val completed = remember(progress) { progress.filter { it.watched }.sortedByDescending { it.updatedAtMs } }
-    val metadataIds = remember(reactions, reminders, progress) {
-        reactions.keys + reminders + progress.map { it.animeId }
+    val metadataIds = remember(reactions, reminders, trackingStatuses, progress) {
+        reactions.keys + reminders + trackingStatuses.keys + progress.map { it.animeId }
     }
 
     LaunchedEffect(metadataIds) { features.loadMetadata(metadataIds.toSet()) }
-    LaunchedEffect(favorites, progress, reactions, reminders) {
+    LaunchedEffect(favorites, progress, reactions, reminders, trackingStatuses) {
         features.loadHomeFeatures(emptyList(), progress, favorites)
     }
 
@@ -121,9 +128,10 @@ private fun MyAniStreamOverview(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 HubStat("${unfinished.size}", "Continue Watching")
                 HubStat("${favorites.size}", "My List")
+                HubStat("${trackingStatuses.size}", "Tracked titles")
                 HubStat("${reactions.count { it.value != TitleReaction.DISLIKE }}", "Liked")
                 HubStat("${reminders.size}", "Reminders")
                 HubStat("${completed.size}", "Completed episodes")
@@ -220,8 +228,58 @@ private fun MyAniStreamOverview(
 }
 
 @Composable
+private fun MyAniStreamTracking(
+    viewModel: MiruroViewModel,
+    features: NetflixFeatureViewModel,
+    onOpenDetails: (Int) -> Unit
+) {
+    val statuses by features.trackingStatuses.collectAsState()
+    val featureMetadata by features.metadata.collectAsState()
+    LaunchedEffect(statuses.keys) { features.loadMetadata(statuses.keys) }
+
+    fun itemFor(id: Int): AnimeItem = featureMetadata[id]
+        ?: viewModel.cachedItem(id)
+        ?: AnimeItem(id, "Tracked anime", null, null, AnimeType.UNKNOWN)
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 48.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Text(
+                "Track what you are watching, planning, pausing, dropping, completing, or rewatching.",
+                color = MiruroColors.Subtle,
+                fontSize = 14.sp
+            )
+        }
+        TrackingStatus.entries.forEach { status ->
+            val ids = statuses.filterValues { it == status }.keys.toList()
+            item {
+                SectionTitle(status.label, "${ids.size} TITLES")
+                if (ids.isEmpty()) {
+                    StateMessage("No titles marked ${status.label.lowercase(Locale.ROOT)}.")
+                } else {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                        items(ids, key = { it }) { id ->
+                            Column(Modifier.width(205.dp)) {
+                                PosterCard(itemFor(id), width = 205.dp) { onOpenDetails(id) }
+                                Spacer(Modifier.height(7.dp))
+                                SecondaryButton("Clear status", Modifier.fillMaxWidth()) {
+                                    features.setTrackingStatus(id, null)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun HubStat(value: String, label: String) {
-    Column(Modifier.width(170.dp)) {
+    Column(Modifier.width(155.dp)) {
         Text(value, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Black)
         Text(label, color = MiruroColors.Subtle, fontSize = 12.sp, maxLines = 1)
     }
@@ -282,7 +340,7 @@ private fun MyAniStreamProfiles(features: NetflixFeatureViewModel) {
         item {
             SectionTitle("Local profiles", "${state.profiles.size} PROFILES")
             Text(
-                "Each profile has separate progress, My List, playback preferences, reactions, reminders, and recommendations on this TV.",
+                "Each profile has separate progress, My List, playback preferences, reactions, reminders, tracking, and recommendations on this TV.",
                 color = MiruroColors.Subtle,
                 fontSize = 14.sp
             )
