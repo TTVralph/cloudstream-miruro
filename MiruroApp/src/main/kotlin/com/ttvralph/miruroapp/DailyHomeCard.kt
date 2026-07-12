@@ -14,10 +14,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +46,9 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.ui.MiruroColors
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val HOME_CARD_LONG_PRESS_MS = 520L
 
@@ -64,6 +68,7 @@ internal fun DailyHomeCard(
     val focused by interaction.collectIsFocusedAsState()
     val scale = if (focused) 1.04f else 1f
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val artwork = item.bannerUrl ?: item.posterUrl
     val imageRequest = remember(artwork) {
         ImageRequest.Builder(context)
@@ -73,8 +78,20 @@ internal fun DailyHomeCard(
             .allowHardware(true)
             .build()
     }
-    var confirmDownAtMs by remember(item.id) { mutableLongStateOf(0L) }
+    var confirmHeld by remember(item.id) { mutableStateOf(false) }
     var longPressConsumed by remember(item.id) { mutableStateOf(false) }
+    var longPressJob by remember(item.id) { mutableStateOf<Job?>(null) }
+
+    fun resetPress() {
+        longPressJob?.cancel()
+        longPressJob = null
+        confirmHeld = false
+        longPressConsumed = false
+    }
+
+    DisposableEffect(item.id) {
+        onDispose { longPressJob?.cancel() }
+    }
 
     var modifier = Modifier
         .width(ReliableCardWidth)
@@ -85,11 +102,7 @@ internal fun DailyHomeCard(
 
     modifier = modifier
         .onFocusChanged {
-            if (it.hasFocus) onFocused()
-            else {
-                confirmDownAtMs = 0L
-                longPressConsumed = false
-            }
+            if (it.hasFocus) onFocused() else resetPress()
         }
         .onPreviewKeyEvent { event ->
             val confirmKey = event.key == Key.DirectionCenter ||
@@ -99,25 +112,30 @@ internal fun DailyHomeCard(
 
             when (event.type) {
                 KeyEventType.KeyDown -> {
-                    val now = System.currentTimeMillis()
-                    if (confirmDownAtMs == 0L) {
-                        confirmDownAtMs = now
-                        false
-                    } else if (!longPressConsumed && now - confirmDownAtMs >= HOME_CARD_LONG_PRESS_MS) {
-                        longPressConsumed = true
-                        onLongClick()
-                        true
-                    } else {
-                        longPressConsumed
+                    if (!confirmHeld) {
+                        confirmHeld = true
+                        longPressConsumed = false
+                        longPressJob?.cancel()
+                        longPressJob = scope.launch {
+                            delay(HOME_CARD_LONG_PRESS_MS)
+                            if (confirmHeld && !longPressConsumed) {
+                                longPressConsumed = true
+                                onLongClick()
+                            }
+                        }
                     }
+                    true
                 }
                 KeyEventType.KeyUp -> {
-                    val consumed = longPressConsumed
-                    confirmDownAtMs = 0L
+                    val openNormally = confirmHeld && !longPressConsumed
+                    longPressJob?.cancel()
+                    longPressJob = null
+                    confirmHeld = false
                     longPressConsumed = false
-                    consumed
+                    if (openNormally) onClick()
+                    true
                 }
-                else -> false
+                else -> true
             }
         }
         .graphicsLayer {
