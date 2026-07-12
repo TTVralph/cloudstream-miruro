@@ -7,6 +7,12 @@ on:
     paths:
       - .github/workflows/temporary-hotfix-build.yml
       - MiruroApp/**
+  pull_request:
+    branches:
+      - main
+    paths:
+      - MiruroApp/**
+      - .github/workflows/temporary-hotfix-build.yml
 
 permissions:
   contents: read
