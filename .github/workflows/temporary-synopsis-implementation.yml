@@ -1,0 +1,274 @@
+name: Temporary synopsis implementation
+
+on:
+  push:
+    branches:
+      - agent/episode-season-synopses
+
+permissions:
+  contents: write
+
+jobs:
+  implement-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/episode-season-synopses
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Apply synopsis changes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f"Expected block not found in {path}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          models = "MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/data/Models.kt"
+          replace(
+              models,
+              "data class AnimeSeason(val id: Int, val seasonNumber: Int, val title: String, val year: Int?, val episodes: List<AnimeEpisode>)",
+              "data class AnimeSeason(val id: Int, val seasonNumber: Int, val title: String, val year: Int?, val episodes: List<AnimeEpisode>, val synopsis: String? = null)"
+          )
+          replace(
+              models,
+              "data class AnimeEpisode(val seasonNumber: Int, val episodeNumber: Int, val title: String?, val thumbnailUrl: String?, val runtimeMinutes: Int?, val releaseDate: String?, val audioType: AudioType, val anilistId: Int, val sourceCandidates: List<EpisodeSourceCandidate> = emptyList())",
+              "data class AnimeEpisode(val seasonNumber: Int, val episodeNumber: Int, val title: String?, val thumbnailUrl: String?, val runtimeMinutes: Int?, val releaseDate: String?, val audioType: AudioType, val anilistId: Int, val sourceCandidates: List<EpisodeSourceCandidate> = emptyList(), val synopsis: String? = null)"
+          )
+          replace(
+              models,
+              "data class EpisodeMetadata(val title: String? = null, val thumbnailUrl: String? = null)",
+              "data class EpisodeMetadata(val title: String? = null, val thumbnailUrl: String? = null, val synopsis: String? = null)"
+          )
+
+          miruro = "MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/data/MiruroRepository.kt"
+          replace(
+              miruro,
+              '''                        if (title != null || thumbnail != null) {
+                            val current = metadataByEpisode[number]
+                            metadataByEpisode[number] = EpisodeMetadata(
+                                title = current?.title ?: title,
+                                thumbnailUrl = current?.thumbnailUrl ?: thumbnail
+                            )
+                        }''',
+              '''                        val synopsis = text(
+                            episode,
+                            "description",
+                            "overview",
+                            "synopsis",
+                            "summary"
+                        )
+                            ?.replace(Regex("<[^>]*>"), "")
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                        if (title != null || thumbnail != null || synopsis != null) {
+                            val current = metadataByEpisode[number]
+                            metadataByEpisode[number] = EpisodeMetadata(
+                                title = current?.title ?: title,
+                                thumbnailUrl = current?.thumbnailUrl ?: thumbnail,
+                                synopsis = current?.synopsis ?: synopsis
+                            )
+                        }'''
+          )
+
+          anilist = "MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/data/AniListRepository.kt"
+          replace(
+              anilist,
+              "            AnimeSeason(entry.id, index + 1, entry.title, entry.year, episodes)",
+              "            AnimeSeason(entry.id, index + 1, entry.title, entry.year, episodes, entry.description)"
+          )
+          replace(
+              anilist,
+              '''            title = preferredTitle(path("title")) ?: return null,
+            episodes = path("episodes").asInt(0).takeIf { it > 0 },''',
+              '''            title = preferredTitle(path("title")) ?: return null,
+            description = clean(text(this, "description")),
+            episodes = path("episodes").asInt(0).takeIf { it > 0 },'''
+          )
+          replace(
+              anilist,
+              '''        val title: String,
+        val episodes: Int?,''',
+              '''        val title: String,
+        val description: String?,
+        val episodes: Int?,'''
+          )
+          replace(
+              anilist,
+              '''                            AudioType.SUB,
+                            entry.id
+                        )''',
+              '''                            AudioType.SUB,
+                            entry.id,
+                            synopsis = metadata.synopsis
+                        )'''
+          )
+          replace(
+              anilist,
+              '''                                AudioType.SUB,
+                                entry.id,
+                                it
+                            )''',
+              '''                                AudioType.SUB,
+                                entry.id,
+                                it,
+                                synopsis = metadata.synopsis
+                            )'''
+          )
+          replace(
+              anilist,
+              '''                                AudioType.DUB,
+                                entry.id,
+                                it
+                            )''',
+              '''                                AudioType.DUB,
+                                entry.id,
+                                it,
+                                synopsis = metadata.synopsis
+                            )'''
+          )
+          replace(
+              anilist,
+              '''                                AudioType.SUB,
+                                entry.id,
+                                candidates
+                            )''',
+              '''                                AudioType.SUB,
+                                entry.id,
+                                candidates,
+                                synopsis = metadata.synopsis
+                            )'''
+          )
+
+          details = "MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/DailyDetailsScreen.kt"
+          replace(
+              details,
+              ''') {
+    Column(
+        modifier = Modifier''',
+              ''') {
+    var synopsisExpanded by remember(season.id) { mutableStateOf(false) }
+    val seasonSynopsis = season.synopsis?.takeIf { it.isNotBlank() } ?: "Season synopsis unavailable."
+
+    Column(
+        modifier = Modifier'''
+          )
+          replace(
+              details,
+              '''            SecondaryButton("Restart season", Modifier.width(170.dp), onRestart)
+        }
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(''',
+              '''            SecondaryButton("Restart season", Modifier.width(170.dp), onRestart)
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            seasonSynopsis,
+            color = Color.White.copy(alpha = 0.74f),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            maxLines = if (synopsisExpanded) Int.MAX_VALUE else 2,
+            overflow = if (synopsisExpanded) TextOverflow.Clip else TextOverflow.Ellipsis
+        )
+        if (!season.synopsis.isNullOrBlank()) {
+            Spacer(Modifier.height(8.dp))
+            SecondaryButton(
+                if (synopsisExpanded) "Show less" else "Read more",
+                Modifier.width(140.dp)
+            ) { synopsisExpanded = !synopsisExpanded }
+        }
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator('''
+          )
+          replace(
+              details,
+              '''                Text(
+                    if (hideSpoilers) "Episode ${episode.episodeNumber}" else episode.title ?: "Episode ${episode.episodeNumber}",
+                    color = if (focused) Color.Black else Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }''',
+              '''                Text(
+                    if (hideSpoilers) "Episode ${episode.episodeNumber}" else episode.title ?: "Episode ${episode.episodeNumber}",
+                    color = if (focused) Color.Black else Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    when {
+                        hideSpoilers -> "Synopsis hidden until you reach this episode."
+                        !episode.synopsis.isNullOrBlank() -> episode.synopsis
+                        else -> "Synopsis unavailable."
+                    },
+                    color = if (focused) Color.Black.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.62f),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }'''
+          )
+
+          episode_details = "MiruroApp/src/main/kotlin/com/ttvralph/miruroapp/AutomaticEpisodeDetailsScreen.kt"
+          replace(
+              episode_details,
+              '''                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "AniStream will try every available provider automatically and switch sources if one fails. Resolutions and manual choices appear in Quality & Source during playback.",''',
+              '''                    Spacer(Modifier.height(18.dp))
+                    Text(
+                        "Synopsis",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        when {
+                            hideSpoilers -> "Synopsis hidden until you reach this episode."
+                            !episode.synopsis.isNullOrBlank() -> episode.synopsis
+                            else -> "Synopsis unavailable."
+                        },
+                        color = Color.White.copy(alpha = 0.78f),
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "AniStream will try every available provider automatically and switch sources if one fails. Resolutions and manual choices appear in Quality & Source during playback.",'''
+          )
+          PY
+      - name: Compile and assemble debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew :MiruroApp:compileDebugKotlin :MiruroApp:assembleDebug --stacktrace
+      - name: Commit implementation
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MiruroApp/src/main/kotlin/com/ttvralph/miruroapp
+          git commit -m "Add episode and season synopses"
+          git push origin HEAD:agent/episode-season-synopses
