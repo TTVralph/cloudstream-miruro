@@ -20,12 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ttvralph.miruroapp.data.AnimeEpisode
-import com.ttvralph.miruroapp.data.SynopsisRepository
 import com.ttvralph.miruroapp.ui.GenreChip
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PrimaryButton
@@ -79,21 +74,6 @@ fun AutomaticEpisodeDetailsScreen(
     val providers = episode.sourceCandidates
         .map { it.provider.lowercase(Locale.ROOT) }
         .distinct()
-
-    var synopsis by remember(episode.anilistId, episode.episodeNumber) {
-        mutableStateOf<String?>(null)
-    }
-    var synopsisLoaded by remember(episode.anilistId, episode.episodeNumber) {
-        mutableStateOf(false)
-    }
-    LaunchedEffect(episode.anilistId, episode.episodeNumber) {
-        synopsisLoaded = false
-        synopsis = SynopsisRepository.episodeSynopsis(
-            episode.anilistId,
-            episode.episodeNumber
-        )
-        synopsisLoaded = true
-    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(Color.Black),
@@ -167,30 +147,7 @@ fun AutomaticEpisodeDetailsScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
-
-                    Spacer(Modifier.height(18.dp))
-                    Text(
-                        "Synopsis",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                    Spacer(Modifier.height(7.dp))
-                    Text(
-                        when {
-                            hideSpoilers -> "Synopsis hidden by No-Spoiler Mode."
-                            synopsis != null -> synopsis.orEmpty()
-                            !synopsisLoaded -> "Loading synopsis…"
-                            else -> "Synopsis unavailable."
-                        },
-                        color = Color.White.copy(
-                            alpha = if (synopsis != null && !hideSpoilers) 0.82f else 0.52f
-                        ),
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp
-                    )
-
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(16.dp))
                     Text(
                         "AniStream will try every available provider automatically and switch sources if one fails. Resolutions and manual choices appear in Quality & Source during playback.",
                         color = MiruroColors.Subtle,
