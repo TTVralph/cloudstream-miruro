@@ -42,6 +42,9 @@ import com.ttvralph.miruroapp.data.AnimeDetails
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeSeason
 import com.ttvralph.miruroapp.data.AudioType
+import com.ttvralph.miruroapp.data.EpisodeSynopsisKey
+import com.ttvralph.miruroapp.data.SynopsisBundle
+import com.ttvralph.miruroapp.data.SynopsisRepository
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.ui.BodyText
 import com.ttvralph.miruroapp.ui.ErrorState
@@ -69,12 +72,22 @@ fun DailyDetailsScreen(
     var audioFilter by remember(animeId, settings.preferredAudio) {
         mutableStateOf<AudioType?>(settings.preferredAudio)
     }
+    var synopsisBundle by remember(animeId) { mutableStateOf(SynopsisBundle()) }
+    var synopsisLoaded by remember(animeId) { mutableStateOf(false) }
+    var modalContent by remember(animeId) { mutableStateOf<SynopsisModalContent?>(null) }
 
     when (val current = state) {
         is UiState.Loading -> LoadingState("Loading details…")
         is UiState.Error -> ErrorState(current.message) { viewModel.loadDetails(animeId) }
         is UiState.Success -> {
             val details = current.data
+            LaunchedEffect(details.id, details.seasons.map { it.id }) {
+                synopsisLoaded = false
+                synopsisBundle = runCatching { SynopsisRepository.load(details) }
+                    .getOrDefault(SynopsisBundle())
+                synopsisLoaded = true
+            }
+
             val targets = remember(details, settings.preferredAudio) {
                 dailyUniqueEpisodes(details, settings.preferredAudio)
             }
@@ -111,154 +124,198 @@ fun DailyDetailsScreen(
                 } ?: targets.firstOrNull()
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 48.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                item {
-                    DailyDetailsHero(
-                        details = details,
-                        inList = details.id in favorites,
-                        target = smartTarget,
-                        isResume = latestPartial != null && smartTarget != null,
-                        summary = titleSummary,
-                        onBack = onBack,
-                        onPlay = { target ->
-                            onPlayEpisode(
-                                target.seasonNumber,
-                                target.episode.episodeNumber,
-                                target.episode.audioType
-                            )
-                        },
-                        onList = { viewModel.toggleFavorite(details.id) }
-                    )
-                }
-
-                item {
-                    Column(Modifier.padding(horizontal = ReliableSafeX, vertical = 8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Episodes", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black)
-                            Spacer(Modifier.width(14.dp))
-                            Text(
-                                "${titleSummary.watched}/${titleSummary.total} watched",
-                                color = Color.White.copy(alpha = 0.64f),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (settings.noSpoilerMode) {
-                                Spacer(Modifier.width(12.dp))
-                                Text(
-                                    "NO-SPOILER MODE",
-                                    color = MiruroColors.AccentSoft,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        LinearProgressIndicator(
-                            progress = { titleSummary.percent },
-                            modifier = Modifier.fillMaxWidth().height(6.dp),
-                            color = MiruroColors.Accent,
-                            trackColor = Color.White.copy(alpha = 0.16f)
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            item { DailyFilterPill("All", audioFilter == null) { audioFilter = null } }
-                            item { DailyFilterPill("Sub", audioFilter == AudioType.SUB) { audioFilter = AudioType.SUB } }
-                            item { DailyFilterPill("Dub", audioFilter == AudioType.DUB) { audioFilter = AudioType.DUB } }
-                        }
-                    }
-                }
-
-                details.seasons.forEach { season ->
-                    val seasonTargets = targets.filter { it.seasonNumber == season.seasonNumber }
-                    val seasonWatched = seasonTargets.count { target ->
-                        dailyProgressKey(
-                            target.episode.anilistId,
-                            target.seasonNumber,
-                            target.episode.episodeNumber
-                        ) in watchedKeys
-                    }
-                    val seasonTotal = seasonTargets.size
-                    val seasonPercent = if (seasonTotal > 0) seasonWatched.toFloat() / seasonTotal else 0f
-                    val nextTarget = seasonTargets.firstOrNull { target ->
-                        dailyProgressKey(
-                            target.episode.anilistId,
-                            target.seasonNumber,
-                            target.episode.episodeNumber
-                        ) !in watchedKeys
-                    }
-
+            Box(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 48.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     item {
-                        DailySeasonHeader(
-                            season = season,
-                            watched = seasonWatched,
-                            total = seasonTotal,
-                            percent = seasonPercent,
-                            nextTarget = nextTarget,
-                            onPlayNext = { target ->
+                        DailyDetailsHero(
+                            details = details,
+                            inList = details.id in favorites,
+                            target = smartTarget,
+                            isResume = latestPartial != null && smartTarget != null,
+                            summary = titleSummary,
+                            onBack = onBack,
+                            onPlay = { target ->
                                 onPlayEpisode(
                                     target.seasonNumber,
                                     target.episode.episodeNumber,
                                     target.episode.audioType
                                 )
                             },
-                            onMarkWatched = {
-                                features.setSeasonWatched(season.episodes, seasonWatched < seasonTotal)
-                            },
-                            onRestart = { features.setSeasonWatched(season.episodes, false) }
+                            onList = { viewModel.toggleFavorite(details.id) }
                         )
                     }
 
-                    val displayed = season.episodes
-                        .filter { audioFilter == null || it.audioType == audioFilter }
-                        .filterNot { episode ->
-                            settings.hideWatchedEpisodes && dailyProgressKey(
-                                episode.anilistId,
-                                season.seasonNumber,
-                                episode.episodeNumber
-                            ) in watchedKeys
-                        }
-
-                    items(displayed.chunked(3)) { row ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = ReliableSafeX, vertical = 7.dp),
-                            horizontalArrangement = Arrangement.spacedBy(18.dp)
-                        ) {
-                            row.forEach { episode ->
-                                val key = dailyProgressKey(
-                                    episode.anilistId,
-                                    season.seasonNumber,
-                                    episode.episodeNumber
+                    item {
+                        Column(Modifier.padding(horizontal = ReliableSafeX, vertical = 8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Episodes", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black)
+                                Spacer(Modifier.width(14.dp))
+                                Text(
+                                    "${titleSummary.watched}/${titleSummary.total} watched",
+                                    color = Color.White.copy(alpha = 0.64f),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
-                                val saved = progress
-                                    .filter {
-                                        it.animeId == episode.anilistId &&
-                                            it.seasonNumber == season.seasonNumber &&
-                                            it.episodeNumber == episode.episodeNumber &&
-                                            it.audioType == episode.audioType
-                                    }
-                                    .maxByOrNull { it.updatedAtMs }
-                                DailyEpisodeCard(
-                                    episode = episode,
-                                    progress = saved,
-                                    watched = key in watchedKeys,
-                                    isNew = key !in watchedKeys && dailyIsRecentEpisode(episode),
-                                    hideSpoilers = key in hiddenKeys,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    onOpenEpisode(
-                                        season.seasonNumber,
-                                        episode.episodeNumber,
-                                        episode.audioType
+                                if (settings.noSpoilerMode) {
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        "NO-SPOILER MODE",
+                                        color = MiruroColors.AccentSoft,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black
                                     )
                                 }
                             }
-                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            Spacer(Modifier.height(10.dp))
+                            LinearProgressIndicator(
+                                progress = { titleSummary.percent },
+                                modifier = Modifier.fillMaxWidth().height(6.dp),
+                                color = MiruroColors.Accent,
+                                trackColor = Color.White.copy(alpha = 0.16f)
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                item { DailyFilterPill("All", audioFilter == null) { audioFilter = null } }
+                                item { DailyFilterPill("Sub", audioFilter == AudioType.SUB) { audioFilter = AudioType.SUB } }
+                                item { DailyFilterPill("Dub", audioFilter == AudioType.DUB) { audioFilter = AudioType.DUB } }
+                            }
                         }
                     }
+
+                    details.seasons.forEach { season ->
+                        val seasonTargets = targets.filter { it.seasonNumber == season.seasonNumber }
+                        val seasonWatched = seasonTargets.count { target ->
+                            dailyProgressKey(
+                                target.episode.anilistId,
+                                target.seasonNumber,
+                                target.episode.episodeNumber
+                            ) in watchedKeys
+                        }
+                        val seasonTotal = seasonTargets.size
+                        val seasonPercent = if (seasonTotal > 0) seasonWatched.toFloat() / seasonTotal else 0f
+                        val nextTarget = seasonTargets.firstOrNull { target ->
+                            dailyProgressKey(
+                                target.episode.anilistId,
+                                target.seasonNumber,
+                                target.episode.episodeNumber
+                            ) !in watchedKeys
+                        }
+                        val seasonSynopsis = synopsisBundle.seasonSynopses[season.id]
+
+                        item {
+                            DailySeasonHeader(
+                                season = season,
+                                watched = seasonWatched,
+                                total = seasonTotal,
+                                percent = seasonPercent,
+                                nextTarget = nextTarget,
+                                synopsis = seasonSynopsis,
+                                synopsisLoaded = synopsisLoaded,
+                                onReadMore = seasonSynopsis?.let { synopsis ->
+                                    {
+                                        modalContent = SynopsisModalContent(
+                                            eyebrow = "Season synopsis",
+                                            title = season.title,
+                                            metadata = listOfNotNull(
+                                                season.year?.toString(),
+                                                "$seasonTotal episodes"
+                                            ).joinToString(" • "),
+                                            synopsis = synopsis
+                                        )
+                                    }
+                                },
+                                onPlayNext = { target ->
+                                    onPlayEpisode(
+                                        target.seasonNumber,
+                                        target.episode.episodeNumber,
+                                        target.episode.audioType
+                                    )
+                                },
+                                onMarkWatched = {
+                                    features.setSeasonWatched(season.episodes, seasonWatched < seasonTotal)
+                                },
+                                onRestart = { features.setSeasonWatched(season.episodes, false) }
+                            )
+                        }
+
+                        val displayed = season.episodes
+                            .filter { audioFilter == null || it.audioType == audioFilter }
+                            .filterNot { episode ->
+                                settings.hideWatchedEpisodes && dailyProgressKey(
+                                    episode.anilistId,
+                                    season.seasonNumber,
+                                    episode.episodeNumber
+                                ) in watchedKeys
+                            }
+
+                        items(displayed.chunked(3)) { row ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = ReliableSafeX, vertical = 7.dp),
+                                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                row.forEach { episode ->
+                                    val key = dailyProgressKey(
+                                        episode.anilistId,
+                                        season.seasonNumber,
+                                        episode.episodeNumber
+                                    )
+                                    val saved = progress
+                                        .filter {
+                                            it.animeId == episode.anilistId &&
+                                                it.seasonNumber == season.seasonNumber &&
+                                                it.episodeNumber == episode.episodeNumber &&
+                                                it.audioType == episode.audioType
+                                        }
+                                        .maxByOrNull { it.updatedAtMs }
+                                    val synopsis = synopsisBundle.episodeSynopses[
+                                        EpisodeSynopsisKey(episode.anilistId, episode.episodeNumber)
+                                    ]
+                                    val hideSpoilers = key in hiddenKeys
+
+                                    DailyEpisodeCard(
+                                        episode = episode,
+                                        progress = saved,
+                                        watched = key in watchedKeys,
+                                        isNew = key !in watchedKeys && dailyIsRecentEpisode(episode),
+                                        hideSpoilers = hideSpoilers,
+                                        synopsis = synopsis,
+                                        synopsisLoaded = synopsisLoaded,
+                                        modifier = Modifier.weight(1f),
+                                        onReadMore = synopsis?.takeUnless { hideSpoilers }?.let { fullSynopsis ->
+                                            {
+                                                modalContent = SynopsisModalContent(
+                                                    eyebrow = "Episode synopsis",
+                                                    title = if (hideSpoilers) {
+                                                        "Episode ${episode.episodeNumber}"
+                                                    } else {
+                                                        episode.title ?: "Episode ${episode.episodeNumber}"
+                                                    },
+                                                    metadata = "Season ${season.seasonNumber} • Episode ${episode.episodeNumber} • ${episode.audioType.name}",
+                                                    synopsis = fullSynopsis
+                                                )
+                                            }
+                                        }
+                                    ) {
+                                        onOpenEpisode(
+                                            season.seasonNumber,
+                                            episode.episodeNumber,
+                                            episode.audioType
+                                        )
+                                    }
+                                }
+                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    }
+                }
+
+                modalContent?.let { content ->
+                    SynopsisReadMoreModal(content = content) { modalContent = null }
                 }
             }
         }
@@ -354,6 +411,9 @@ private fun DailySeasonHeader(
     total: Int,
     percent: Float,
     nextTarget: DailyEpisodeTarget?,
+    synopsis: String?,
+    synopsisLoaded: Boolean,
+    onReadMore: (() -> Unit)?,
     onPlayNext: (DailyEpisodeTarget) -> Unit,
     onMarkWatched: () -> Unit,
     onRestart: () -> Unit
@@ -397,6 +457,25 @@ private fun DailySeasonHeader(
             Spacer(Modifier.width(10.dp))
             SecondaryButton("Restart season", Modifier.width(170.dp), onRestart)
         }
+
+        Spacer(Modifier.height(12.dp))
+        Text(
+            when {
+                synopsis != null -> synopsis
+                !synopsisLoaded -> "Loading season synopsis…"
+                else -> "Season synopsis unavailable."
+            },
+            color = Color.White.copy(alpha = if (synopsis != null) 0.74f else 0.48f),
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (onReadMore != null) {
+            Spacer(Modifier.height(9.dp))
+            SecondaryButton("Read more", Modifier.width(145.dp), onReadMore)
+        }
+
         Spacer(Modifier.height(12.dp))
         LinearProgressIndicator(
             progress = { percent.coerceIn(0f, 1f) },
@@ -414,64 +493,105 @@ private fun DailyEpisodeCard(
     watched: Boolean,
     isNew: Boolean,
     hideSpoilers: Boolean,
+    synopsis: String?,
+    synopsisLoaded: Boolean,
     modifier: Modifier,
+    onReadMore: (() -> Unit)?,
     onClick: () -> Unit
 ) {
-    FocusableSurface(onClick = onClick, modifier = modifier, unfocusedBackground = MiruroColors.Card) { focused ->
-        Column {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MiruroColors.CardHigh)) {
-                if (!hideSpoilers) {
-                    episode.thumbnailUrl?.let {
-                        AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MiruroColors.Card)
+            .padding(bottom = 10.dp)
+    ) {
+        FocusableSurface(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            unfocusedBackground = MiruroColors.Card
+        ) { focused ->
+            Column {
+                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MiruroColors.CardHigh)) {
+                    if (!hideSpoilers) {
+                        episode.thumbnailUrl?.let {
+                            AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        }
+                    } else {
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.linearGradient(listOf(Color(0xFF161616), Color(0xFF292929)))
+                            )
+                        )
+                        Text(
+                            "Spoiler hidden",
+                            color = Color.White.copy(alpha = 0.55f),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
                     }
-                } else {
-                    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF161616), Color(0xFF292929)))))
+
+                    Row(
+                        modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        DailyEpisodeBadge(episode.audioType.name, Color.Black.copy(alpha = 0.78f))
+                        if (isNew) DailyEpisodeBadge("NEW", MiruroColors.Accent)
+                        if (watched) DailyEpisodeBadge("✓ WATCHED", Color(0xFF1B6E35))
+                    }
+
+                    progress?.let {
+                        Box(
+                            Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp)
+                                .background(Color.White.copy(alpha = 0.18f))
+                        )
+                        Box(
+                            Modifier.align(Alignment.BottomStart).fillMaxWidth(it.percent.coerceIn(0f, 1f)).height(4.dp)
+                                .background(MiruroColors.Accent)
+                        )
+                    }
+                }
+                Column(Modifier.padding(12.dp)) {
                     Text(
-                        "Spoiler hidden",
-                        color = Color.White.copy(alpha = 0.55f),
-                        fontSize = 14.sp,
+                        "E${episode.episodeNumber} • ${episode.audioType.name}" +
+                            progress?.takeUnless { it.watched }?.let { " • ${(it.percent * 100).toInt()}%" }.orEmpty(),
+                        color = if (focused) Color.Black else MiruroColors.AccentSoft,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        if (hideSpoilers) "Episode ${episode.episodeNumber}" else episode.title ?: "Episode ${episode.episodeNumber}",
+                        color = if (focused) Color.Black else Color.White,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    DailyEpisodeBadge(episode.audioType.name, Color.Black.copy(alpha = 0.78f))
-                    if (isNew) DailyEpisodeBadge("NEW", MiruroColors.Accent)
-                    if (watched) DailyEpisodeBadge("✓ WATCHED", Color(0xFF1B6E35))
-                }
-
-                progress?.let {
-                    Box(
-                        Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp)
-                            .background(Color.White.copy(alpha = 0.18f))
-                    )
-                    Box(
-                        Modifier.align(Alignment.BottomStart).fillMaxWidth(it.percent.coerceIn(0f, 1f)).height(4.dp)
-                            .background(MiruroColors.Accent)
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-            Column(Modifier.padding(12.dp)) {
-                Text(
-                    "E${episode.episodeNumber} • ${episode.audioType.name}" +
-                        progress?.takeUnless { it.watched }?.let { " • ${(it.percent * 100).toInt()}%" }.orEmpty(),
-                    color = if (focused) Color.Black else MiruroColors.AccentSoft,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Black
-                )
-                Text(
-                    if (hideSpoilers) "Episode ${episode.episodeNumber}" else episode.title ?: "Episode ${episode.episodeNumber}",
-                    color = if (focused) Color.Black else Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+        }
+
+        Text(
+            when {
+                hideSpoilers -> "Synopsis hidden by No-Spoiler Mode."
+                synopsis != null -> synopsis
+                !synopsisLoaded -> "Loading synopsis…"
+                else -> "Synopsis unavailable."
+            },
+            color = Color.White.copy(alpha = if (synopsis != null && !hideSpoilers) 0.68f else 0.45f),
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        )
+
+        if (onReadMore != null) {
+            SecondaryButton(
+                "Read more",
+                Modifier.padding(horizontal = 12.dp).width(135.dp),
+                onReadMore
+            )
         }
     }
 }
