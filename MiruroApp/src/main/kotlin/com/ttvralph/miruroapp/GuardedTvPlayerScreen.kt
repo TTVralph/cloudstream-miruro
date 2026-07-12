@@ -1,6 +1,5 @@
 package com.ttvralph.miruroapp
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -17,7 +16,7 @@ fun GuardedTvPlayerScreen(
     onPlayNext: (AnimeEpisode) -> Unit
 ) {
     Box(Modifier.fillMaxSize()) {
-        ImprovedTvPlayerScreen(
+        HotfixTvPlayerScreen(
             viewModel = viewModel,
             episode = episode,
             nextEpisode = nextEpisode,
@@ -35,8 +34,4 @@ fun GuardedTvPlayerScreen(
             )
         }
     }
-
-    // Register after the player so the TV remote Back key always has a safe route out,
-    // including Media3 source-error screens where the internal controls are no longer useful.
-    BackHandler(onBack = onBack)
 }

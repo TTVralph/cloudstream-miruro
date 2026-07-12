@@ -12,10 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +26,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +43,7 @@ import com.ttvralph.miruroapp.ui.PrimaryButton
 import com.ttvralph.miruroapp.ui.SecondaryButton
 import com.ttvralph.miruroapp.ui.SectionTitle
 import com.ttvralph.miruroapp.ui.StateMessage
+import kotlinx.coroutines.delay
 
 @Composable
 fun EnhancedDetailsScreen(
@@ -58,67 +61,39 @@ fun EnhancedDetailsScreen(
     val settings by viewModel.settings.collectAsState()
     val extras by features.extras.collectAsState()
     var showStatusPicker by remember(animeId) { mutableStateOf(false) }
+    val firstActionFocus = remember(animeId) { FocusRequester() }
+
     LaunchedEffect(animeId) { features.loadExtras(animeId) }
+    LaunchedEffect(animeId) {
+        delay(160L)
+        runCatching { firstActionFocus.requestFocus() }
+    }
 
-    Box(Modifier.fillMaxSize()) {
-        DailyDetailsScreen(
-            viewModel = viewModel,
-            features = features,
-            animeId = animeId,
-            onBack = onBack,
-            onOpenEpisode = onOpenEpisode,
-            onPlayEpisode = onPlayEpisode
-        )
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Column(Modifier.fillMaxSize()) {
+            DetailsActionsBar(
+                animeId = animeId,
+                reaction = reactions[animeId],
+                reminderSet = animeId in reminders,
+                trackingLabel = trackingStatuses[animeId]?.label ?: "None",
+                noSpoilerMode = settings.noSpoilerMode,
+                extras = extras,
+                firstFocus = firstActionFocus,
+                onReaction = { features.setReaction(animeId, it) },
+                onReminder = { features.toggleReminder(animeId) },
+                onStatus = { showStatusPicker = true },
+                onGuide = onMoreLikeThis
+            )
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 20.dp, end = 26.dp)
-                .width(650.dp)
-                .background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(12.dp))
-                .padding(10.dp),
-            horizontalAlignment = Alignment.End
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ReactionButton("Like", reactions[animeId] == TitleReaction.LIKE) {
-                    features.setReaction(animeId, TitleReaction.LIKE)
-                }
-                ReactionButton("Love", reactions[animeId] == TitleReaction.LOVE) {
-                    features.setReaction(animeId, TitleReaction.LOVE)
-                }
-                ReactionButton("Not for me", reactions[animeId] == TitleReaction.DISLIKE) {
-                    features.setReaction(animeId, TitleReaction.DISLIKE)
-                }
-                ReactionButton(
-                    if (animeId in reminders) "✓ Reminder" else "Remind me",
-                    animeId in reminders
-                ) { features.toggleReminder(animeId) }
-                PrimaryButton("Anime guide", Modifier.width(160.dp), onMoreLikeThis)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SecondaryButton(
-                    "Status: ${trackingStatuses[animeId]?.label ?: "None"}",
-                    Modifier.width(210.dp)
-                ) { showStatusPicker = true }
-                if (settings.noSpoilerMode) {
-                    Text(
-                        "No-spoiler mode is on",
-                        color = MiruroColors.AccentSoft,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                val next = (extras as? UiState.Success<TitleExtras>)?.data?.nextAiring
-                next?.let {
-                    Text(
-                        "Next: E${it.episodeNumber} ${formatAiringTime(it.airingAtEpochSeconds)}",
-                        color = MiruroColors.AccentSoft,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                DailyDetailsScreen(
+                    viewModel = viewModel,
+                    features = features,
+                    animeId = animeId,
+                    onBack = onBack,
+                    onOpenEpisode = onOpenEpisode,
+                    onPlayEpisode = onPlayEpisode
+                )
             }
         }
 
@@ -137,8 +112,97 @@ fun EnhancedDetailsScreen(
 }
 
 @Composable
-private fun ReactionButton(text: String, selected: Boolean, onClick: () -> Unit) {
-    SecondaryButton(if (selected) "✓ $text" else text, Modifier.width(112.dp), onClick)
+private fun DetailsActionsBar(
+    animeId: Int,
+    reaction: TitleReaction?,
+    reminderSet: Boolean,
+    trackingLabel: String,
+    noSpoilerMode: Boolean,
+    extras: UiState<TitleExtras>?,
+    firstFocus: FocusRequester,
+    onReaction: (TitleReaction) -> Unit,
+    onReminder: () -> Unit,
+    onStatus: () -> Unit,
+    onGuide: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF0B0B0B))
+            .padding(horizontal = 24.dp, vertical = 10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "TITLE ACTIONS",
+                color = MiruroColors.AccentSoft,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.width(108.dp)
+            )
+            ReactionButton(
+                text = "Like",
+                selected = reaction == TitleReaction.LIKE,
+                modifier = Modifier.focusRequester(firstFocus)
+            ) { onReaction(TitleReaction.LIKE) }
+            ReactionButton("Love", reaction == TitleReaction.LOVE) { onReaction(TitleReaction.LOVE) }
+            ReactionButton("Not for me", reaction == TitleReaction.DISLIKE, width = 132) {
+                onReaction(TitleReaction.DISLIKE)
+            }
+            SecondaryButton(
+                if (reminderSet) "✓ Reminder" else "Remind me",
+                Modifier.width(150.dp),
+                onReminder
+            )
+            SecondaryButton("Status: $trackingLabel", Modifier.width(210.dp), onStatus)
+            PrimaryButton("Anime guide", Modifier.width(160.dp), onGuide)
+        }
+
+        val next = (extras as? UiState.Success<TitleExtras>)?.data?.nextAiring
+        if (next != null || noSpoilerMode) {
+            Spacer(Modifier.height(7.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 116.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (noSpoilerMode) {
+                    Text(
+                        "No-spoiler mode is on",
+                        color = MiruroColors.AccentSoft,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                next?.let {
+                    Text(
+                        "Next episode: E${it.episodeNumber} ${formatAiringTime(it.airingAtEpochSeconds)}",
+                        color = Color.White.copy(alpha = 0.68f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReactionButton(
+    text: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    width: Int = 112,
+    onClick: () -> Unit
+) {
+    SecondaryButton(
+        if (selected) "✓ $text" else text,
+        modifier.width(width.dp),
+        onClick
+    )
 }
 
 @Composable
