@@ -664,6 +664,16 @@ private fun AdvancedFilterOverlay(
                         }
                     }
                 }
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        SecondaryButton("Cancel", Modifier.width(140.dp), onDismiss)
+                        Spacer(Modifier.width(10.dp))
+                        PrimaryButton("Apply filters", Modifier.width(210.dp)) { onApply(draft) }
+                    }
+                }
             }
         }
     }
