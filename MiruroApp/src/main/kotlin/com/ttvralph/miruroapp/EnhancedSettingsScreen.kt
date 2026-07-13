@@ -72,6 +72,13 @@ fun EnhancedSettingsScreen(
                     color = MiruroColors.Subtle,
                     fontSize = 12.sp
                 )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Caption controls affect switchable tracks only. Subtitles baked into a provider's video cannot be hidden, resized, or restyled.",
+                    color = MiruroColors.AccentSoft,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp
+                )
             }
 
             item {
