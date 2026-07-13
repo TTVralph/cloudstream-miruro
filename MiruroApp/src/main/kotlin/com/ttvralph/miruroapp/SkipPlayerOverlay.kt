@@ -16,8 +16,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
@@ -37,7 +35,7 @@ fun SkipPlayerOverlay(
     var player by remember(episode) { mutableStateOf<Player?>(null) }
     var positionMs by remember(episode) { mutableLongStateOf(0L) }
     var durationMs by remember(episode) { mutableLongStateOf(0L) }
-    val focusRequester = remember { FocusRequester() }
+    var skippedInterval by remember(episode) { mutableStateOf<SkipInterval?>(null) }
 
     LaunchedEffect(episode, rootView) {
         while (true) {
@@ -52,14 +50,10 @@ fun SkipPlayerOverlay(
         }
     }
 
-    val interval = remember(intervalVersion, episode, durationMs, positionMs) {
-        features.intervalsFor(episode, durationMs).activeAt(positionMs)
-    }
-    LaunchedEffect(interval) {
-        if (interval != null) {
-            delay(80L)
-            runCatching { focusRequester.requestFocus() }
-        }
+    val interval = remember(intervalVersion, episode, durationMs, positionMs, skippedInterval) {
+        features.intervalsFor(episode, durationMs)
+            .activeAt(positionMs)
+            ?.takeUnless { it == skippedInterval }
     }
 
     if (interval != null && player?.playbackState != Player.STATE_ENDED) {
@@ -71,8 +65,9 @@ fun SkipPlayerOverlay(
         ) {
             PrimaryButton(
                 text = interval.kind.label,
-                modifier = Modifier.width(210.dp).focusRequester(focusRequester)
+                modifier = Modifier.width(210.dp)
             ) {
+                skippedInterval = interval
                 player?.let { active ->
                     active.seekTo((interval.endMs + 250L).coerceAtMost(durationMs))
                     active.play()
