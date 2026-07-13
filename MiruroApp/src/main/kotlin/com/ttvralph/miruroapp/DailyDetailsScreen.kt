@@ -46,8 +46,8 @@ import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.ui.BodyText
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.FocusableSurface
-import com.ttvralph.miruroapp.ui.GenreChip
 import com.ttvralph.miruroapp.ui.LoadingState
+import com.ttvralph.miruroapp.ui.MinimalActionButton
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PrimaryButton
 import com.ttvralph.miruroapp.ui.SecondaryButton
@@ -373,7 +373,11 @@ private fun DailyDetailsHero(
                 Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.25f), Color.Transparent, Color.Black))
             )
         )
-        SecondaryButton("Back", Modifier.align(Alignment.TopStart).padding(28.dp).width(112.dp), onBack)
+        MinimalActionButton(
+            text = "← Back",
+            modifier = Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 12.dp).width(112.dp),
+            onClick = onBack
+        )
         Column(Modifier.align(Alignment.BottomStart).padding(start = ReliableSafeX, bottom = 32.dp).width(660.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 details.rating?.let { rating ->
@@ -401,10 +405,17 @@ private fun DailyDetailsHero(
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.height(9.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(details.genres.take(4), key = { it }) { GenreChip(it) }
+            if (details.genres.isNotEmpty()) {
+                Text(
+                    details.genres.take(4).joinToString("  •  "),
+                    color = Color.White.copy(alpha = 0.72f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(9.dp))
             }
-            Spacer(Modifier.height(9.dp))
             BodyText(details.description ?: "No synopsis available.", maxLines = 2)
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -415,10 +426,11 @@ private fun DailyDetailsHero(
                         Modifier.width(260.dp)
                     ) { onPlay(it) }
                 }
-                SecondaryButton(
-                    if (inList) "✓ My List" else "+ Add to List",
-                    Modifier.width(190.dp),
-                    onList
+                MinimalActionButton(
+                    text = if (inList) "In My List" else "+ My List",
+                    modifier = Modifier.width(170.dp),
+                    selected = inList,
+                    onClick = onList
                 )
             }
         }
@@ -443,10 +455,7 @@ private fun DailySeasonHeader(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = ReliableSafeX, vertical = 10.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color.White.copy(alpha = 0.05f))
-            .padding(16.dp)
+            .padding(horizontal = ReliableSafeX, vertical = 16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -525,6 +534,9 @@ private fun DailySeasonHeader(
                 trackColor = Color.White.copy(alpha = 0.15f)
             )
         }
+
+        Spacer(Modifier.height(18.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.11f)))
     }
 }
 
@@ -541,8 +553,6 @@ private fun DailyEpisodeCard(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(MiruroColors.Card)
             .padding(bottom = 10.dp)
     ) {
         FocusableSurface(
@@ -649,5 +659,10 @@ private fun DailyEpisodeBadge(text: String, background: Color) {
 
 @Composable
 private fun DailyFilterPill(text: String, selected: Boolean, onClick: () -> Unit) {
-    SecondaryButton(if (selected) "✓ $text" else text, Modifier.width(105.dp), onClick)
+    MinimalActionButton(
+        text = text,
+        modifier = Modifier.width(105.dp),
+        selected = selected,
+        onClick = onClick
+    )
 }
