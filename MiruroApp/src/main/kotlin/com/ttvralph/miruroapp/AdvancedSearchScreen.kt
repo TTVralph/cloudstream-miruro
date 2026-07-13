@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,8 +25,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -48,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.ttvralph.miruroapp.data.AppSettings
 import com.ttvralph.miruroapp.data.DiscoverySearchFilters
 import com.ttvralph.miruroapp.data.DiscoverySort
@@ -91,78 +95,69 @@ fun AdvancedSearchScreen(
         discovery.search(filters, favorites)
     }
 
-    if (filterOverlay) {
-        AdvancedFilterOverlay(
-            value = filters,
-            studios = studios,
-            settings = settings,
-            onDismiss = { filterOverlay = false },
-            onApply = {
-                filters = it.copy(page = 1)
-                filterOverlay = false
-            }
-        )
-    }
-
-    Row(
-        modifier = Modifier.fillMaxSize().background(MiruroColors.Background).padding(top = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(26.dp)
-    ) {
-        Column(Modifier.width(if (settings.largeUiText) 460.dp else 420.dp)) {
-            Text(
-                "Advanced Search",
-                color = Color.White,
-                fontSize = (if (settings.largeUiText) 37 else 32).sp,
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                "Search alternate titles and combine detailed AniList filters.",
-                color = MiruroColors.Subtle,
-                fontSize = (if (settings.largeUiText) 15 else 12).sp
-            )
-            Spacer(Modifier.height(14.dp))
-            AdvancedSearchBox(
-                query = filters.query,
-                settings = settings,
-                onQueryChange = { filters = filters.copy(query = it, page = 1) }
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DiscoveryChoice("All", filters.formats.isEmpty(), settings, Modifier.width(88.dp)) {
-                    filters = filters.copy(formats = emptySet(), page = 1)
-                }
-                DiscoveryChoice("Series", filters.formats == setOf("TV"), settings, Modifier.width(102.dp)) {
-                    filters = filters.copy(formats = setOf("TV"), page = 1)
-                }
-                DiscoveryChoice("Movies", filters.formats == setOf("MOVIE"), settings, Modifier.width(108.dp)) {
-                    filters = filters.copy(formats = setOf("MOVIE"), page = 1)
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            SecondaryButton(
-                "Advanced Filters (${advancedFilterCount(filters)})",
-                Modifier.fillMaxWidth()
-            ) { filterOverlay = true }
-            Spacer(Modifier.height(12.dp))
-            AdvancedKeyboard(
-                settings = settings,
-                onCharacter = { filters = filters.copy(query = filters.query + it, page = 1) },
-                onBackspace = {
-                    if (filters.query.isNotEmpty()) filters = filters.copy(query = filters.query.dropLast(1), page = 1)
-                },
-                onSpace = {
-                    if (filters.query.isNotEmpty() && !filters.query.endsWith(' ')) {
-                        filters = filters.copy(query = filters.query + " ", page = 1)
+    Box(Modifier.fillMaxSize().background(MiruroColors.Background)) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(26.dp)
+        ) {
+            Column(
+                Modifier
+                    .width(if (settings.largeUiText) 460.dp else 420.dp)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 28.dp)
+            ) {
+                Text(
+                    "Advanced Search",
+                    color = Color.White,
+                    fontSize = (if (settings.largeUiText) 37 else 32).sp,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    "Search alternate titles and combine detailed AniList filters.",
+                    color = MiruroColors.Subtle,
+                    fontSize = (if (settings.largeUiText) 15 else 12).sp
+                )
+                Spacer(Modifier.height(14.dp))
+                AdvancedSearchBox(
+                    query = filters.query,
+                    settings = settings,
+                    onQueryChange = { filters = filters.copy(query = it, page = 1) }
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DiscoveryChoice("All", filters.formats.isEmpty(), settings, Modifier.width(88.dp)) {
+                        filters = filters.copy(formats = emptySet(), page = 1)
                     }
-                },
-                onClear = { filters = DiscoverySearchFilters() },
-                onSearch = { discovery.search(filters, favorites) }
-            )
-            Spacer(Modifier.height(13.dp))
-            AdvancedFilterSummary(filters, studios, settings)
-        }
+                    DiscoveryChoice("Series", filters.formats == setOf("TV"), settings, Modifier.width(102.dp)) {
+                        filters = filters.copy(formats = setOf("TV"), page = 1)
+                    }
+                    DiscoveryChoice("Movies", filters.formats == setOf("MOVIE"), settings, Modifier.width(108.dp)) {
+                        filters = filters.copy(formats = setOf("MOVIE"), page = 1)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                AdvancedFiltersButton(advancedFilterCount(filters)) { filterOverlay = true }
+                Spacer(Modifier.height(12.dp))
+                AdvancedKeyboard(
+                    settings = settings,
+                    onCharacter = { filters = filters.copy(query = filters.query + it, page = 1) },
+                    onBackspace = {
+                        if (filters.query.isNotEmpty()) filters = filters.copy(query = filters.query.dropLast(1), page = 1)
+                    },
+                    onSpace = {
+                        if (filters.query.isNotEmpty() && !filters.query.endsWith(' ')) {
+                            filters = filters.copy(query = filters.query + " ", page = 1)
+                        }
+                    },
+                    onClear = { filters = DiscoverySearchFilters() },
+                    onSearch = { discovery.search(filters, favorites) }
+                )
+                Spacer(Modifier.height(13.dp))
+                AdvancedFilterSummary(filters, studios, settings)
+            }
 
-        Column(Modifier.weight(1f).fillMaxSize()) {
+            Column(Modifier.weight(1f).fillMaxSize()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Results",
@@ -236,6 +231,53 @@ fun AdvancedSearchScreen(
                     }
                 }
             }
+            }
+        }
+
+        if (filterOverlay) {
+            AdvancedFilterOverlay(
+                value = filters,
+                studios = studios,
+                settings = settings,
+                onDismiss = { filterOverlay = false },
+                onApply = {
+                    filters = it.copy(page = 1)
+                    filterOverlay = false
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun AdvancedFiltersButton(
+    selectedCount: Int,
+    onClick: () -> Unit
+) {
+    FocusableSurface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(52.dp),
+        shape = RoundedCornerShape(8.dp),
+        unfocusedBackground = Color.White.copy(alpha = 0.07f),
+        focusedBackground = Color.White
+    ) { focused ->
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Advanced filters",
+                color = if (focused) Color.Black else Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Black
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                if (selectedCount == 0) "Open  ›" else "$selectedCount selected  ›",
+                color = if (focused) Color.Black else MiruroColors.AccentSoft,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -398,11 +440,17 @@ private fun AdvancedFilterOverlay(
 ) {
     BackHandler(onBack = onDismiss)
     var draft by remember(value) { mutableStateOf(value) }
+    val firstFocus = remember { FocusRequester() }
     val currentYear = Calendar.getInstance().get(Calendar.YEAR)
     val shape = RoundedCornerShape(16.dp)
 
+    LaunchedEffect(Unit) {
+        delay(90L)
+        runCatching { firstFocus.requestFocus() }
+    }
+
     Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.84f)),
+        Modifier.fillMaxSize().zIndex(20f).background(Color.Black.copy(alpha = 0.84f)),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -430,7 +478,7 @@ private fun AdvancedFilterOverlay(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                SecondaryButton("Reset", Modifier.width(120.dp)) {
+                SecondaryButton("Reset", Modifier.width(120.dp).focusRequester(firstFocus)) {
                     draft = DiscoverySearchFilters(query = value.query)
                 }
                 Spacer(Modifier.width(8.dp))
