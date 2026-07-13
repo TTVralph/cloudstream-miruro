@@ -62,32 +62,34 @@ fun MyAniStreamScreen(
     onPlayProgress: (WatchProgress) -> Unit,
     openProfiles: Boolean = false
 ) {
-    val profileState by features.profileState.collectAsState()
     var tab by remember(openProfiles) {
         mutableStateOf(if (openProfiles) MyAniStreamTab.PROFILES else MyAniStreamTab.OVERVIEW)
     }
+    var profileEditorOpen by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                "My AniStream • ${profileState.activeProfile.name}",
-                color = Color.White,
-                fontSize = 29.sp,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier.weight(1f)
-            )
-            MyAniStreamTab.entries.forEach { option ->
-                val selected = option == tab
-                val width = if (option == MyAniStreamTab.LIBRARY) 170.dp else 132.dp
-                MinimalActionButton(
-                    text = option.label,
-                    modifier = Modifier.width(width),
-                    selected = selected,
-                    onClick = { tab = option }
+        if (!profileEditorOpen) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "My AniStream",
+                    color = Color.White,
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
                 )
+                MyAniStreamTab.entries.forEach { option ->
+                    val selected = option == tab
+                    val width = if (option == MyAniStreamTab.LIBRARY) 170.dp else 132.dp
+                    MinimalActionButton(
+                        text = option.label,
+                        modifier = Modifier.width(width),
+                        selected = selected,
+                        onClick = { tab = option }
+                    )
+                }
             }
         }
 
@@ -95,7 +97,10 @@ fun MyAniStreamScreen(
             MyAniStreamTab.OVERVIEW -> MyAniStreamOverview(viewModel, features, onOpenDetails, onPlayProgress)
             MyAniStreamTab.TRACKING -> MyAniStreamTracking(viewModel, features, onOpenDetails)
             MyAniStreamTab.LIBRARY -> WatchManagementScreen(viewModel, onOpenDetails, onPlayProgress)
-            MyAniStreamTab.PROFILES -> MyAniStreamProfiles(features)
+            MyAniStreamTab.PROFILES -> MyAniStreamProfiles(
+                features = features,
+                onEditorOpenChanged = { profileEditorOpen = it }
+            )
         }
     }
 }
@@ -341,12 +346,17 @@ private fun UpcomingRow(
 }
 
 @Composable
-private fun MyAniStreamProfiles(features: NetflixFeatureViewModel) {
+private fun MyAniStreamProfiles(
+    features: NetflixFeatureViewModel,
+    onEditorOpenChanged: (Boolean) -> Unit
+) {
     val state by features.profileState.collectAsState()
     var creating by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<LocalProfile?>(null) }
     val editingProfile = editing
-    if (creating || editingProfile != null) {
+    val editorOpen = creating || editingProfile != null
+    LaunchedEffect(editorOpen) { onEditorOpenChanged(editorOpen) }
+    if (editorOpen) {
         ProfileEditorOverlay(
             profile = editingProfile,
             suggestedName = "Profile ${state.profiles.size + 1}",
