@@ -443,8 +443,20 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun saveProgress(episode: AnimeEpisode, positionMs: Long, durationMs: Long) {
+    fun saveProgress(
+        episode: AnimeEpisode,
+        positionMs: Long,
+        durationMs: Long,
+        sourceProvider: String? = null,
+        sourceLabel: String? = null
+    ) {
         if (durationMs <= 0L) return
+        val previous = watchProgress.value.firstOrNull {
+            it.animeId == episode.anilistId &&
+                it.seasonNumber == episode.seasonNumber &&
+                it.episodeNumber == episode.episodeNumber &&
+                it.audioType == episode.audioType
+        }
         viewModelScope.launch {
             progressStore.save(
                 WatchProgress(
@@ -454,7 +466,9 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
                     audioType = episode.audioType,
                     positionMs = positionMs.coerceIn(0L, durationMs),
                     durationMs = durationMs,
-                    updatedAtMs = System.currentTimeMillis()
+                    updatedAtMs = System.currentTimeMillis(),
+                    sourceProvider = sourceProvider ?: previous?.sourceProvider,
+                    sourceLabel = sourceLabel ?: previous?.sourceLabel
                 )
             )
         }
@@ -465,6 +479,12 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setEpisodeWatched(episode: AnimeEpisode, watched: Boolean) {
+        val previous = watchProgress.value.firstOrNull {
+            it.animeId == episode.anilistId &&
+                it.seasonNumber == episode.seasonNumber &&
+                it.episodeNumber == episode.episodeNumber &&
+                it.audioType == episode.audioType
+        }
         viewModelScope.launch {
             if (watched) {
                 progressStore.save(
@@ -475,7 +495,9 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
                         audioType = episode.audioType,
                         positionMs = 9_000L,
                         durationMs = 10_000L,
-                        updatedAtMs = System.currentTimeMillis()
+                        updatedAtMs = System.currentTimeMillis(),
+                        sourceProvider = previous?.sourceProvider,
+                        sourceLabel = previous?.sourceLabel
                     )
                 )
             } else {
@@ -515,13 +537,23 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     fun resolvePlayback(
         episode: AnimeEpisode,
-        provider: String? = pendingPreferredProvider ?: settings.value.preferredProvider
+        provider: String? = null
     ) {
+        val savedProvider = watchProgress.value.firstOrNull {
+            it.animeId == episode.anilistId &&
+                it.seasonNumber == episode.seasonNumber &&
+                it.episodeNumber == episode.episodeNumber &&
+                it.audioType == episode.audioType
+        }?.sourceProvider
+        val requestedProvider = provider
+            ?: pendingPreferredProvider?.also { pendingPreferredProvider = null }
+            ?: savedProvider
+            ?: settings.value.preferredProvider
         playbackStartedAtMs = System.currentTimeMillis()
         playbackJob?.cancel()
         playbackJob = viewModelScope.launch {
             _playback.value = UiState.Loading
-            val resolution = runCatching { repo.resolveEpisodeSource(episode, provider) }
+            val resolution = runCatching { repo.resolveEpisodeSource(episode, requestedProvider) }
             if (!isActive) return@launch
             val result = resolution.getOrElse { e ->
                 Log.w(
