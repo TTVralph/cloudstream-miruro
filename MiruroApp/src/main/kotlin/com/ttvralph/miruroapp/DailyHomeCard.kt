@@ -120,19 +120,19 @@ internal fun DailyHomeCard(
                             delay(HOME_CARD_LONG_PRESS_MS)
                             if (confirmHeld && !longPressConsumed) {
                                 longPressConsumed = true
-                                onLongClick()
                             }
                         }
                     }
                     true
                 }
                 KeyEventType.KeyUp -> {
+                    val showActions = confirmHeld && longPressConsumed
                     val openNormally = confirmHeld && !longPressConsumed
                     longPressJob?.cancel()
                     longPressJob = null
                     confirmHeld = false
                     longPressConsumed = false
-                    if (openNormally) onClick()
+                    if (showActions) onLongClick() else if (openNormally) onClick()
                     true
                 }
                 else -> true
