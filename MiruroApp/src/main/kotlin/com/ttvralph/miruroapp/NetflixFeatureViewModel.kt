@@ -13,6 +13,7 @@ import com.ttvralph.miruroapp.data.NetflixFeatureRepository
 import com.ttvralph.miruroapp.data.ProfileSession
 import com.ttvralph.miruroapp.data.ProfileState
 import com.ttvralph.miruroapp.data.PROFILE_AVATAR_IDS
+import com.ttvralph.miruroapp.data.PROFILE_THEME_COLOR_IDS
 import com.ttvralph.miruroapp.data.ProfileStore
 import com.ttvralph.miruroapp.data.SettingsStore
 import com.ttvralph.miruroapp.data.SkipInterval
@@ -77,19 +78,21 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    fun createProfile(name: String? = null, avatarId: String? = null) {
+    fun createProfile(name: String? = null, avatarId: String? = null, themeColorId: String? = null) {
         val number = profileState.value.profiles.size + 1
         viewModelScope.launch {
             profilesStore.create(
                 name = name?.trim().takeUnless { it.isNullOrBlank() } ?: "Profile $number",
                 avatarId = avatarId?.takeIf { it in PROFILE_AVATAR_IDS }
-                    ?: PROFILE_AVATAR_IDS[(number - 1) % PROFILE_AVATAR_IDS.size]
+                    ?: PROFILE_AVATAR_IDS[(number - 1) % PROFILE_AVATAR_IDS.size],
+                themeColorId = themeColorId?.takeIf { it in PROFILE_THEME_COLOR_IDS }
+                    ?: PROFILE_THEME_COLOR_IDS[(number - 1) % PROFILE_THEME_COLOR_IDS.size]
             )
         }
     }
 
-    fun updateProfile(profile: LocalProfile, name: String, avatarId: String) {
-        viewModelScope.launch { profilesStore.update(profile, name, avatarId) }
+    fun updateProfile(profile: LocalProfile, name: String, avatarId: String, themeColorId: String) {
+        viewModelScope.launch { profilesStore.update(profile, name, avatarId, themeColorId) }
     }
 
     fun switchProfile(profile: LocalProfile) {
