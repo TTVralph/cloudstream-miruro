@@ -147,7 +147,27 @@ fun AutomaticEpisodeDetailsScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(18.dp))
+                    Text(
+                        "Synopsis",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        when {
+                            hideSpoilers -> "Synopsis hidden by No-Spoiler Mode."
+                            !episode.synopsis.isNullOrBlank() -> episode.synopsis.orEmpty()
+                            else -> "Synopsis unavailable."
+                        },
+                        color = Color.White.copy(
+                            alpha = if (!episode.synopsis.isNullOrBlank() && !hideSpoilers) 0.82f else 0.52f
+                        ),
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
+                    )
+                    Spacer(Modifier.height(18.dp))
                     Text(
                         "AniStream will try every available provider automatically and switch sources if one fails. Resolutions and manual choices appear in Quality & Source during playback.",
                         color = MiruroColors.Subtle,
