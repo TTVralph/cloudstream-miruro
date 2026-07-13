@@ -605,6 +605,7 @@ private fun HotfixVideoPlayer(
                 focusRequester = menuFocus,
                 largeControls = settings.largePlayerControls,
                 highContrast = settings.highContrastPlayerControls,
+                onOpenSources = { panel = HotfixPanel.SOURCES },
                 onTrackSelected = ::selectSubtitle,
                 onSizeSelected = { value ->
                     subtitleSize = value
@@ -972,53 +973,81 @@ private fun HotfixSubtitlePanel(
     focusRequester: FocusRequester,
     largeControls: Boolean,
     highContrast: Boolean,
+    onOpenSources: () -> Unit,
     onTrackSelected: (HotfixSubtitleChoice) -> Unit,
     onSizeSelected: (String) -> Unit,
     onBackgroundSelected: (String) -> Unit
 ) {
     HotfixPlayerPanel("Subtitles & captions") {
-        item { HotfixPanelSection("Track") }
         item {
-            HotfixPanelRow(
-                text = "Off",
-                supporting = null,
-                selected = selected is HotfixSubtitleChoice.Off,
-                modifier = Modifier.focusRequester(focusRequester),
-                large = largeControls,
-                highContrast = highContrast
-            ) { onTrackSelected(HotfixSubtitleChoice.Off) }
+            Text(
+                if (source.subtitleTracks.isEmpty()) {
+                    "This source has no switchable subtitle track. Any subtitles visible in the video are baked in and cannot be hidden, resized, or restyled."
+                } else {
+                    "These controls affect switchable subtitle tracks only. Text baked into the video cannot be changed."
+                },
+                color = Color.White.copy(alpha = 0.70f),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.padding(horizontal = 5.dp, bottom = 8.dp)
+            )
         }
-        item {
-            HotfixPanelRow(
-                text = "Auto (${source.subtitleTracks.getOrNull(automatic)?.let(::hotfixSubtitleLabel) ?: "preferred language"})",
-                supporting = "Follows the preferred subtitle language",
-                selected = selected is HotfixSubtitleChoice.Auto,
-                modifier = Modifier,
-                large = largeControls,
-                highContrast = highContrast
-            ) { onTrackSelected(HotfixSubtitleChoice.Auto) }
-        }
-        itemsIndexed(source.subtitleTracks) { index, track ->
-            val label = hotfixSubtitleLabel(track)
-            HotfixPanelRow(
-                text = label,
-                supporting = if (label.contains("SDH") || label.contains("CC")) "Caption track" else track.language,
-                selected = selected is HotfixSubtitleChoice.Track && selected.index == index,
-                modifier = Modifier,
-                large = largeControls,
-                highContrast = highContrast
-            ) { onTrackSelected(HotfixSubtitleChoice.Track(index)) }
-        }
-        item { HotfixPanelSection("Text size") }
-        itemsIndexed(listOf("Small", "Medium", "Large", "Extra Large")) { _, option ->
-            HotfixPanelRow(option, "Applies immediately", option == textSize, Modifier, largeControls, highContrast) {
-                onSizeSelected(option)
+        if (source.subtitleTracks.isEmpty()) {
+            item {
+                HotfixPanelRow(
+                    text = "Choose another source",
+                    supporting = "Try a different provider for switchable captions",
+                    selected = false,
+                    modifier = Modifier.focusRequester(focusRequester),
+                    large = largeControls,
+                    highContrast = highContrast,
+                    onClick = onOpenSources
+                )
             }
-        }
-        item { HotfixPanelSection("Background opacity") }
-        itemsIndexed(listOf("Off", "Low", "Medium", "High")) { _, option ->
-            HotfixPanelRow(option, "Applies immediately", option == background, Modifier, largeControls, highContrast) {
-                onBackgroundSelected(option)
+        } else {
+            item { HotfixPanelSection("External track") }
+            item {
+                HotfixPanelRow(
+                    text = "Off",
+                    supporting = null,
+                    selected = selected is HotfixSubtitleChoice.Off,
+                    modifier = Modifier.focusRequester(focusRequester),
+                    large = largeControls,
+                    highContrast = highContrast
+                ) { onTrackSelected(HotfixSubtitleChoice.Off) }
+            }
+            item {
+                HotfixPanelRow(
+                    text = "Auto (${source.subtitleTracks.getOrNull(automatic)?.let(::hotfixSubtitleLabel) ?: "preferred language"})",
+                    supporting = "Follows the preferred subtitle language",
+                    selected = selected is HotfixSubtitleChoice.Auto,
+                    modifier = Modifier,
+                    large = largeControls,
+                    highContrast = highContrast
+                ) { onTrackSelected(HotfixSubtitleChoice.Auto) }
+            }
+            itemsIndexed(source.subtitleTracks) { index, track ->
+                val label = hotfixSubtitleLabel(track)
+                HotfixPanelRow(
+                    text = label,
+                    supporting = if (label.contains("SDH") || label.contains("CC")) "Caption track" else track.language,
+                    selected = selected is HotfixSubtitleChoice.Track && selected.index == index,
+                    modifier = Modifier,
+                    large = largeControls,
+                    highContrast = highContrast
+                ) { onTrackSelected(HotfixSubtitleChoice.Track(index)) }
+            }
+            item { HotfixPanelSection("Text size") }
+            itemsIndexed(listOf("Small", "Medium", "Large", "Extra Large")) { _, option ->
+                HotfixPanelRow(option, "Applies to external captions", option == textSize, Modifier, largeControls, highContrast) {
+                    onSizeSelected(option)
+                }
+            }
+            item { HotfixPanelSection("Background opacity") }
+            itemsIndexed(listOf("Off", "Low", "Medium", "High")) { _, option ->
+                HotfixPanelRow(option, "Applies to external captions", option == background, Modifier, largeControls, highContrast) {
+                    onBackgroundSelected(option)
+                }
             }
         }
     }
