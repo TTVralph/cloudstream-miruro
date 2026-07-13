@@ -239,6 +239,7 @@ private fun HotfixVideoPlayer(
     var message by remember(initialSource) { mutableStateOf<String?>(null) }
     var ended by remember(initialSource) { mutableStateOf(false) }
     var autoplayCountdown by remember(initialSource) { mutableIntStateOf(0) }
+    var advancingToNext by remember(initialSource) { mutableStateOf(false) }
     var pendingPosition by remember(initialSource) { mutableLongStateOf(0L) }
     var retryNonce by remember(initialSource) { mutableIntStateOf(0) }
     var fallbackEvents by remember(initialSource) { mutableStateOf(emptyList<String>()) }
@@ -295,11 +296,17 @@ private fun HotfixVideoPlayer(
                             playerError = null
                         }
                         if (playbackState == Player.STATE_ENDED) {
-                            ended = true
-                            controlsVisible = false
-                            panel = HotfixPanel.NONE
-                            viewModel.setEpisodeWatched(episode, true)
-                            autoplayCountdown = if (settings.autoPlayNext && nextEpisode != null) 5 else 0
+                            if (!ended && !advancingToNext) {
+                                controlsVisible = false
+                                panel = HotfixPanel.NONE
+                                viewModel.setEpisodeWatched(episode, true)
+                                autoplayCountdown = if (settings.autoPlayNext && nextEpisode != null) {
+                                    HOTFIX_AUTOPLAY_SECONDS
+                                } else {
+                                    0
+                                }
+                                ended = true
+                            }
                         }
                     }
 
@@ -434,10 +441,22 @@ private fun HotfixVideoPlayer(
             message = null
         }
     }
-    LaunchedEffect(autoplayCountdown) {
-        if (autoplayCountdown > 0 && nextEpisode != null) {
+
+    fun playNextEpisode() {
+        val target = nextEpisode ?: return
+        if (advancingToNext) return
+        advancingToNext = true
+        autoplayCountdown = 0
+        ended = false
+        controlsVisible = false
+        panel = HotfixPanel.NONE
+        onPlayNext(target)
+    }
+
+    LaunchedEffect(autoplayCountdown, nextEpisode, advancingToNext) {
+        if (autoplayCountdown > 0 && nextEpisode != null && !advancingToNext) {
             delay(1_000L)
-            if (autoplayCountdown == 1) onPlayNext(nextEpisode) else autoplayCountdown -= 1
+            if (autoplayCountdown == 1) playNextEpisode() else autoplayCountdown -= 1
         }
     }
     LaunchedEffect(controlsVisible, panel, ended, playerError, activeSkip) {
@@ -615,6 +634,7 @@ private fun HotfixVideoPlayer(
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
                     useController = false
+                    keepScreenOn = true
                     setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
                     isFocusable = false
                     isFocusableInTouchMode = false
@@ -656,7 +676,7 @@ private fun HotfixVideoPlayer(
                 onSubtitle = { panel = HotfixPanel.SUBTITLES },
                 onSpeed = { panel = HotfixPanel.SPEED },
                 onDiagnostics = { panel = HotfixPanel.DIAGNOSTICS },
-                onNext = { nextEpisode?.let(onPlayNext) },
+                onNext = ::playNextEpisode,
                 onHide = { controlsVisible = false }
             )
         }
@@ -754,6 +774,27 @@ private fun HotfixVideoPlayer(
                         RoundedCornerShape(10.dp)
                     )
                     .padding(horizontal = 20.dp, vertical = 12.dp)
+            )
+        }
+
+        if (ended) {
+            EnhancedPostPlayOverlay(
+                episode = episode,
+                nextEpisode = nextEpisode,
+                autoplayEnabled = settings.autoPlayNext,
+                autoplayCountdown = autoplayCountdown,
+                onCancelAutoplay = { autoplayCountdown = 0 },
+                onPlayNext = ::playNextEpisode,
+                onReplay = {
+                    autoplayCountdown = 0
+                    advancingToNext = false
+                    ended = false
+                    controlsVisible = false
+                    player.seekTo(0L)
+                    player.play()
+                },
+                onMarkUnwatched = { viewModel.setEpisodeWatched(episode, false) },
+                onBack = onBack
             )
         }
     }
@@ -1391,6 +1432,8 @@ private fun hotfixProviderName(source: PlaybackSource): String =
 private fun List<SkipInterval>.hotfixActiveAt(positionMs: Long): SkipInterval? = firstOrNull { interval ->
     positionMs >= (interval.startMs - 350L).coerceAtLeast(0L) && positionMs < interval.endMs
 }
+
+private const val HOTFIX_AUTOPLAY_SECONDS = 5
 
 private fun hotfixQualityHeight(source: PlaybackSource): Int? =
     Regex("""(?i)(2160|1440|1080|720|480|360)p""")

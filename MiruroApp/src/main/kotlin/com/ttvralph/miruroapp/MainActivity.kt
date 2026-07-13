@@ -326,10 +326,12 @@ private fun MiruroApp(
                         audio = audio,
                         onBack = { navController.backOrHome() },
                         onPlayNext = { next ->
-                            navController.popBackStack()
                             navController.navigate(
                                 Routes.Player.path(id, next.seasonNumber, next.episodeNumber, next.audioType)
-                            )
+                            ) {
+                                popUpTo(entry.destination.id) { inclusive = true }
+                                launchSingleTop = true
+                            }
                         }
                     )
                 }
