@@ -6,10 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,13 +44,18 @@ fun EnhancedSettingsScreen(
     val store = remember(context) { SettingsStore(context) }
     val scope = rememberCoroutineScope()
 
-    Box(Modifier.fillMaxSize()) {
-        AuditSettingsScreen(viewModel)
+    Row(
+        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(24.dp)
+    ) {
+        AuditSettingsScreen(
+            viewModel = viewModel,
+            modifier = Modifier.weight(1f).fillMaxHeight()
+        )
         LazyColumn(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .width(430.dp)
-                .heightIn(max = 610.dp)
+                .width(400.dp)
+                .fillMaxHeight()
                 .background(Color.Black.copy(alpha = 0.94f), RoundedCornerShape(12.dp))
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
