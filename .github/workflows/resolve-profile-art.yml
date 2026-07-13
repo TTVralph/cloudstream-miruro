@@ -15,7 +15,16 @@ jobs:
     steps:
       - name: Query AniList character artwork
         run: |
+          query='query {
+            luffy: Character(search: "Monkey D. Luffy") { name { full } image { large } }
+            deku: Character(search: "Izuku Midoriya") { name { full } image { large } }
+            itachi: Character(search: "Itachi Uchiha") { name { full } image { large } }
+            anya: Character(search: "Anya Forger") { name { full } image { large } }
+            gojo: Character(search: "Satoru Gojo") { name { full } image { large } }
+            rengoku: Character(search: "Kyoujurou Rengoku") { name { full } image { large } }
+          }'
+          jq -n --arg query "$query" '{query: $query}' > request.json
           curl --fail-with-body --silent --show-error https://graphql.anilist.co \
             -H 'Content-Type: application/json' \
-            --data-raw '{"query":"query { luffy: Character(search: \\"Monkey D. Luffy\\") { name { full } image { large } } deku: Character(search: \\"Izuku Midoriya\\") { name { full } image { large } } itachi: Character(search: \\"Itachi Uchiha\\") { name { full } image { large } } anya: Character(search: \\"Anya Forger\\") { name { full } image { large } } gojo: Character(search: \\"Satoru Gojo\\") { name { full } image { large } } rengoku: Character(search: \\"Kyoujurou Rengoku\\") { name { full } image { large } } }"}' \
+            --data-binary @request.json \
             | jq -r '.data | to_entries[] | "\(.key)=\(.value.name.full)|\(.value.image.large)"'
