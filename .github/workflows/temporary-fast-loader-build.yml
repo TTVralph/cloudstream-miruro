@@ -27,9 +27,15 @@ jobs:
       - name: Apply staged loader integration
         run: python3 scripts/apply_fast_loader.py
       - name: Compile and assemble debug APK
+        shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :MiruroApp:compileDebugKotlin :MiruroApp:assembleDebug --stacktrace
+          if ! ./gradlew :MiruroApp:compileDebugKotlin :MiruroApp:assembleDebug --stacktrace > build.log 2>&1; then
+            grep -E "(^e: |error:|FAILURE:|What went wrong|Execution failed|Unresolved reference|Type mismatch|Cannot infer|No value passed)" build.log | tail -120 || true
+            tail -80 build.log
+            exit 1
+          fi
+          tail -40 build.log
       - name: Commit generated integration
         shell: bash
         run: |
