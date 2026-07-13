@@ -75,22 +75,23 @@ fun EnhancedDetailsScreen(
             viewModel = viewModel,
             features = features,
             animeId = animeId,
+            headerActions = {
+                DetailsActionsBar(
+                    reaction = reactions[animeId],
+                    reminderSet = animeId in reminders,
+                    trackingLabel = trackingStatuses[animeId]?.label ?: "None",
+                    noSpoilerMode = settings.noSpoilerMode,
+                    extras = extras,
+                    firstFocus = firstActionFocus,
+                    onReaction = { features.setReaction(animeId, it) },
+                    onReminder = { features.toggleReminder(animeId) },
+                    onStatus = { showStatusPicker = true },
+                    onGuide = onMoreLikeThis
+                )
+            },
             onBack = onBack,
             onOpenEpisode = onOpenEpisode,
             onPlayEpisode = onPlayEpisode
-        )
-
-        DetailsActionsBar(
-            reaction = reactions[animeId],
-            reminderSet = animeId in reminders,
-            trackingLabel = trackingStatuses[animeId]?.label ?: "None",
-            noSpoilerMode = settings.noSpoilerMode,
-            extras = extras,
-            firstFocus = firstActionFocus,
-            onReaction = { features.setReaction(animeId, it) },
-            onReminder = { features.toggleReminder(animeId) },
-            onStatus = { showStatusPicker = true },
-            onGuide = onMoreLikeThis
         )
 
         if (showStatusPicker) {
