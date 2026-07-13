@@ -565,6 +565,7 @@ private fun HotfixVideoPlayer(
             .focusable()
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (ended) return@onPreviewKeyEvent false
                 if (controlsVisible) controlsActivity += 1
                 val prompt = activeSkip
                 if (skipPromptFocused && prompt != null) {
@@ -1433,7 +1434,7 @@ private fun List<SkipInterval>.hotfixActiveAt(positionMs: Long): SkipInterval? =
     positionMs >= (interval.startMs - 350L).coerceAtLeast(0L) && positionMs < interval.endMs
 }
 
-private const val HOTFIX_AUTOPLAY_SECONDS = 5
+private const val HOTFIX_AUTOPLAY_SECONDS = 10
 
 private fun hotfixQualityHeight(source: PlaybackSource): Int? =
     Regex("""(?i)(2160|1440|1080|720|480|360)p""")

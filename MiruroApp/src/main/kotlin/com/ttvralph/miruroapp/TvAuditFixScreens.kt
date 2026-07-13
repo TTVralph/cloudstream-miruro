@@ -623,7 +623,7 @@ fun AuditSettingsScreen(
         item {
             AuditSettingChoiceRow(
                 "Autoplay next episode",
-                "When an episode ends, a five-second countdown starts before the next playable episode.",
+                "When an episode ends, a ten-second countdown starts before the next playable episode.",
                 listOf("true" to "On", "false" to "Off"),
                 settings.autoPlayNext.toString()
             ) { viewModel.updateAutoPlayNext(it == "true") }

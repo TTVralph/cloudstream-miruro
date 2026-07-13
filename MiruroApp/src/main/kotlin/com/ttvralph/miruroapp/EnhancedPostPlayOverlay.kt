@@ -222,4 +222,4 @@ fun EnhancedPostPlayOverlay(
     }
 }
 
-private const val POST_PLAY_COUNTDOWN_SECONDS = 5
+private const val POST_PLAY_COUNTDOWN_SECONDS = 10
