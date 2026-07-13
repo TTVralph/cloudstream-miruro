@@ -40,10 +40,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.ttvralph.miruroapp.data.LocalProfile
 import com.ttvralph.miruroapp.data.PROFILE_AVATAR_IDS
 import com.ttvralph.miruroapp.data.PROFILE_THEME_COLOR_IDS
@@ -208,26 +210,38 @@ internal fun ProfileEditorOverlay(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().background(Color.Black).padding(horizontal = 72.dp, vertical = 18.dp),
+        modifier = Modifier.fillMaxSize().background(Color.Black).padding(horizontal = 72.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            if (profile == null) "Create profile" else "Edit profile",
-            color = Color.White,
-            fontSize = 30.sp,
-            fontWeight = FontWeight.Black
-        )
-        Spacer(Modifier.height(16.dp))
         Row(
-            modifier = Modifier.width(990.dp).height(390.dp),
+            modifier = Modifier.width(990.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                if (profile == null) "Create profile" else "Edit profile",
+                color = Color.White,
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.weight(1f)
+            )
+            ProfilePrimaryButton(
+                if (profile == null) "Create profile" else "Save profile",
+                Modifier.width(190.dp)
+            ) { onSave(name.trim().ifBlank { suggestedName }, avatarId, themeColorId) }
+            SecondaryButton("Cancel", Modifier.width(130.dp), onCancel)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.width(990.dp).height(330.dp),
             horizontalArrangement = Arrangement.spacedBy(44.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(240.dp)) {
                 Box(
                     Modifier
-                        .size(218.dp)
+                        .size(200.dp)
                         .clip(CircleShape)
                         .background(profileThemeColor(themeColorId))
                         .padding(6.dp)
@@ -261,7 +275,7 @@ internal fun ProfileEditorOverlay(
                         Text("Edit", color = if (focused) Color.Black else MiruroColors.AccentSoft, fontSize = 13.sp, fontWeight = FontWeight.Black)
                     }
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
                 Text("Avatar", color = MiruroColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
                 LazyRow(
@@ -272,7 +286,7 @@ internal fun ProfileEditorOverlay(
                     itemsIndexed(PROFILE_AVATAR_IDS, key = { _, id -> id }) { _, id ->
                         FocusableSurface(
                             onClick = { avatarId = id },
-                            modifier = Modifier.size(76.dp),
+                            modifier = Modifier.size(70.dp),
                             shape = RoundedCornerShape(999.dp),
                             unfocusedBackground = if (id == avatarId) profileThemeColor(themeColorId).copy(alpha = 0.45f) else Color.Transparent,
                             focusedBackground = Color.White,
@@ -288,7 +302,7 @@ internal fun ProfileEditorOverlay(
                         }
                     }
                 }
-                Spacer(Modifier.height(15.dp))
+                Spacer(Modifier.height(10.dp))
                 Text("Theme color", color = MiruroColors.Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -296,7 +310,7 @@ internal fun ProfileEditorOverlay(
                         val color = profileThemeColor(id)
                         FocusableSurface(
                             onClick = { themeColorId = id },
-                            modifier = Modifier.size(48.dp),
+                            modifier = Modifier.size(44.dp),
                             shape = RoundedCornerShape(999.dp),
                             unfocusedBackground = Color.Transparent,
                             focusedBackground = Color.White,
@@ -313,14 +327,6 @@ internal fun ProfileEditorOverlay(
                             }
                         }
                     }
-                }
-                Spacer(Modifier.height(22.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    ProfilePrimaryButton(
-                        if (profile == null) "Create profile" else "Save profile",
-                        Modifier.width(230.dp)
-                    ) { onSave(name.trim().ifBlank { suggestedName }, avatarId, themeColorId) }
-                    SecondaryButton("Cancel", Modifier.width(140.dp), onCancel)
                 }
             }
         }
@@ -343,50 +349,63 @@ private fun ProfileNameKeyboardOverlay(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().background(Color.Black).padding(horizontal = 70.dp, vertical = 20.dp),
+        modifier = Modifier.fillMaxSize().background(Color.Black).padding(horizontal = 54.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Edit profile name", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black)
-        Spacer(Modifier.height(12.dp))
-        Box(
-            Modifier
-                .width(760.dp)
-                .height(58.dp)
-                .background(Color.White.copy(alpha = 0.09f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 18.dp),
-            contentAlignment = Alignment.CenterStart
+        Text("Edit profile name", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black)
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.width(1030.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                draft.ifBlank { "Enter a profile name" },
-                color = if (draft.isBlank()) MiruroColors.Subtle else Color.White,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        Spacer(Modifier.height(18.dp))
-        listOf("1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM").forEachIndexed { rowIndex, row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEachIndexed { characterIndex, character ->
-                    ProfileKeyboardKey(
-                        text = character.toString(),
-                        width = 68.dp,
-                        modifier = if (rowIndex == 1 && characterIndex == 0) Modifier.focusRequester(firstKey) else Modifier
-                    ) {
-                        if (draft.length < 24) draft += character
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .background(Color.White.copy(alpha = 0.09f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 18.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(
+                        draft.ifBlank { "Enter a profile name" },
+                        color = if (draft.isBlank()) MiruroColors.Subtle else Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                listOf("1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM").forEachIndexed { rowIndex, row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.forEachIndexed { characterIndex, character ->
+                            ProfileKeyboardKey(
+                                text = character.toString(),
+                                width = 60.dp,
+                                modifier = if (rowIndex == 1 && characterIndex == 0) Modifier.focusRequester(firstKey) else Modifier
+                            ) {
+                                if (draft.length < 24) draft += character
+                            }
+                        }
                     }
+                    if (rowIndex < 3) Spacer(Modifier.height(6.dp))
                 }
             }
-            Spacer(Modifier.height(8.dp))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            ProfileKeyboardKey("⌫", 100.dp) { if (draft.isNotEmpty()) draft = draft.dropLast(1) }
-            ProfileKeyboardKey("Space", 230.dp) {
-                if (draft.isNotBlank() && !draft.endsWith(' ') && draft.length < 24) draft += " "
+            Column(
+                modifier = Modifier.width(180.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ProfileKeyboardKey("Delete", 180.dp) {
+                    if (draft.isNotEmpty()) draft = draft.dropLast(1)
+                }
+                ProfileKeyboardKey("Space", 180.dp) {
+                    if (draft.isNotBlank() && !draft.endsWith(' ') && draft.length < 24) draft += " "
+                }
+                ProfileKeyboardKey("Clear", 180.dp) { draft = "" }
+                SecondaryButton("Cancel", Modifier.width(180.dp), onCancel)
+                ProfilePrimaryButton("Done", Modifier.width(180.dp)) { onDone(draft.trim()) }
             }
-            ProfileKeyboardKey("Clear", 120.dp) { draft = "" }
-            SecondaryButton("Cancel", Modifier.width(130.dp), onCancel)
-            ProfilePrimaryButton("Done", Modifier.width(150.dp)) { onDone(draft.trim()) }
         }
     }
 }
@@ -420,7 +439,7 @@ private fun ProfileKeyboardKey(
 ) {
     FocusableSurface(
         onClick = onClick,
-        modifier = modifier.width(width).height(46.dp),
+        modifier = modifier.width(width).height(42.dp),
         shape = RoundedCornerShape(6.dp),
         unfocusedBackground = Color.White.copy(alpha = 0.07f),
         focusedBackground = Color.White
@@ -452,6 +471,13 @@ internal fun ProfileAvatarArtwork(
             drawCircle(Color.White.copy(alpha = if (focused) 0.13f else 0.08f), radius = size.minDimension * 0.44f, center = Offset(size.width * 0.72f, size.height * 0.20f))
             drawAnimeAvatar(avatarId, palette)
         }
+        AsyncImage(
+            model = profileAvatarImageUrl(avatarId),
+            contentDescription = profileAvatarLabel(avatarId),
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.TopCenter
+        )
     }
 }
 
@@ -670,4 +696,13 @@ private fun profileAvatarLabel(id: String): String = when (id) {
     "forest" -> "Gojo"
     "gold" -> "Rengoku"
     else -> "Luffy"
+}
+
+private fun profileAvatarImageUrl(id: String): String = when (id) {
+    "ocean" -> "https://s4.anilist.co/file/anilistcdn/character/large/b89028-8w1I9o1ISHMg.png"
+    "violet" -> "https://s4.anilist.co/file/anilistcdn/character/large/b14-9Kb1E5oel1ke.png"
+    "sunset" -> "https://s4.anilist.co/file/anilistcdn/character/large/b138100-4Li0tWRCa5bQ.png"
+    "forest" -> "https://s4.anilist.co/file/anilistcdn/character/large/b127691-9zqh1xpIubn7.png"
+    "gold" -> "https://s4.anilist.co/file/anilistcdn/character/large/b129133-VlTPowwt68rJ.png"
+    else -> "https://s4.anilist.co/file/anilistcdn/character/large/b40-MNypXsxSRb1R.png"
 }
