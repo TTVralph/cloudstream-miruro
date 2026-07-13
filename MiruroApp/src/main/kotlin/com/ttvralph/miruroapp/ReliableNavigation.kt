@@ -67,6 +67,7 @@ internal object ReliableHomeFocusBridge {
 fun ReliableTopBar(
     current: String,
     profileName: String,
+    profileAvatarId: String,
     onHome: () -> Unit,
     onAnime: () -> Unit,
     onMovies: () -> Unit,
@@ -103,13 +104,14 @@ fun ReliableTopBar(
         Spacer(Modifier.width(10.dp))
         ReliableNavIcon(Icons.Filled.Settings, "Settings", current == "Settings", onSettings, onMoveDown)
         Spacer(Modifier.width(10.dp))
-        ReliableProfileButton(profileName, current == "Profiles", onProfiles, onMoveDown)
+        ReliableProfileButton(profileName, profileAvatarId, current == "Profiles", onProfiles, onMoveDown)
     }
 }
 
 @Composable
 private fun ReliableProfileButton(
     profileName: String,
+    profileAvatarId: String,
     selected: Boolean,
     onClick: () -> Unit,
     onDown: (() -> Boolean)? = null
@@ -133,14 +135,12 @@ private fun ReliableProfileButton(
         unfocusedBackground = if (selected) MiruroColors.Accent else MiruroColors.Accent.copy(alpha = 0.34f),
         focusedBackground = Color.White
     ) { focused ->
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                profileName.take(1).uppercase().ifBlank { "?" },
-                color = if (focused) Color.Black else Color.White,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Black
-            )
-        }
+        ProfileAvatarArtwork(
+            name = profileName,
+            avatarId = profileAvatarId,
+            modifier = Modifier.fillMaxSize().padding(if (focused) 4.dp else 2.dp),
+            focused = focused
+        )
     }
 }
 
