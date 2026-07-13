@@ -25,7 +25,9 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
       - name: Apply staged loader integration
-        run: python3 scripts/apply_fast_loader.py
+        run: |
+          python3 scripts/apply_fast_loader.py
+          python3 scripts/fix_generated_escapes.py
       - name: Compile and assemble debug APK
         id: build
         continue-on-error: true
