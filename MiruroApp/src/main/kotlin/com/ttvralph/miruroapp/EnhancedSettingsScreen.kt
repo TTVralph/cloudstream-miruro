@@ -85,6 +85,15 @@ fun EnhancedSettingsScreen(
 
             item {
                 PlayerSettingChoices(
+                    title = "Subtitle contrast",
+                    description = "Default uses a shadow; High Contrast adds a solid outline and black backdrop.",
+                    options = listOf("Default", "High Contrast"),
+                    selected = if (settings.subtitleStyle == "High Contrast") "High Contrast" else "Default"
+                ) { value -> scope.launch { store.updateSubtitleStyle(value) } }
+            }
+
+            item {
+                PlayerSettingChoices(
                     title = "Subtitle size",
                     description = "Changes caption text size during playback.",
                     options = listOf("Small", "Medium", "Large", "Extra Large"),
@@ -94,8 +103,8 @@ fun EnhancedSettingsScreen(
 
             item {
                 PlayerSettingChoices(
-                    title = "Subtitle background",
-                    description = "Controls the black background behind caption text.",
+                    title = "Subtitle background opacity",
+                    description = "Controls how dark the black backdrop behind captions appears.",
                     options = listOf("Off", "Low", "Medium", "High"),
                     selected = settings.subtitleBackground
                 ) { value -> scope.launch { store.updateSubtitleBackground(value) } }
