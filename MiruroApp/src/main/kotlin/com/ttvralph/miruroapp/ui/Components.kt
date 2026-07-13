@@ -57,6 +57,8 @@ fun FocusableSurface(
     shape: RoundedCornerShape = RoundedCornerShape(10.dp),
     unfocusedBackground: Color = MiruroColors.Card,
     focusedBackground: Color = MiruroColors.Focused,
+    focusedBorderColor: Color = MiruroColors.Accent,
+    unfocusedBorderColor: Color = MiruroColors.Border,
     content: @Composable (focused: Boolean) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -67,7 +69,7 @@ fun FocusableSurface(
             .scale(scale)
             .clip(shape)
             .background(if (focused) focusedBackground else unfocusedBackground, shape)
-            .border(if (focused) 3.dp else 1.dp, if (focused) MiruroColors.Accent else MiruroColors.Border, shape)
+            .border(if (focused) 3.dp else 1.dp, if (focused) focusedBorderColor else unfocusedBorderColor, shape)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
     ) {
         content(focused)
