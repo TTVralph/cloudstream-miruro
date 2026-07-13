@@ -42,7 +42,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -349,15 +348,15 @@ private fun ProfileNameKeyboardOverlay(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().background(Color.Black).padding(horizontal = 54.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxSize().background(Color.Black).padding(horizontal = 20.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Edit profile name", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black)
-        Spacer(Modifier.height(10.dp))
+        Text("Edit profile name", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
+        Spacer(Modifier.height(8.dp))
         Row(
-            modifier = Modifier.width(1030.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -378,12 +377,23 @@ private fun ProfileNameKeyboardOverlay(
                 }
                 Spacer(Modifier.height(10.dp))
                 listOf("1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM").forEachIndexed { rowIndex, row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
                         row.forEachIndexed { characterIndex, character ->
+                            val keyModifier = Modifier
+                                .weight(1f)
+                                .then(
+                                    if (rowIndex == 1 && characterIndex == 0) {
+                                        Modifier.focusRequester(firstKey)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
                             ProfileKeyboardKey(
                                 text = character.toString(),
-                                width = 60.dp,
-                                modifier = if (rowIndex == 1 && characterIndex == 0) Modifier.focusRequester(firstKey) else Modifier
+                                modifier = keyModifier
                             ) {
                                 if (draft.length < 24) draft += character
                             }
@@ -393,18 +403,18 @@ private fun ProfileNameKeyboardOverlay(
                 }
             }
             Column(
-                modifier = Modifier.width(180.dp),
+                modifier = Modifier.width(150.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ProfileKeyboardKey("Delete", 180.dp) {
+                ProfileKeyboardKey("Delete", Modifier.fillMaxWidth()) {
                     if (draft.isNotEmpty()) draft = draft.dropLast(1)
                 }
-                ProfileKeyboardKey("Space", 180.dp) {
+                ProfileKeyboardKey("Space", Modifier.fillMaxWidth()) {
                     if (draft.isNotBlank() && !draft.endsWith(' ') && draft.length < 24) draft += " "
                 }
-                ProfileKeyboardKey("Clear", 180.dp) { draft = "" }
-                SecondaryButton("Cancel", Modifier.width(180.dp), onCancel)
-                ProfilePrimaryButton("Done", Modifier.width(180.dp)) { onDone(draft.trim()) }
+                ProfileKeyboardKey("Clear", Modifier.fillMaxWidth()) { draft = "" }
+                SecondaryButton("Cancel", Modifier.fillMaxWidth(), onCancel)
+                ProfilePrimaryButton("Done", Modifier.fillMaxWidth()) { onDone(draft.trim()) }
             }
         }
     }
@@ -433,13 +443,12 @@ private fun ProfilePrimaryButton(text: String, modifier: Modifier = Modifier, on
 @Composable
 private fun ProfileKeyboardKey(
     text: String,
-    width: Dp,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     FocusableSurface(
         onClick = onClick,
-        modifier = modifier.width(width).height(42.dp),
+        modifier = modifier.height(42.dp),
         shape = RoundedCornerShape(6.dp),
         unfocusedBackground = Color.White.copy(alpha = 0.07f),
         focusedBackground = Color.White
@@ -466,17 +475,23 @@ internal fun ProfileAvatarArtwork(
     focused: Boolean = false
 ) {
     val palette = profileAvatarPalette(avatarId)
+    val imageUrl = profileAvatarImageUrl(avatarId)
+    var imageLoaded by remember(imageUrl) { mutableStateOf(false) }
     Box(modifier = modifier.clip(CircleShape).background(Brush.linearGradient(palette.background))) {
-        Canvas(Modifier.fillMaxSize()) {
-            drawCircle(Color.White.copy(alpha = if (focused) 0.13f else 0.08f), radius = size.minDimension * 0.44f, center = Offset(size.width * 0.72f, size.height * 0.20f))
-            drawAnimeAvatar(avatarId, palette)
+        if (!imageLoaded) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(Color.White.copy(alpha = if (focused) 0.13f else 0.08f), radius = size.minDimension * 0.44f, center = Offset(size.width * 0.72f, size.height * 0.20f))
+                drawAnimeAvatar(avatarId, palette)
+            }
         }
         AsyncImage(
-            model = profileAvatarImageUrl(avatarId),
+            model = imageUrl,
             contentDescription = profileAvatarLabel(avatarId),
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            alignment = Alignment.TopCenter
+            contentScale = ContentScale.Fit,
+            alignment = Alignment.Center,
+            onSuccess = { imageLoaded = true },
+            onError = { imageLoaded = false }
         )
     }
 }
