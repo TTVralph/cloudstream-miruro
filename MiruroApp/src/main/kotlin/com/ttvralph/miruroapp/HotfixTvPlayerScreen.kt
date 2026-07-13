@@ -72,6 +72,7 @@ import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.PlaybackSource
 import com.ttvralph.miruroapp.data.PlaybackType
 import com.ttvralph.miruroapp.data.SettingsStore
+import com.ttvralph.miruroapp.data.SkipInterval
 import com.ttvralph.miruroapp.data.SubtitleTrack
 import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.LoadingState
@@ -139,6 +140,7 @@ private data class HotfixDiagnostics(
 @Composable
 fun HotfixTvPlayerScreen(
     viewModel: MiruroViewModel,
+    features: NetflixFeatureViewModel,
     episode: AnimeEpisode?,
     nextEpisode: AnimeEpisode?,
     onBack: () -> Unit,
@@ -173,6 +175,7 @@ fun HotfixTvPlayerScreen(
             episode = episode,
             nextEpisode = nextEpisode,
             viewModel = viewModel,
+            features = features,
             onBack = onBack,
             onPlayNext = onPlayNext
         )
@@ -185,6 +188,7 @@ private fun HotfixVideoPlayer(
     episode: AnimeEpisode,
     nextEpisode: AnimeEpisode?,
     viewModel: MiruroViewModel,
+    features: NetflixFeatureViewModel,
     onBack: () -> Unit,
     onPlayNext: (AnimeEpisode) -> Unit
 ) {
@@ -204,7 +208,16 @@ private fun HotfixVideoPlayer(
         (listOf(initialSource.copy(fallbackSources = emptyList())) + initialSource.fallbackSources)
             .distinctBy { it.url to it.type }
     }
-    var sourceIndex by remember(initialSource) { mutableIntStateOf(0) }
+    val resumeSourceIndex = remember(sources, savedProgress?.sourceProvider, savedProgress?.sourceLabel) {
+        sources.indexOfFirst { source ->
+            savedProgress?.sourceLabel?.let { source.label.equals(it, ignoreCase = true) } == true
+        }.takeIf { it >= 0 } ?: sources.indexOfFirst { source ->
+            savedProgress?.sourceProvider?.let {
+                hotfixProviderName(source).equals(it, ignoreCase = true)
+            } == true
+        }.coerceAtLeast(0)
+    }
+    var sourceIndex by remember(initialSource, resumeSourceIndex) { mutableIntStateOf(resumeSourceIndex) }
     val activeSource = sources[sourceIndex.coerceIn(0, sources.lastIndex)]
     var quality by remember(initialSource) { mutableStateOf(HotfixQuality.fromSetting(settings.preferredQuality)) }
     var subtitleChoice by remember(activeSource) {
@@ -227,6 +240,15 @@ private fun HotfixVideoPlayer(
     var retryNonce by remember(initialSource) { mutableIntStateOf(0) }
     var fallbackEvents by remember(initialSource) { mutableStateOf(emptyList<String>()) }
     var diagnostics by remember(initialSource) { mutableStateOf(HotfixDiagnostics()) }
+    val skipIntervals by features.skipIntervals.collectAsState()
+    var skipPositionMs by remember(episode) { mutableLongStateOf(0L) }
+    var skipDurationMs by remember(episode) { mutableLongStateOf(0L) }
+    var skippedInterval by remember(episode) { mutableStateOf<SkipInterval?>(null) }
+    val activeSkip = remember(skipIntervals, episode, skipPositionMs, skipDurationMs, skippedInterval) {
+        features.intervalsFor(episode, skipDurationMs)
+            .hotfixActiveAt(skipPositionMs)
+            ?.takeUnless { it == skippedInterval }
+    }
 
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
@@ -326,7 +348,15 @@ private fun HotfixVideoPlayer(
     DisposableEffect(player) {
         onDispose {
             val duration = player.duration.takeIf { it > 0L } ?: 0L
-            if (duration > 0L) viewModel.saveProgress(episode, player.currentPosition, duration)
+            if (duration > 0L) {
+                viewModel.saveProgress(
+                    episode,
+                    player.currentPosition,
+                    duration,
+                    hotfixProviderName(activeSource),
+                    activeSource.label
+                )
+            }
             player.release()
         }
     }
@@ -336,11 +366,20 @@ private fun HotfixVideoPlayer(
         while (true) {
             val duration = player.duration.takeIf { it > 0L } ?: 0L
             val position = player.currentPosition.coerceAtLeast(0L)
+            skipPositionMs = position
+            skipDurationMs = duration
+            if (duration > 0L) features.loadSkipTimes(episode, duration)
             if (
                 duration > 0L && position > 0L && !ended &&
                 abs(position - lastSavedPosition) >= HOTFIX_PROGRESS_SAVE_INTERVAL_MS
             ) {
-                viewModel.saveProgress(episode, position, duration)
+                viewModel.saveProgress(
+                    episode,
+                    position,
+                    duration,
+                    hotfixProviderName(activeSource),
+                    activeSource.label
+                )
                 lastSavedPosition = position
             }
             val format = player.videoFormat
@@ -389,6 +428,9 @@ private fun HotfixVideoPlayer(
             delay(2_500L)
             message = null
         }
+    }
+    LaunchedEffect(activeSkip) {
+        if (activeSkip != null) controlsVisible = true
     }
     LaunchedEffect(autoplayCountdown) {
         if (autoplayCountdown > 0 && nextEpisode != null) {
@@ -553,6 +595,7 @@ private fun HotfixVideoPlayer(
                 diagnostics = diagnostics,
                 quality = quality,
                 speed = speed,
+                skipInterval = activeSkip,
                 nextEpisode = nextEpisode,
                 playFocus = playFocus,
                 largeControls = settings.largePlayerControls,
@@ -561,6 +604,13 @@ private fun HotfixVideoPlayer(
                 onSeekBack = { player.seekTo((player.currentPosition - HOTFIX_SEEK_MS).coerceAtLeast(0L)) },
                 onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
                 onSeekForward = { player.seekTo(player.currentPosition + HOTFIX_SEEK_MS) },
+                onSkip = {
+                    activeSkip?.let { interval ->
+                        skippedInterval = interval
+                        player.seekTo((interval.endMs + 250L).coerceAtMost(skipDurationMs))
+                        player.play()
+                    }
+                },
                 onSeekFraction = { fraction ->
                     val duration = player.duration.takeIf { it > 0L } ?: 0L
                     if (duration > 0L) player.seekTo((duration * fraction.coerceIn(0f, 1f)).toLong())
@@ -605,7 +655,7 @@ private fun HotfixVideoPlayer(
                 focusRequester = menuFocus,
                 largeControls = settings.largePlayerControls,
                 highContrast = settings.highContrastPlayerControls,
-                onOpenSources = { panel = HotfixPanel.SOURCES },
+                onClose = { panel = HotfixPanel.NONE },
                 onTrackSelected = ::selectSubtitle,
                 onSizeSelected = { value ->
                     subtitleSize = value
@@ -706,6 +756,7 @@ private fun HotfixControls(
     diagnostics: HotfixDiagnostics,
     quality: HotfixQuality,
     speed: Float,
+    skipInterval: SkipInterval?,
     nextEpisode: AnimeEpisode?,
     playFocus: FocusRequester,
     largeControls: Boolean,
@@ -714,6 +765,7 @@ private fun HotfixControls(
     onSeekBack: () -> Unit,
     onPlayPause: () -> Unit,
     onSeekForward: () -> Unit,
+    onSkip: () -> Unit,
     onSeekFraction: (Float) -> Unit,
     onQuality: () -> Unit,
     onSource: () -> Unit,
@@ -788,6 +840,9 @@ private fun HotfixControls(
                 Modifier.focusRequester(playFocus),
                 primary = true
             )
+            if (skipInterval != null) {
+                HotfixButton(skipInterval.kind.label, 190, largeControls, highContrast, onSkip, primary = true)
+            }
             HotfixButton("+10s", 120, largeControls, highContrast, onSeekForward)
         }
 
@@ -973,7 +1028,7 @@ private fun HotfixSubtitlePanel(
     focusRequester: FocusRequester,
     largeControls: Boolean,
     highContrast: Boolean,
-    onOpenSources: () -> Unit,
+    onClose: () -> Unit,
     onTrackSelected: (HotfixSubtitleChoice) -> Unit,
     onSizeSelected: (String) -> Unit,
     onBackgroundSelected: (String) -> Unit
@@ -982,9 +1037,9 @@ private fun HotfixSubtitlePanel(
         item {
             Text(
                 if (source.subtitleTracks.isEmpty()) {
-                    "This source has no switchable subtitle track. Any subtitles visible in the video are baked in and cannot be hidden, resized, or restyled."
+                    "No provider returned a switchable subtitle track for this episode. Any text visible in the video is baked in and cannot be hidden, resized, or restyled."
                 } else {
-                    "These controls affect switchable subtitle tracks only. Text baked into the video cannot be changed."
+                    "Switchable tracks returned across this episode's providers are listed here. Text baked into the video cannot be changed."
                 },
                 color = Color.White.copy(alpha = 0.70f),
                 fontSize = 12.sp,
@@ -995,13 +1050,13 @@ private fun HotfixSubtitlePanel(
         if (source.subtitleTracks.isEmpty()) {
             item {
                 HotfixPanelRow(
-                    text = "Choose another source",
-                    supporting = "Try a different provider for switchable captions",
+                    text = "Back to player",
+                    supporting = "Keep the current video source",
                     selected = false,
                     modifier = Modifier.focusRequester(focusRequester),
                     large = largeControls,
                     highContrast = highContrast,
-                    onClick = onOpenSources
+                    onClick = onClose
                 )
             }
         } else {
@@ -1247,6 +1302,10 @@ private fun hotfixSourceForQuality(
 
 private fun hotfixProviderName(source: PlaybackSource): String =
     source.label.substringBefore(' ').takeIf { it.isNotBlank() } ?: "Unknown"
+
+private fun List<SkipInterval>.hotfixActiveAt(positionMs: Long): SkipInterval? = firstOrNull { interval ->
+    positionMs >= (interval.startMs - 350L).coerceAtLeast(0L) && positionMs < interval.endMs
+}
 
 private fun hotfixQualityHeight(source: PlaybackSource): Int? =
     Regex("""(?i)(2160|1440|1080|720|480|360)p""")
