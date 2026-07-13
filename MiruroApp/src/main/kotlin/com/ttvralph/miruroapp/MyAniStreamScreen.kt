@@ -36,6 +36,7 @@ import com.ttvralph.miruroapp.data.TrackingStatus
 import com.ttvralph.miruroapp.data.UpcomingEpisode
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.ui.LandscapeCard
+import com.ttvralph.miruroapp.ui.MinimalActionButton
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PosterCard
 import com.ttvralph.miruroapp.ui.PrimaryButton
@@ -75,12 +76,13 @@ fun MyAniStreamScreen(
             )
             MyAniStreamTab.entries.forEach { option ->
                 val selected = option == tab
-                val width = if (option == MyAniStreamTab.LIBRARY) 190.dp else 150.dp
-                if (selected) {
-                    PrimaryButton(option.label, Modifier.width(width)) { tab = option }
-                } else {
-                    SecondaryButton(option.label, Modifier.width(width)) { tab = option }
-                }
+                val width = if (option == MyAniStreamTab.LIBRARY) 170.dp else 132.dp
+                MinimalActionButton(
+                    text = option.label,
+                    modifier = Modifier.width(width),
+                    selected = selected,
+                    onClick = { tab = option }
+                )
             }
         }
 
@@ -162,7 +164,7 @@ private fun MyAniStreamOverview(
                                 fontWeight = FontWeight.Bold
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SecondaryButton("Resume", Modifier.width(145.dp)) { onPlayProgress(saved) }
+                                PrimaryButton("Resume", Modifier.width(145.dp)) { onPlayProgress(saved) }
                                 SecondaryButton("Restart", Modifier.width(145.dp)) {
                                     features.removeProgress(saved)
                                     onPlayProgress(saved.copy(positionMs = 0L, updatedAtMs = System.currentTimeMillis()))
