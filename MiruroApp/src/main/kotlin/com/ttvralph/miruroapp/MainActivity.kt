@@ -349,13 +349,15 @@ private fun ResolvedPlayerRoute(
 ) {
     val detailsState by viewModel.details.collectAsState()
     val metadataVersion by viewModel.itemMetadataVersion.collectAsState()
+    val seasonLoading by viewModel.seasonLoading.collectAsState()
+    val seasonErrors by viewModel.seasonErrors.collectAsState()
     var requestSettled by remember(animeId, season, episodeNumber, audio) { mutableStateOf(false) }
 
     LaunchedEffect(animeId, season, episodeNumber, audio) {
         requestSettled = false
         if (findEpisode(viewModel, animeId, season, episodeNumber, audio) == null) {
-            viewModel.loadDetails(animeId)
-            delay(80L)
+            viewModel.ensureSeasonLoaded(animeId, season)
+            delay(120L)
         }
         requestSettled = true
     }
@@ -366,6 +368,14 @@ private fun ResolvedPlayerRoute(
     val detailsAvailable = remember(animeId, detailsState, metadataVersion) {
         viewModel.cachedDetails(animeId) != null
     }
+    val targetSeasonId = remember(animeId, season, detailsState, metadataVersion) {
+        viewModel.cachedDetails(animeId)
+            ?.seasons
+            ?.firstOrNull { it.seasonNumber == season }
+            ?.id
+    }
+    val targetSeasonLoading = targetSeasonId?.let { it in seasonLoading } == true
+    val targetSeasonError = targetSeasonId?.let { seasonErrors[it] }
 
     if (episode == null) BackHandler(onBack = onBack)
 
@@ -389,13 +399,17 @@ private fun ResolvedPlayerRoute(
                 onPlayNext = onPlayNext
             )
         }
+        !requestSettled || detailsState is UiState.Loading || targetSeasonLoading ->
+            LoadingState("Loading saved episode…")
+        targetSeasonError != null -> ErrorState(targetSeasonError) {
+            viewModel.ensureSeasonLoaded(animeId, season)
+        }
+        detailsState is UiState.Error -> ErrorState("Could not load this saved episode.") {
+            viewModel.ensureSeasonLoaded(animeId, season)
+        }
         detailsAvailable -> StateMessage(
             "This saved episode is no longer available. Press Back to choose another episode."
         )
-        !requestSettled || detailsState is UiState.Loading -> LoadingState("Loading saved episode…")
-        detailsState is UiState.Error -> ErrorState("Could not load this saved episode.") {
-            viewModel.loadDetails(animeId)
-        }
         else -> LoadingState("Loading saved episode…")
     }
 }

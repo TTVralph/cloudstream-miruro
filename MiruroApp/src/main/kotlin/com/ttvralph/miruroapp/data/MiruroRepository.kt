@@ -99,11 +99,25 @@ class MiruroRepository {
                             "img",
                             "poster"
                         )
-                        if (title != null || thumbnail != null) {
+                        val synopsis = listOf("description", "synopsis", "overview", "summary", "desc")
+                            .firstNotNullOfOrNull { key ->
+                                episode.get(key)?.asText(null)
+                                    ?: episode.path("metadata").get(key)?.asText(null)
+                                    ?: episode.path("meta").get(key)?.asText(null)
+                            }
+                            ?.replace(Regex("""(?i)<br\s*/?>"""), "\n")
+                            ?.replace(Regex("<[^>]*>"), "")
+                            ?.replace("&amp;", "&")
+                            ?.replace("&quot;", 34.toChar().toString())
+                            ?.replace("&#39;", "'")
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+                        if (title != null || thumbnail != null || synopsis != null) {
                             val current = metadataByEpisode[number]
                             metadataByEpisode[number] = EpisodeMetadata(
                                 title = current?.title ?: title,
-                                thumbnailUrl = current?.thumbnailUrl ?: thumbnail
+                                thumbnailUrl = current?.thumbnailUrl ?: thumbnail,
+                                synopsis = current?.synopsis ?: synopsis
                             )
                         }
                     }

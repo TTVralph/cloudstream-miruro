@@ -3,10 +3,35 @@ package com.ttvralph.miruroapp.data
 data class AnimeItem(val id: Int, val title: String, val posterUrl: String?, val bannerUrl: String?, val type: AnimeType, val year: Int? = null, val score: Int? = null)
 enum class AnimeType { TV, MOVIE, OVA, SPECIAL, UNKNOWN }
 data class AnimeDetails(val id: Int, val title: String, val posterUrl: String?, val bannerUrl: String?, val description: String?, val status: String?, val year: Int?, val rating: String?, val genres: List<String>, val seasons: List<AnimeSeason>)
-data class AnimeSeason(val id: Int, val seasonNumber: Int, val title: String, val year: Int?, val episodes: List<AnimeEpisode>)
-data class AnimeEpisode(val seasonNumber: Int, val episodeNumber: Int, val title: String?, val thumbnailUrl: String?, val runtimeMinutes: Int?, val releaseDate: String?, val audioType: AudioType, val anilistId: Int, val sourceCandidates: List<EpisodeSourceCandidate> = emptyList())
+data class AnimeSeason(
+    val id: Int,
+    val seasonNumber: Int,
+    val title: String,
+    val year: Int?,
+    val episodes: List<AnimeEpisode>,
+    val synopsis: String? = null,
+    val episodeCount: Int? = null,
+    val runtimeMinutes: Int? = null,
+    val episodesLoaded: Boolean = episodes.isNotEmpty()
+)
+data class AnimeEpisode(
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val title: String?,
+    val thumbnailUrl: String?,
+    val runtimeMinutes: Int?,
+    val releaseDate: String?,
+    val audioType: AudioType,
+    val anilistId: Int,
+    val sourceCandidates: List<EpisodeSourceCandidate> = emptyList(),
+    val synopsis: String? = null
+)
 data class EpisodeSourceCandidate(val provider: String, val episodeId: String, val category: String)
-data class EpisodeMetadata(val title: String? = null, val thumbnailUrl: String? = null)
+data class EpisodeMetadata(
+    val title: String? = null,
+    val thumbnailUrl: String? = null,
+    val synopsis: String? = null
+)
 
 enum class AnimeSort(val aniList: String, val label: String) {
     SEARCH_MATCH("SEARCH_MATCH", "Best match"),
