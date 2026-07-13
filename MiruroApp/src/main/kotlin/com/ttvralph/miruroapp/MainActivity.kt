@@ -49,7 +49,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val settings by viewModel.settings.collectAsState()
-            MiruroTheme(settings.themeMode) { MiruroApp(viewModel, featureViewModel, discoveryViewModel) }
+            val profileState by featureViewModel.profileState.collectAsState()
+            MiruroTheme(settings.themeMode, profileState.activeProfile.themeColorId) {
+                MiruroApp(viewModel, featureViewModel, discoveryViewModel)
+            }
         }
     }
 }
@@ -127,7 +130,9 @@ private fun MiruroApp(
                     features.switchProfile(profile)
                     profileChosenThisSession = true
                 },
-                onCreate = { name, avatarId -> features.createProfile(name, avatarId) }
+                onCreate = { name, avatarId, themeColorId ->
+                    features.createProfile(name, avatarId, themeColorId)
+                }
             )
         }
         return
