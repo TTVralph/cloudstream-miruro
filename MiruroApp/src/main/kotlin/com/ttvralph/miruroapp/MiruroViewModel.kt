@@ -8,6 +8,7 @@ import com.ttvralph.miruroapp.data.AniListRepository
 import com.ttvralph.miruroapp.data.AnimeDetails
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
+import com.ttvralph.miruroapp.data.AnimeSeason
 import com.ttvralph.miruroapp.data.AnimeSearchFilters
 import com.ttvralph.miruroapp.data.AnimeSort
 import com.ttvralph.miruroapp.data.AppSettings
@@ -59,6 +60,9 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     private var moviesJob: Job? = null
     private var seriesJob: Job? = null
     private var detailsJob: Job? = null
+    private val seasonJobs = mutableMapOf<Int, Job>()
+    private var ensureSeasonJob: Job? = null
+    private var activeDetailsId: Int? = null
     private var genreJob: Job? = null
     private var playbackJob: Job? = null
     private var metadataJob: Job? = null
@@ -79,6 +83,11 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _details = MutableStateFlow<UiState<AnimeDetails>>(UiState.Loading)
     val details: StateFlow<UiState<AnimeDetails>> = _details.asStateFlow()
+
+    private val _seasonLoading = MutableStateFlow<Set<Int>>(emptySet())
+    val seasonLoading: StateFlow<Set<Int>> = _seasonLoading.asStateFlow()
+    private val _seasonErrors = MutableStateFlow<Map<Int, String>>(emptyMap())
+    val seasonErrors: StateFlow<Map<Int, String>> = _seasonErrors.asStateFlow()
 
     private val _playback = MutableStateFlow<UiState<PlaybackSource>?>(null)
     val playback: StateFlow<UiState<PlaybackSource>?> = _playback.asStateFlow()
@@ -124,6 +133,11 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         loadHome()
+        viewModelScope.launch {
+            delay(300L)
+            loadSeries()
+            loadMovies()
+        }
     }
 
     fun loadHome() {
@@ -168,7 +182,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _searchResults.value = UiState.Loading
-            val result = runCatching { repo.search(filters.copy(query = trimmed)) }
+            val result = retryResult(attempts = 2) { repo.search(filters.copy(query = trimmed)) }
             if (!isActive) return@launch
             result
                 .onSuccess {
@@ -196,7 +210,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
                 .orEmpty()
             val page = if (nextPage) moviesPage + 1 else 1
             _movies.value = UiState.Loading
-            val result = runCatching { repo.browse("MOVIE", page) }
+            val result = retryResult { repo.browse("MOVIE", page) }
             if (!isActive) return@launch
             result
                 .onSuccess { items ->
@@ -217,7 +231,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
                 .orEmpty()
             val page = if (nextPage) seriesPage + 1 else 1
             _series.value = UiState.Loading
-            val result = runCatching { repo.browse("TV", page) }
+            val result = retryResult { repo.browse("TV", page) }
             if (!isActive) return@launch
             result
                 .onSuccess { items ->
@@ -230,34 +244,170 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun loadDetails(id: Int) {
-        detailsJob?.cancel()
+        val visible = (_details.value as? UiState.Success)?.data
+        if (visible?.id == id) return
         detailsCache[id]?.let {
+            activeDetailsId = id
             _details.value = UiState.Success(it)
             return
         }
+
+        if (activeDetailsId != id) {
+            detailsJob?.cancel()
+            ensureSeasonJob?.cancel()
+            seasonJobs.values.forEach { it.cancel() }
+            seasonJobs.clear()
+            _seasonLoading.value = emptySet()
+            _seasonErrors.value = emptyMap()
+        }
+        activeDetailsId = id
         detailsJob = viewModelScope.launch {
             _details.value = UiState.Loading
-            val result = runCatching { repo.details(id) }
-            if (!isActive) return@launch
+            val result = retryResult { repo.detailsShell(id) }
+            if (!isActive || activeDetailsId != id) return@launch
             result
-                .onSuccess {
-                    rememberDetails(it)
+                .onSuccess { loaded ->
+                    rememberDetails(loaded)
                     rememberItems(
                         listOf(
                             AnimeItem(
-                                it.id,
-                                it.title,
-                                it.posterUrl,
-                                it.bannerUrl,
+                                loaded.id,
+                                loaded.title,
+                                loaded.posterUrl,
+                                loaded.bannerUrl,
                                 com.ttvralph.miruroapp.data.AnimeType.UNKNOWN,
-                                it.year
+                                loaded.year
                             )
                         )
                     )
-                    _details.value = UiState.Success(it)
+                    _details.value = UiState.Success(loaded)
                 }
-                .onFailure { _details.value = UiState.Error("Could not load details.") }
+                .onFailure { error ->
+                    Log.w("MiruroViewModel", "Fast details shell failed for id=$id", error)
+                    _details.value = UiState.Error("Could not load details. Please retry.")
+                }
         }
+    }
+
+    fun loadSeason(seasonId: Int, force: Boolean = false) {
+        val root = (_details.value as? UiState.Success)?.data ?: return
+        val season = root.seasons.firstOrNull { it.id == seasonId } ?: return
+        if (season.episodesLoaded && !force) return
+        if (seasonJobs[seasonId]?.isActive == true) return
+
+        _seasonLoading.value = _seasonLoading.value + seasonId
+        _seasonErrors.value = _seasonErrors.value - seasonId
+        seasonJobs[seasonId] = viewModelScope.launch {
+            val result = retryResult(attempts = 2) { repo.loadSeasonEpisodes(season) }
+            if (!isActive) return@launch
+            result
+                .onSuccess { loaded ->
+                    updateSeason(root.id, loaded)
+                    _seasonLoading.value = _seasonLoading.value - seasonId
+                    viewModelScope.launch {
+                        val dates = repo.loadSeasonAirDates(seasonId)
+                        if (dates.isNotEmpty()) {
+                            val dated = loaded.copy(
+                                episodes = loaded.episodes.map { episode ->
+                                    episode.copy(releaseDate = dates[episode.episodeNumber])
+                                }
+                            )
+                            updateSeason(root.id, dated)
+                        }
+                    }
+                }
+                .onFailure { error ->
+                    Log.w("MiruroViewModel", "Season episodes failed for seasonId=$seasonId", error)
+                    _seasonLoading.value = _seasonLoading.value - seasonId
+                    _seasonErrors.value = _seasonErrors.value +
+                        (seasonId to "Could not load this season's episodes. Select Retry episodes.")
+                }
+            seasonJobs.remove(seasonId)
+        }
+    }
+
+    fun ensureSeasonLoaded(animeId: Int, seasonNumber: Int) {
+        ensureSeasonJob?.cancel()
+        ensureSeasonJob = viewModelScope.launch {
+            activeDetailsId = animeId
+            var root = detailsCache[animeId]
+            if (root == null) {
+                _details.value = UiState.Loading
+                val shellResult = retryResult { repo.detailsShell(animeId) }
+                root = shellResult.getOrElse { error ->
+                    Log.w("MiruroViewModel", "Saved episode details failed for id=$animeId", error)
+                    _details.value = UiState.Error("Could not load this saved episode.")
+                    return@launch
+                }
+                rememberDetails(root)
+            }
+
+            val target = root.seasons.firstOrNull { it.seasonNumber == seasonNumber }
+            if (target == null) {
+                _details.value = UiState.Success(root)
+                return@launch
+            }
+            if (target.episodesLoaded) {
+                _details.value = UiState.Success(root)
+                return@launch
+            }
+
+            _seasonLoading.value = _seasonLoading.value + target.id
+            _seasonErrors.value = _seasonErrors.value - target.id
+            _details.value = UiState.Success(root)
+            val loadedResult = retryResult(attempts = 2) { repo.loadSeasonEpisodes(target) }
+            loadedResult
+                .onSuccess { loaded ->
+                    updateSeason(animeId, loaded)
+                    _seasonLoading.value = _seasonLoading.value - target.id
+                    viewModelScope.launch {
+                        val dates = repo.loadSeasonAirDates(target.id)
+                        if (dates.isNotEmpty()) {
+                            updateSeason(
+                                animeId,
+                                loaded.copy(
+                                    episodes = loaded.episodes.map { episode ->
+                                        episode.copy(releaseDate = dates[episode.episodeNumber])
+                                    }
+                                )
+                            )
+                        }
+                    }
+                }
+                .onFailure { error ->
+                    Log.w("MiruroViewModel", "Saved episode season failed for seasonId=${target.id}", error)
+                    _seasonLoading.value = _seasonLoading.value - target.id
+                    _seasonErrors.value = _seasonErrors.value +
+                        (target.id to "Could not load this season's episodes.")
+                }
+        }
+    }
+
+    private fun updateSeason(rootId: Int, updated: AnimeSeason) {
+        val current = detailsCache[rootId]
+            ?: (_details.value as? UiState.Success)?.data?.takeIf { it.id == rootId }
+            ?: return
+        val merged = current.copy(
+            seasons = current.seasons.map { season ->
+                if (season.id == updated.id) updated else season
+            }
+        )
+        rememberDetails(merged)
+        if (activeDetailsId == rootId) _details.value = UiState.Success(merged)
+    }
+
+    private suspend fun <T> retryResult(
+        attempts: Int = 3,
+        block: suspend () -> T
+    ): Result<T> {
+        var lastError: Throwable? = null
+        repeat(attempts) { attempt ->
+            val result = runCatching { block() }
+            if (result.isSuccess) return result
+            lastError = result.exceptionOrNull()
+            if (attempt < attempts - 1) delay(450L * (attempt + 1))
+        }
+        return Result.failure(lastError ?: IllegalStateException("Request failed"))
     }
 
     fun cachedDetails(id: Int): AnimeDetails? = detailsCache[id]
@@ -275,7 +425,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         genreJob = viewModelScope.launch {
             val previous = (_genreResults.value as? UiState.Success)?.data.orEmpty()
             _genreResults.value = UiState.Loading
-            val result = runCatching {
+            val result = retryResult(attempts = 2) {
                 repo.browseGenre(genres, format, page, sort, status, year)
             }
             if (!isActive) return@launch
@@ -457,7 +607,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
             while (isActive && pendingMetadataIds.isNotEmpty()) {
                 val id = pendingMetadataIds.first()
                 pendingMetadataIds.remove(id)
-                runCatching { repo.details(id) }.onSuccess { details ->
+                retryResult(attempts = 2) { repo.detailsShell(id) }.onSuccess { details ->
                     rememberDetails(details)
                     rememberItems(
                         listOf(
