@@ -77,8 +77,7 @@ class SettingsStore(private val context: Context) {
             preferredAudio = string(Names.preferredAudio)
                 ?.let { runCatching { AudioType.valueOf(it) }.getOrNull() }
                 ?: AudioType.SUB,
-            // Provider availability changes per title and episode. Always resolve in Auto mode.
-            preferredProvider = "Auto",
+            preferredProvider = string(Names.preferredProvider) ?: "Auto",
             preferredQuality = string(Names.preferredQuality) ?: "Auto",
             themeMode = string(Names.themeMode)
                 ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
@@ -109,10 +108,7 @@ class SettingsStore(private val context: Context) {
 
     suspend fun updatePreferredAudio(value: AudioType) = updateString(Names.preferredAudio, value.name)
 
-    suspend fun updatePreferredProvider(value: String) {
-        // Keep the value for backwards compatibility, but Auto is the only global mode.
-        updateString(Names.preferredProvider, "Auto")
-    }
+    suspend fun updatePreferredProvider(value: String) = updateString(Names.preferredProvider, value)
 
     suspend fun updatePreferredQuality(value: String) = updateString(Names.preferredQuality, value)
     suspend fun updateThemeMode(value: ThemeMode) = updateString(Names.themeMode, value.name)
