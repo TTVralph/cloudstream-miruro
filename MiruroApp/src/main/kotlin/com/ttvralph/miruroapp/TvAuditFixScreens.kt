@@ -649,11 +649,6 @@ fun AuditSettingsScreen(
                 viewModel.updateSubtitleLanguage(it)
             }
         }
-        item {
-            AuditSettingChoiceRow("Subtitle style", "Applied inside the video player.", listOf("Default" to "Default", "Large" to "Large", "High Contrast" to "High Contrast"), settings.subtitleStyle) {
-                viewModel.updateSubtitleStyle(it)
-            }
-        }
         item { AuditSettingsHeader("History") }
         item {
             AuditInfoRow("Watch history", "Removes Continue Watching and all locally saved progress.", "Clear watch history") { confirmClear = true }
