@@ -87,10 +87,54 @@ fun PrimaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> Un
 
 @Composable
 fun SecondaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    FocusableSurface(onClick = onClick, modifier = modifier.height(58.dp), shape = RoundedCornerShape(8.dp), unfocusedBackground = Color.White.copy(alpha = 0.10f), focusedBackground = Color.White) { focused ->
-        Box(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
-            Text(text, color = if (focused) Color.Black else MiruroColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+    MinimalActionButton(text = text, modifier = modifier, onClick = onClick)
+}
+
+/**
+ * A TV-first secondary action that stays visually quiet until it receives focus.
+ * This keeps screens artwork-led while retaining an unmistakable D-pad focus target.
+ */
+@Composable
+fun MinimalActionButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val scale by animateFloatAsState(if (focused) 1.035f else 1f, label = "minimalActionFocusScale")
+    Column(
+        modifier = modifier
+            .height(48.dp)
+            .scale(scale)
+            .clip(RoundedCornerShape(5.dp))
+            .background(if (focused) Color.White else Color.Transparent)
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text,
+            color = when {
+                focused -> Color.Black
+                selected -> MiruroColors.AccentSoft
+                else -> MiruroColors.Text
+            },
+            fontSize = 14.sp,
+            fontWeight = if (focused || selected) FontWeight.Black else FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(4.dp))
+        Box(
+            Modifier
+                .width(if (focused || selected) 28.dp else 0.dp)
+                .height(3.dp)
+                .clip(RoundedCornerShape(99.dp))
+                .background(if (focused || selected) MiruroColors.Accent else Color.Transparent)
+        )
     }
 }
 
@@ -205,7 +249,13 @@ fun SectionTitle(text: String, badge: String? = null, trailing: @Composable (() 
         Text(text, color = MiruroColors.Text, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.7).sp)
         if (badge != null) {
             Spacer(Modifier.width(10.dp))
-            Badge(badge)
+            Text(
+                badge,
+                color = MiruroColors.AccentSoft,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp
+            )
         }
         Spacer(Modifier.weight(1f))
         trailing?.invoke()
@@ -242,8 +292,16 @@ fun BodyText(text: String, modifier: Modifier = Modifier, maxLines: Int = Int.MA
 
 @Composable
 fun StateMessage(message: String, color: Color = MiruroColors.Text) {
-    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).clip(RoundedCornerShape(16.dp)).background(MiruroColors.Panel, RoundedCornerShape(16.dp)).border(1.dp, MiruroColors.Border, RoundedCornerShape(16.dp)).padding(26.dp), contentAlignment = Alignment.Center) {
-        Text(message, color = color, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 28.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            message,
+            color = color.copy(alpha = 0.78f),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
