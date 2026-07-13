@@ -4,7 +4,8 @@ data class LocalProfile(
     val id: String,
     val name: String,
     val createdAtMs: Long = System.currentTimeMillis(),
-    val avatarId: String = "crimson"
+    val avatarId: String = "crimson",
+    val themeColorId: String = "red"
 )
 
 data class ProfileState(
@@ -18,6 +19,7 @@ data class ProfileState(
 const val DEFAULT_PROFILE_ID = "default"
 
 val PROFILE_AVATAR_IDS = listOf("crimson", "ocean", "violet", "sunset", "forest", "gold")
+val PROFILE_THEME_COLOR_IDS = listOf("red", "orange", "teal", "blue", "purple")
 
 enum class TitleReaction(val label: String) {
     LIKE("Like"),
