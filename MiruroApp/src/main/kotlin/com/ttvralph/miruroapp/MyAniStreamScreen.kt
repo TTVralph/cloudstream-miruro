@@ -354,11 +354,11 @@ private fun MyAniStreamProfiles(features: NetflixFeatureViewModel) {
                 creating = false
                 editing = null
             },
-            onSave = { name, avatarId ->
+            onSave = { name, avatarId, themeColorId ->
                 if (editingProfile == null) {
-                    features.createProfile(name, avatarId)
+                    features.createProfile(name, avatarId, themeColorId)
                 } else {
-                    features.updateProfile(editingProfile, name, avatarId)
+                    features.updateProfile(editingProfile, name, avatarId, themeColorId)
                 }
                 creating = false
                 editing = null
