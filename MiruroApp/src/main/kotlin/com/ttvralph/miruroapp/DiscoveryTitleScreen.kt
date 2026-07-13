@@ -43,7 +43,6 @@ import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.SecondaryButton
-import com.ttvralph.miruroapp.ui.StateMessage
 
 @Composable
 fun DiscoveryTitleScreen(
@@ -211,6 +210,15 @@ private fun DiscoveryTitleContent(
                         lineHeight = (if (settings.largeUiText) 21 else 18).sp
                     )
                 }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 54.dp, vertical = 18.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                SecondaryButton("Back to details", Modifier.width(180.dp), onBack)
             }
         }
     }
@@ -446,31 +454,39 @@ private fun ThemeList(
     settings: AppSettings,
     modifier: Modifier
 ) {
-    Column(
-        modifier
-            .background(Color.Black.copy(alpha = 0.38f), RoundedCornerShape(9.dp))
-            .padding(13.dp)
-    ) {
-        Text(
-            title,
-            color = MiruroColors.AccentSoft,
-            fontSize = (if (settings.largeUiText) 18 else 16).sp,
-            fontWeight = FontWeight.Black
-        )
-        Spacer(Modifier.height(8.dp))
-        if (values.isEmpty()) {
-            StateMessage("No theme information returned.")
-        } else {
-            values.forEachIndexed { index, song ->
+    FocusableSurface(
+        onClick = {},
+        modifier = modifier,
+        shape = RoundedCornerShape(9.dp),
+        unfocusedBackground = Color.Black.copy(alpha = 0.38f),
+        focusedBackground = Color.White
+    ) { focused ->
+        Column(Modifier.padding(13.dp)) {
+            Text(
+                title,
+                color = if (focused) MiruroColors.Accent else MiruroColors.AccentSoft,
+                fontSize = (if (settings.largeUiText) 18 else 16).sp,
+                fontWeight = FontWeight.Black
+            )
+            Spacer(Modifier.height(8.dp))
+            if (values.isEmpty()) {
                 Text(
-                    "${index + 1}. $song",
-                    color = Color.White.copy(alpha = 0.80f),
-                    fontSize = (if (settings.largeUiText) 14 else 12).sp,
-                    lineHeight = (if (settings.largeUiText) 20 else 17).sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(bottom = 7.dp)
+                    "No theme information returned.",
+                    color = if (focused) Color.DarkGray else Color.White.copy(alpha = 0.62f),
+                    fontSize = (if (settings.largeUiText) 14 else 12).sp
                 )
+            } else {
+                values.forEachIndexed { index, song ->
+                    Text(
+                        "${index + 1}. $song",
+                        color = if (focused) Color.Black.copy(alpha = 0.82f) else Color.White.copy(alpha = 0.80f),
+                        fontSize = (if (settings.largeUiText) 14 else 12).sp,
+                        lineHeight = (if (settings.largeUiText) 20 else 17).sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(bottom = 7.dp)
+                    )
+                }
             }
         }
     }
