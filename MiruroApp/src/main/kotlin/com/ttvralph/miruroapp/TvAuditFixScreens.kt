@@ -585,7 +585,10 @@ private fun AuditResultCard(item: AnimeItem, onClick: () -> Unit) {
 }
 
 @Composable
-fun AuditSettingsScreen(viewModel: MiruroViewModel) {
+fun AuditSettingsScreen(
+    viewModel: MiruroViewModel,
+    modifier: Modifier = Modifier
+) {
     val settings by viewModel.settings.collectAsState()
     var confirmClear by remember { mutableStateOf(false) }
 
@@ -606,7 +609,7 @@ fun AuditSettingsScreen(viewModel: MiruroViewModel) {
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier,
         contentPadding = PaddingValues(bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -673,15 +676,13 @@ private fun AuditSettingChoiceRow(
     selected: String,
     onSelected: (String) -> Unit
 ) {
-    Row(
+    Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MiruroColors.Card).padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.width(360.dp)) {
-            Text(label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text(description, color = MiruroColors.Subtle, fontSize = 12.sp, maxLines = 2)
-        }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.weight(1f)) {
+        Text(label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Text(description, color = MiruroColors.Subtle, fontSize = 12.sp, maxLines = 2)
+        Spacer(Modifier.height(10.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             items(options, key = { it.first }) { option ->
                 val value = option.first
                 FocusableSurface(
