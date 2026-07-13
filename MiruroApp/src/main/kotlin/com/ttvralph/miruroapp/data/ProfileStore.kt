@@ -46,13 +46,18 @@ class ProfileStore(private val context: Context) {
         ProfileState(profiles, active)
     }
 
-    suspend fun create(name: String, avatarId: String = "crimson"): LocalProfile {
+    suspend fun create(
+        name: String,
+        avatarId: String = "crimson",
+        themeColorId: String = "red"
+    ): LocalProfile {
         val cleaned = name.trim().take(24).ifBlank { "Profile" }
         val profile = LocalProfile(
             id = "profile_${System.currentTimeMillis().toString(36)}",
             name = cleaned,
             createdAtMs = System.currentTimeMillis(),
-            avatarId = avatarId.takeIf { it in PROFILE_AVATAR_IDS } ?: "crimson"
+            avatarId = avatarId.takeIf { it in PROFILE_AVATAR_IDS } ?: "crimson",
+            themeColorId = themeColorId.takeIf { it in PROFILE_THEME_COLOR_IDS } ?: "red"
         )
         context.profileDataStore.edit { preferences ->
             val existing = preferences[Keys.profiles].orEmpty().mapNotNull(::decodeProfile)
@@ -63,10 +68,11 @@ class ProfileStore(private val context: Context) {
         return profile
     }
 
-    suspend fun update(profile: LocalProfile, name: String, avatarId: String) {
+    suspend fun update(profile: LocalProfile, name: String, avatarId: String, themeColorId: String) {
         val updated = profile.copy(
             name = name.trim().take(24).ifBlank { profile.name },
-            avatarId = avatarId.takeIf { it in PROFILE_AVATAR_IDS } ?: profile.avatarId
+            avatarId = avatarId.takeIf { it in PROFILE_AVATAR_IDS } ?: profile.avatarId,
+            themeColorId = themeColorId.takeIf { it in PROFILE_THEME_COLOR_IDS } ?: profile.themeColorId
         )
         context.profileDataStore.edit { preferences ->
             val existing = preferences[Keys.profiles]
@@ -99,12 +105,13 @@ class ProfileStore(private val context: Context) {
         profile.id.escapeProfileField(),
         profile.name.escapeProfileField(),
         profile.createdAtMs.toString(),
-        profile.avatarId.escapeProfileField()
+        profile.avatarId.escapeProfileField(),
+        profile.themeColorId.escapeProfileField()
     ).joinToString("|")
 
     private fun decodeProfile(value: String): LocalProfile? {
         val parts = value.split('|')
-        if (parts.size != 3 && parts.size != 4) return null
+        if (parts.size !in 3..5) return null
         val id = parts[0].unescapeProfileField().takeIf { it.isNotBlank() } ?: return null
         val name = parts[1].unescapeProfileField().takeIf { it.isNotBlank() } ?: return null
         val created = parts[2].toLongOrNull() ?: 0L
@@ -112,7 +119,11 @@ class ProfileStore(private val context: Context) {
             ?.unescapeProfileField()
             ?.takeIf { it in PROFILE_AVATAR_IDS }
             ?: if (id == DEFAULT_PROFILE_ID) "crimson" else PROFILE_AVATAR_IDS[(id.hashCode() and Int.MAX_VALUE) % PROFILE_AVATAR_IDS.size]
-        return LocalProfile(id, name, created, avatarId)
+        val themeColorId = parts.getOrNull(4)
+            ?.unescapeProfileField()
+            ?.takeIf { it in PROFILE_THEME_COLOR_IDS }
+            ?: "red"
+        return LocalProfile(id, name, created, avatarId, themeColorId)
     }
 }
 
