@@ -57,10 +57,13 @@ fun MyAniStreamScreen(
     viewModel: MiruroViewModel,
     features: NetflixFeatureViewModel,
     onOpenDetails: (Int) -> Unit,
-    onPlayProgress: (WatchProgress) -> Unit
+    onPlayProgress: (WatchProgress) -> Unit,
+    openProfiles: Boolean = false
 ) {
     val profileState by features.profileState.collectAsState()
-    var tab by remember { mutableStateOf(MyAniStreamTab.OVERVIEW) }
+    var tab by remember(openProfiles) {
+        mutableStateOf(if (openProfiles) MyAniStreamTab.PROFILES else MyAniStreamTab.OVERVIEW)
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(
