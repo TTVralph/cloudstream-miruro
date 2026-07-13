@@ -341,6 +341,7 @@ private fun ProfileNameKeyboardOverlay(
 ) {
     BackHandler(onBack = onCancel)
     var draft by remember(initialName) { mutableStateOf(initialName) }
+    var uppercaseLetters by remember { mutableStateOf(true) }
     val firstKey = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
@@ -377,7 +378,10 @@ private fun ProfileNameKeyboardOverlay(
                     )
                 }
                 Spacer(Modifier.height(10.dp))
-                listOf("1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM").forEachIndexed { rowIndex, row ->
+                val letterRows = listOf("QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM").map { row ->
+                    if (uppercaseLetters) row else row.lowercase()
+                }
+                (listOf("1234567890") + letterRows).forEachIndexed { rowIndex, row ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -407,6 +411,10 @@ private fun ProfileNameKeyboardOverlay(
                 modifier = Modifier.width(150.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                ProfileKeyboardKey(
+                    text = if (uppercaseLetters) "abc" else "ABC",
+                    modifier = Modifier.fillMaxWidth()
+                ) { uppercaseLetters = !uppercaseLetters }
                 ProfileKeyboardKey("Delete", Modifier.fillMaxWidth()) {
                     if (draft.isNotEmpty()) draft = draft.dropLast(1)
                 }

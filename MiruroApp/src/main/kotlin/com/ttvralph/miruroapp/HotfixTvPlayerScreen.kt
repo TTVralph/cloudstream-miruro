@@ -556,15 +556,13 @@ private fun HotfixVideoPlayer(
                         }
                         Key.DirectionLeft -> {
                             player.seekTo((player.currentPosition - HOTFIX_SEEK_MS).coerceAtLeast(0L))
-                            controlsVisible = true
-                            controlsActivity += 1
+                            controlsVisible = false
                             message = "Rewind 10 seconds"
                             return@onPreviewKeyEvent true
                         }
                         Key.DirectionRight -> {
                             player.seekTo(player.currentPosition + HOTFIX_SEEK_MS)
-                            controlsVisible = true
-                            controlsActivity += 1
+                            controlsVisible = false
                             message = "Forward 10 seconds"
                             return@onPreviewKeyEvent true
                         }
@@ -596,13 +594,11 @@ private fun HotfixVideoPlayer(
                     }
                     Key.DirectionLeft -> if (!controlsVisible) {
                         player.seekTo((player.currentPosition - HOTFIX_SEEK_MS).coerceAtLeast(0L))
-                        controlsVisible = true
                         message = "Rewind 10 seconds"
                         true
                     } else false
                     Key.DirectionRight -> if (!controlsVisible) {
                         player.seekTo(player.currentPosition + HOTFIX_SEEK_MS)
-                        controlsVisible = true
                         message = "Forward 10 seconds"
                         true
                     } else false
