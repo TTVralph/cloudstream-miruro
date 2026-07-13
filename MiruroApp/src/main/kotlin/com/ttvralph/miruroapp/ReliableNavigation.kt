@@ -66,6 +66,7 @@ internal object ReliableHomeFocusBridge {
 @Composable
 fun ReliableTopBar(
     current: String,
+    profileName: String,
     onHome: () -> Unit,
     onAnime: () -> Unit,
     onMovies: () -> Unit,
@@ -73,6 +74,7 @@ fun ReliableTopBar(
     onMyList: () -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
+    onProfiles: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val onMoveDown = if (current == "Home") {
@@ -100,6 +102,45 @@ fun ReliableTopBar(
         ReliableNavIcon(Icons.Filled.Search, "Search", current == "Search", onSearch, onMoveDown)
         Spacer(Modifier.width(10.dp))
         ReliableNavIcon(Icons.Filled.Settings, "Settings", current == "Settings", onSettings, onMoveDown)
+        Spacer(Modifier.width(10.dp))
+        ReliableProfileButton(profileName, current == "Profiles", onProfiles, onMoveDown)
+    }
+}
+
+@Composable
+private fun ReliableProfileButton(
+    profileName: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onDown: (() -> Boolean)? = null
+) {
+    FocusableSurface(
+        onClick = onClick,
+        modifier = Modifier
+            .size(42.dp)
+            .onPreviewKeyEvent { event ->
+                if (
+                    onDown != null &&
+                    event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionDown
+                ) {
+                    onDown()
+                } else {
+                    false
+                }
+            },
+        shape = RoundedCornerShape(999.dp),
+        unfocusedBackground = if (selected) MiruroColors.Accent else MiruroColors.Accent.copy(alpha = 0.34f),
+        focusedBackground = Color.White
+    ) { focused ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                profileName.take(1).uppercase().ifBlank { "?" },
+                color = if (focused) Color.Black else Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Black
+            )
+        }
     }
 }
 
