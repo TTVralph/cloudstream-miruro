@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -31,6 +32,7 @@ import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeType
 import com.ttvralph.miruroapp.data.DEFAULT_PROFILE_ID
+import com.ttvralph.miruroapp.data.LocalProfile
 import com.ttvralph.miruroapp.data.TitleReaction
 import com.ttvralph.miruroapp.data.TrackingStatus
 import com.ttvralph.miruroapp.data.UpcomingEpisode
@@ -341,6 +343,30 @@ private fun UpcomingRow(
 @Composable
 private fun MyAniStreamProfiles(features: NetflixFeatureViewModel) {
     val state by features.profileState.collectAsState()
+    var creating by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<LocalProfile?>(null) }
+    val editingProfile = editing
+    if (creating || editingProfile != null) {
+        ProfileEditorOverlay(
+            profile = editingProfile,
+            suggestedName = "Profile ${state.profiles.size + 1}",
+            onCancel = {
+                creating = false
+                editing = null
+            },
+            onSave = { name, avatarId ->
+                if (editingProfile == null) {
+                    features.createProfile(name, avatarId)
+                } else {
+                    features.updateProfile(editingProfile, name, avatarId)
+                }
+                creating = false
+                editing = null
+            }
+        )
+        return
+    }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
         item {
             SectionTitle("Local profiles", "${state.profiles.size} PROFILES")
@@ -350,13 +376,18 @@ private fun MyAniStreamProfiles(features: NetflixFeatureViewModel) {
                 fontSize = 14.sp
             )
             Spacer(Modifier.height(14.dp))
-            SecondaryButton("Add profile", Modifier.width(190.dp)) { features.createProfile() }
+            SecondaryButton("Add profile", Modifier.width(190.dp)) { creating = true }
         }
         items(state.profiles, key = { it.id }) { profile ->
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                ProfileAvatarArtwork(
+                    name = profile.name,
+                    avatarId = profile.avatarId,
+                    modifier = Modifier.size(58.dp)
+                )
                 Text(
                     if (profile.id == state.activeId) "${profile.name} • Active" else profile.name,
                     color = if (profile.id == state.activeId) MiruroColors.AccentSoft else Color.White,
@@ -364,9 +395,10 @@ private fun MyAniStreamProfiles(features: NetflixFeatureViewModel) {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f).padding(top = 14.dp)
                 )
-                SecondaryButton("Switch", Modifier.width(150.dp)) { features.switchProfile(profile) }
+                SecondaryButton("Switch", Modifier.width(130.dp)) { features.switchProfile(profile) }
+                SecondaryButton("Edit", Modifier.width(130.dp)) { editing = profile }
                 if (profile.id != DEFAULT_PROFILE_ID) {
-                    SecondaryButton("Delete", Modifier.width(150.dp)) { features.deleteProfile(profile) }
+                    SecondaryButton("Delete", Modifier.width(130.dp)) { features.deleteProfile(profile) }
                 }
             }
         }
