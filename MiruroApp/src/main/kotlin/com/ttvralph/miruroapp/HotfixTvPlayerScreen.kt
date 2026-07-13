@@ -989,7 +989,7 @@ private fun HotfixSubtitlePanel(
                 color = Color.White.copy(alpha = 0.70f),
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
-                modifier = Modifier.padding(horizontal = 5.dp, bottom = 8.dp)
+                modifier = Modifier.padding(start = 5.dp, end = 5.dp, bottom = 8.dp)
             )
         }
         if (source.subtitleTracks.isEmpty()) {
