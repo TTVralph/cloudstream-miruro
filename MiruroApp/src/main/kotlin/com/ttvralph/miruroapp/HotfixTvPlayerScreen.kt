@@ -512,10 +512,7 @@ private fun HotfixVideoPlayer(
             playerError != null -> onBack()
             panel != HotfixPanel.NONE -> panel = HotfixPanel.NONE
             ended -> onBack()
-            controlsVisible -> {
-                controlsVisible = false
-                activeSkip?.let { handledSkipInterval = it }
-            }
+            controlsVisible -> controlsVisible = false
             activeSkip != null -> handledSkipInterval = activeSkip
             else -> onBack()
         }
@@ -557,8 +554,21 @@ private fun HotfixVideoPlayer(
                             performSkip(prompt)
                             return@onPreviewKeyEvent true
                         }
-                        Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown -> {
-                            handledSkipInterval = prompt
+                        Key.DirectionLeft -> {
+                            player.seekTo((player.currentPosition - HOTFIX_SEEK_MS).coerceAtLeast(0L))
+                            controlsVisible = true
+                            controlsActivity += 1
+                            message = "Rewind 10 seconds"
+                            return@onPreviewKeyEvent true
+                        }
+                        Key.DirectionRight -> {
+                            player.seekTo(player.currentPosition + HOTFIX_SEEK_MS)
+                            controlsVisible = true
+                            controlsActivity += 1
+                            message = "Forward 10 seconds"
+                            return@onPreviewKeyEvent true
+                        }
+                        Key.DirectionUp, Key.DirectionDown -> {
                             controlsVisible = true
                             controlsActivity += 1
                             return@onPreviewKeyEvent true

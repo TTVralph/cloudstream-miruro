@@ -48,7 +48,7 @@ class ProfileStore(private val context: Context) {
 
     suspend fun create(
         name: String,
-        avatarId: String = "crimson",
+        avatarId: String = "luffy",
         themeColorId: String = "red"
     ): LocalProfile {
         val cleaned = name.trim().take(24).ifBlank { "Profile" }
@@ -56,7 +56,7 @@ class ProfileStore(private val context: Context) {
             id = "profile_${System.currentTimeMillis().toString(36)}",
             name = cleaned,
             createdAtMs = System.currentTimeMillis(),
-            avatarId = avatarId.takeIf { it in PROFILE_AVATAR_IDS } ?: "crimson",
+            avatarId = normalizeProfileAvatarId(avatarId) ?: "luffy",
             themeColorId = themeColorId.takeIf { it in PROFILE_THEME_COLOR_IDS } ?: "red"
         )
         context.profileDataStore.edit { preferences ->
@@ -71,7 +71,7 @@ class ProfileStore(private val context: Context) {
     suspend fun update(profile: LocalProfile, name: String, avatarId: String, themeColorId: String) {
         val updated = profile.copy(
             name = name.trim().take(24).ifBlank { profile.name },
-            avatarId = avatarId.takeIf { it in PROFILE_AVATAR_IDS } ?: profile.avatarId,
+            avatarId = normalizeProfileAvatarId(avatarId) ?: profile.avatarId,
             themeColorId = themeColorId.takeIf { it in PROFILE_THEME_COLOR_IDS } ?: profile.themeColorId
         )
         context.profileDataStore.edit { preferences ->
@@ -115,15 +115,27 @@ class ProfileStore(private val context: Context) {
         val id = parts[0].unescapeProfileField().takeIf { it.isNotBlank() } ?: return null
         val name = parts[1].unescapeProfileField().takeIf { it.isNotBlank() } ?: return null
         val created = parts[2].toLongOrNull() ?: 0L
-        val avatarId = parts.getOrNull(3)
-            ?.unescapeProfileField()
-            ?.takeIf { it in PROFILE_AVATAR_IDS }
-            ?: if (id == DEFAULT_PROFILE_ID) "crimson" else PROFILE_AVATAR_IDS[(id.hashCode() and Int.MAX_VALUE) % PROFILE_AVATAR_IDS.size]
+        val avatarId = normalizeProfileAvatarId(parts.getOrNull(3)?.unescapeProfileField())
+            ?: if (id == DEFAULT_PROFILE_ID) "luffy" else PROFILE_AVATAR_IDS[(id.hashCode() and Int.MAX_VALUE) % PROFILE_AVATAR_IDS.size]
         val themeColorId = parts.getOrNull(4)
             ?.unescapeProfileField()
             ?.takeIf { it in PROFILE_THEME_COLOR_IDS }
             ?: "red"
         return LocalProfile(id, name, created, avatarId, themeColorId)
+    }
+}
+
+private fun normalizeProfileAvatarId(value: String?): String? {
+    if (value == null) return null
+    if (value in PROFILE_AVATAR_IDS) return value
+    return when (value) {
+        "crimson" -> "luffy"
+        "violet" -> "itachi"
+        "ocean" -> "naruto"
+        "sunset" -> "ichigo"
+        "forest" -> "gojo"
+        "gold" -> "rengoku"
+        else -> null
     }
 }
 

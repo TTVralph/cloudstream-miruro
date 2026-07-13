@@ -2,6 +2,7 @@ package com.ttvralph.miruroapp
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,10 +42,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.ttvralph.miruroapp.data.LocalProfile
 import com.ttvralph.miruroapp.data.PROFILE_AVATAR_IDS
 import com.ttvralph.miruroapp.data.PROFILE_THEME_COLOR_IDS
@@ -474,24 +475,17 @@ internal fun ProfileAvatarArtwork(
     modifier: Modifier = Modifier,
     focused: Boolean = false
 ) {
-    val palette = profileAvatarPalette(avatarId)
-    val imageUrl = profileAvatarImageUrl(avatarId)
-    var imageLoaded by remember(imageUrl) { mutableStateOf(false) }
-    Box(modifier = modifier.clip(CircleShape).background(Brush.linearGradient(palette.background))) {
-        if (!imageLoaded) {
-            Canvas(Modifier.fillMaxSize()) {
-                drawCircle(Color.White.copy(alpha = if (focused) 0.13f else 0.08f), radius = size.minDimension * 0.44f, center = Offset(size.width * 0.72f, size.height * 0.20f))
-                drawAnimeAvatar(avatarId, palette)
-            }
-        }
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = profileAvatarLabel(avatarId),
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(if (focused) Color.White.copy(alpha = 0.14f) else Color.Black)
+    ) {
+        Image(
+            painter = painterResource(profileAvatarDrawable(avatarId)),
+            contentDescription = "$name, ${profileAvatarLabel(avatarId)} profile picture",
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit,
-            alignment = Alignment.Center,
-            onSuccess = { imageLoaded = true },
-            onError = { imageLoaded = false }
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.Center
         )
     }
 }
@@ -705,19 +699,27 @@ private fun profileAvatarPalette(id: String): AvatarPalette = when (id) {
 }
 
 private fun profileAvatarLabel(id: String): String = when (id) {
-    "ocean" -> "Deku"
-    "violet" -> "Itachi"
-    "sunset" -> "Anya"
-    "forest" -> "Gojo"
-    "gold" -> "Rengoku"
+    "itachi", "violet" -> "Itachi"
+    "naruto", "ocean" -> "Naruto"
+    "ichigo", "sunset" -> "Ichigo"
+    "rukia" -> "Rukia"
+    "gojo", "forest" -> "Gojo"
+    "yuji" -> "Yuji"
+    "megumi" -> "Megumi"
+    "tanjiro" -> "Tanjiro"
+    "rengoku", "gold" -> "Rengoku"
     else -> "Luffy"
 }
 
-private fun profileAvatarImageUrl(id: String): String = when (id) {
-    "ocean" -> "https://s4.anilist.co/file/anilistcdn/character/large/b89028-8w1I9o1ISHMg.png"
-    "violet" -> "https://s4.anilist.co/file/anilistcdn/character/large/b14-9Kb1E5oel1ke.png"
-    "sunset" -> "https://s4.anilist.co/file/anilistcdn/character/large/b138100-4Li0tWRCa5bQ.png"
-    "forest" -> "https://s4.anilist.co/file/anilistcdn/character/large/b127691-9zqh1xpIubn7.png"
-    "gold" -> "https://s4.anilist.co/file/anilistcdn/character/large/b129133-VlTPowwt68rJ.png"
-    else -> "https://s4.anilist.co/file/anilistcdn/character/large/b40-MNypXsxSRb1R.png"
+private fun profileAvatarDrawable(id: String): Int = when (id) {
+    "itachi", "violet" -> R.drawable.profile_avatar_itachi
+    "naruto", "ocean" -> R.drawable.profile_avatar_naruto
+    "ichigo", "sunset" -> R.drawable.profile_avatar_ichigo
+    "rukia" -> R.drawable.profile_avatar_rukia
+    "gojo", "forest" -> R.drawable.profile_avatar_gojo
+    "yuji" -> R.drawable.profile_avatar_yuji
+    "megumi" -> R.drawable.profile_avatar_megumi
+    "tanjiro" -> R.drawable.profile_avatar_tanjiro
+    "rengoku", "gold" -> R.drawable.profile_avatar_rengoku
+    else -> R.drawable.profile_avatar_luffy
 }
