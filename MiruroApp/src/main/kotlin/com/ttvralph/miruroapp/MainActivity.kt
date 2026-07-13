@@ -127,7 +127,7 @@ private fun MiruroApp(
                     features.switchProfile(profile)
                     profileChosenThisSession = true
                 },
-                onCreate = features::createProfile
+                onCreate = { name, avatarId -> features.createProfile(name, avatarId) }
             )
         }
         return
@@ -334,6 +334,7 @@ private fun MiruroApp(
                 ReliableTopBar(
                     current = currentLabel,
                     profileName = profileState.activeProfile.name,
+                    profileAvatarId = profileState.activeProfile.avatarId,
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
                     onAnime = { navController.navigateTopLevel(Routes.Series.route) },
                     onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
