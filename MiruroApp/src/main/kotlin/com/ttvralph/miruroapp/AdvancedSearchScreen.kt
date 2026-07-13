@@ -96,10 +96,11 @@ fun AdvancedSearchScreen(
     }
 
     Box(Modifier.fillMaxSize().background(MiruroColors.Background)) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(26.dp)
-        ) {
+        if (!filterOverlay) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(26.dp)
+            ) {
             Column(
                 Modifier
                     .width(if (settings.largeUiText) 460.dp else 420.dp)
@@ -231,10 +232,9 @@ fun AdvancedSearchScreen(
                     }
                 }
             }
+                }
             }
-        }
-
-        if (filterOverlay) {
+        } else {
             AdvancedFilterOverlay(
                 value = filters,
                 studios = studios,
@@ -386,10 +386,10 @@ private fun AdvancedKeyboard(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            SecondaryButton("⌫", Modifier.width(70.dp), onBackspace)
-            SecondaryButton("Space", Modifier.width(118.dp), onSpace)
-            SecondaryButton("Clear", Modifier.width(100.dp), onClear)
-            PrimaryButton("Search", Modifier.width(112.dp), onSearch)
+            SecondaryButton("⌫", Modifier.width(64.dp), onBackspace)
+            SecondaryButton("Space", Modifier.width(104.dp), onSpace)
+            SecondaryButton("Clear", Modifier.width(90.dp), onClear)
+            PrimaryButton("Search", Modifier.width(140.dp), onSearch)
         }
     }
 }
@@ -742,10 +742,14 @@ private fun GenreChoiceRows(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         genres.chunked(6).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
                 row.forEach { genre ->
-                    DiscoveryChoice(genre, genre in selected, settings, Modifier.width(145.dp)) { onToggle(genre) }
+                    DiscoveryChoice(genre, genre in selected, settings, Modifier.weight(1f)) { onToggle(genre) }
                 }
+                repeat(6 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
