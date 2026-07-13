@@ -57,6 +57,7 @@ fun DailyDetailsScreen(
     viewModel: MiruroViewModel,
     features: NetflixFeatureViewModel,
     animeId: Int,
+    headerActions: @Composable () -> Unit,
     onBack: () -> Unit,
     onOpenEpisode: (Int, Int, AudioType) -> Unit,
     onPlayEpisode: (Int, Int, AudioType) -> Unit
@@ -138,6 +139,7 @@ fun DailyDetailsScreen(
                             isResume = latestPartial != null && smartTarget != null,
                             watched = titleSummary.watched,
                             knownTotal = knownEpisodeTotal,
+                            headerActions = headerActions,
                             onBack = onBack,
                             onPlay = { target ->
                                 onPlayEpisode(
@@ -350,6 +352,7 @@ private fun DailyDetailsHero(
     isResume: Boolean,
     watched: Int,
     knownTotal: Int,
+    headerActions: @Composable () -> Unit,
     onBack: () -> Unit,
     onPlay: (DailyEpisodeTarget) -> Unit,
     onList: () -> Unit
@@ -373,6 +376,7 @@ private fun DailyDetailsHero(
                 Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.25f), Color.Transparent, Color.Black))
             )
         )
+        headerActions()
         MinimalActionButton(
             text = "← Back",
             modifier = Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 12.dp).width(112.dp),
