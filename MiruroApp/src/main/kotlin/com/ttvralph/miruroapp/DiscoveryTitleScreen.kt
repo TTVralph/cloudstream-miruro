@@ -96,13 +96,26 @@ private fun DiscoveryTitleContent(
             Column(Modifier.padding(horizontal = 54.dp)) {
                 DiscoverySectionHeading("Anime Guide", settings, "CAST • FRANCHISE • MUSIC")
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    info.format?.let { DiscoveryInfoTile("Format", it, settings, Modifier.width(150.dp)) }
-                    info.status?.let { DiscoveryInfoTile("Status", it, settings, Modifier.width(160.dp)) }
-                    info.episodes?.let { DiscoveryInfoTile("Episodes", it.toString(), settings, Modifier.width(140.dp)) }
-                    info.durationMinutes?.let { DiscoveryInfoTile("Runtime", "$it min", settings, Modifier.width(140.dp)) }
-                    info.source?.let { DiscoveryInfoTile("Source", it, settings, Modifier.width(175.dp)) }
-                    info.year?.let { DiscoveryInfoTile("Year", it.toString(), settings, Modifier.width(120.dp)) }
+                val guideFacts = buildList {
+                    info.format?.let { add("Format" to it) }
+                    info.status?.let { add("Status" to it) }
+                    info.episodes?.let { add("Episodes" to it.toString()) }
+                    info.durationMinutes?.let { add("Runtime" to "$it min") }
+                    info.source?.let { add("Source" to it) }
+                    info.year?.let { add("Year" to it.toString()) }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    guideFacts.chunked(3).forEach { facts ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            facts.forEach { (label, value) ->
+                                DiscoveryInfoTile(label, value, settings, Modifier.weight(1f))
+                            }
+                            repeat(3 - facts.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
                 }
                 Spacer(Modifier.height(14.dp))
                 Text(
