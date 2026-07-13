@@ -67,6 +67,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     private var playbackJob: Job? = null
     private var metadataJob: Job? = null
     private var playbackStartedAtMs = 0L
+    @Volatile private var pendingPreferredProvider: String? = null
 
     private val _homeRows = MutableStateFlow<UiState<List<HomeRow>>>(UiState.Loading)
     val homeRows: StateFlow<UiState<List<HomeRow>>> = _homeRows.asStateFlow()
@@ -514,7 +515,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     fun resolvePlayback(
         episode: AnimeEpisode,
-        provider: String? = settings.value.preferredProvider
+        provider: String? = pendingPreferredProvider ?: settings.value.preferredProvider
     ) {
         playbackStartedAtMs = System.currentTimeMillis()
         playbackJob?.cancel()
@@ -551,6 +552,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun updatePreferredProvider(value: String) {
+        pendingPreferredProvider = value
         viewModelScope.launch { settingsStore.updatePreferredProvider(value) }
     }
 
