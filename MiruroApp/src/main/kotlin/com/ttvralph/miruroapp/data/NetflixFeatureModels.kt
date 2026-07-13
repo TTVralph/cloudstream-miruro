@@ -3,7 +3,8 @@ package com.ttvralph.miruroapp.data
 data class LocalProfile(
     val id: String,
     val name: String,
-    val createdAtMs: Long = System.currentTimeMillis()
+    val createdAtMs: Long = System.currentTimeMillis(),
+    val avatarId: String = "crimson"
 )
 
 data class ProfileState(
@@ -15,6 +16,8 @@ data class ProfileState(
 }
 
 const val DEFAULT_PROFILE_ID = "default"
+
+val PROFILE_AVATAR_IDS = listOf("crimson", "ocean", "violet", "sunset", "forest", "gold")
 
 enum class TitleReaction(val label: String) {
     LIKE("Like"),
