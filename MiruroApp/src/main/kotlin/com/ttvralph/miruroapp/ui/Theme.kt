@@ -18,39 +18,68 @@ object MiruroColors {
     val Text = Color(0xFFFFFFFF)
     val Muted = Color(0xFFB3B3B3)
     val Subtle = Color(0xFF808080)
-    val Accent = Color(0xFFE50914)
-    val AccentSoft = Color(0xFFFF3340)
+    var Accent = Color(0xFFE50914)
+        private set
+    var AccentSoft = Color(0xFFFF3340)
+        private set
     val Accent2 = Color(0xFFFFD235)
     val Danger = Color(0xFFFFB4AB)
     val Border = Color(0x26FFFFFF)
+
+    fun useProfileTheme(id: String) {
+        Accent = profileThemeColor(id)
+        AccentSoft = profileThemeSoftColor(id)
+    }
 }
 
-private val MiruroDarkColorScheme = darkColorScheme(
-    primary = MiruroColors.Accent,
-    secondary = MiruroColors.Accent2,
-    surface = MiruroColors.Card,
-    background = MiruroColors.Background,
-    onSurface = MiruroColors.Text,
-    onBackground = MiruroColors.Text,
-    error = MiruroColors.Danger
-)
+fun profileThemeColor(id: String): Color = when (id) {
+    "orange" -> Color(0xFFFF5A1F)
+    "teal" -> Color(0xFF00A896)
+    "blue" -> Color(0xFF2478FF)
+    "purple" -> Color(0xFF8B5CF6)
+    else -> Color(0xFFE50914)
+}
 
-private val MiruroLightColorScheme = lightColorScheme(
-    primary = MiruroColors.Accent,
-    secondary = MiruroColors.Accent2,
-    surface = Color(0xFFFFFBFF),
-    background = Color(0xFFFFFBFF),
-    onSurface = Color(0xFF1C1B1F),
-    onBackground = Color(0xFF1C1B1F),
-    error = Color(0xFFBA1A1A)
-)
+fun profileThemeSoftColor(id: String): Color = when (id) {
+    "orange" -> Color(0xFFFF7A3D)
+    "teal" -> Color(0xFF35D0BA)
+    "blue" -> Color(0xFF5FA0FF)
+    "purple" -> Color(0xFFAE7BFF)
+    else -> Color(0xFFFF3340)
+}
 
 @Composable
-fun MiruroTheme(themeMode: ThemeMode = ThemeMode.DARK, content: @Composable () -> Unit) {
+fun MiruroTheme(
+    themeMode: ThemeMode = ThemeMode.DARK,
+    profileThemeColorId: String = "red",
+    content: @Composable () -> Unit
+) {
+    MiruroColors.useProfileTheme(profileThemeColorId)
     val dark = when (themeMode) {
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
-    MaterialTheme(colorScheme = if (dark) MiruroDarkColorScheme else MiruroLightColorScheme, content = content)
+    val colorScheme = if (dark) {
+        darkColorScheme(
+            primary = MiruroColors.Accent,
+            secondary = MiruroColors.Accent2,
+            surface = MiruroColors.Card,
+            background = MiruroColors.Background,
+            onSurface = MiruroColors.Text,
+            onBackground = MiruroColors.Text,
+            error = MiruroColors.Danger
+        )
+    } else {
+        lightColorScheme(
+            primary = MiruroColors.Accent,
+            secondary = MiruroColors.Accent2,
+            surface = Color(0xFFFFFBFF),
+            background = Color(0xFFFFFBFF),
+            onSurface = Color(0xFF1C1B1F),
+            onBackground = Color(0xFF1C1B1F),
+            error = Color(0xFFBA1A1A)
+        )
+    }
+    MaterialTheme(colorScheme = colorScheme, content = content)
 }
