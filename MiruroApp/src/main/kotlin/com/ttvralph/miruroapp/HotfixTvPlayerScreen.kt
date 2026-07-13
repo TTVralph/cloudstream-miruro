@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -85,6 +86,7 @@ import kotlinx.coroutines.launch
 private const val HOTFIX_PLAYER_TAG = "HotfixTvPlayer"
 private const val HOTFIX_SEEK_MS = 10_000L
 private const val HOTFIX_PROGRESS_SAVE_INTERVAL_MS = 10_000L
+private const val HOTFIX_CONTROLS_HIDE_DELAY_MS = 5_000L
 
 private enum class HotfixPanel {
     NONE,
@@ -230,6 +232,7 @@ private fun HotfixVideoPlayer(
     var subtitleBackground by remember(settings.subtitleBackground) { mutableStateOf(settings.subtitleBackground) }
     var speed by remember(initialSource) { mutableFloatStateOf(1f) }
     var controlsVisible by remember(initialSource) { mutableStateOf(true) }
+    var controlsActivity by remember(initialSource) { mutableIntStateOf(0) }
     var panel by remember(initialSource) { mutableStateOf(HotfixPanel.NONE) }
     var playerError by remember(initialSource) { mutableStateOf<String?>(null) }
     var lastPlaybackError by remember(initialSource) { mutableStateOf<String?>(null) }
@@ -243,16 +246,18 @@ private fun HotfixVideoPlayer(
     val skipIntervals by features.skipIntervals.collectAsState()
     var skipPositionMs by remember(episode) { mutableLongStateOf(0L) }
     var skipDurationMs by remember(episode) { mutableLongStateOf(0L) }
-    var skippedInterval by remember(episode) { mutableStateOf<SkipInterval?>(null) }
-    val activeSkip = remember(skipIntervals, episode, skipPositionMs, skipDurationMs, skippedInterval) {
+    var handledSkipInterval by remember(episode) { mutableStateOf<SkipInterval?>(null) }
+    var skipPromptFocused by remember(episode) { mutableStateOf(false) }
+    val activeSkip = remember(skipIntervals, episode, skipPositionMs, skipDurationMs, handledSkipInterval) {
         features.intervalsFor(episode, skipDurationMs)
             .hotfixActiveAt(skipPositionMs)
-            ?.takeUnless { it == skippedInterval }
+            ?.takeUnless { it == handledSkipInterval }
     }
 
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
     val menuFocus = remember { FocusRequester() }
+    val skipFocus = remember { FocusRequester() }
 
     val trackSelector = remember(activeSource, quality, retryNonce) {
         DefaultTrackSelector(context).apply {
@@ -429,23 +434,27 @@ private fun HotfixVideoPlayer(
             message = null
         }
     }
-    LaunchedEffect(activeSkip) {
-        if (activeSkip != null) controlsVisible = true
-    }
     LaunchedEffect(autoplayCountdown) {
         if (autoplayCountdown > 0 && nextEpisode != null) {
             delay(1_000L)
             if (autoplayCountdown == 1) onPlayNext(nextEpisode) else autoplayCountdown -= 1
         }
     }
-    LaunchedEffect(controlsVisible, panel, ended, playerError) {
+    LaunchedEffect(controlsVisible, panel, ended, playerError, activeSkip) {
         delay(90L)
         when {
             playerError != null -> Unit
             ended -> Unit
             panel != HotfixPanel.NONE -> runCatching { menuFocus.requestFocus() }
             controlsVisible -> runCatching { playFocus.requestFocus() }
+            activeSkip != null -> runCatching { skipFocus.requestFocus() }
             else -> runCatching { rootFocus.requestFocus() }
+        }
+    }
+    LaunchedEffect(controlsVisible, panel, ended, playerError, controlsActivity) {
+        if (controlsVisible && panel == HotfixPanel.NONE && !ended && playerError == null) {
+            delay(HOTFIX_CONTROLS_HIDE_DELAY_MS)
+            controlsVisible = false
         }
     }
 
@@ -490,12 +499,24 @@ private fun HotfixVideoPlayer(
         panel = HotfixPanel.NONE
     }
 
+    fun performSkip(interval: SkipInterval) {
+        handledSkipInterval = interval
+        controlsVisible = false
+        panel = HotfixPanel.NONE
+        player.seekTo((interval.endMs + 250L).coerceAtMost(skipDurationMs))
+        player.play()
+    }
+
     BackHandler {
         when {
             playerError != null -> onBack()
             panel != HotfixPanel.NONE -> panel = HotfixPanel.NONE
             ended -> onBack()
-            controlsVisible -> controlsVisible = false
+            controlsVisible -> {
+                controlsVisible = false
+                activeSkip?.let { handledSkipInterval = it }
+            }
+            activeSkip != null -> handledSkipInterval = activeSkip
             else -> onBack()
         }
     }
@@ -528,6 +549,23 @@ private fun HotfixVideoPlayer(
             .focusable()
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (controlsVisible) controlsActivity += 1
+                val prompt = activeSkip
+                if (skipPromptFocused && prompt != null) {
+                    when (event.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            performSkip(prompt)
+                            return@onPreviewKeyEvent true
+                        }
+                        Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown -> {
+                            handledSkipInterval = prompt
+                            controlsVisible = true
+                            controlsActivity += 1
+                            return@onPreviewKeyEvent true
+                        }
+                        else -> Unit
+                    }
+                }
                 when (event.key) {
                     Key.MediaPlayPause -> {
                         if (player.isPlaying) player.pause() else player.play()
@@ -595,7 +633,6 @@ private fun HotfixVideoPlayer(
                 diagnostics = diagnostics,
                 quality = quality,
                 speed = speed,
-                skipInterval = activeSkip,
                 nextEpisode = nextEpisode,
                 playFocus = playFocus,
                 largeControls = settings.largePlayerControls,
@@ -604,13 +641,6 @@ private fun HotfixVideoPlayer(
                 onSeekBack = { player.seekTo((player.currentPosition - HOTFIX_SEEK_MS).coerceAtLeast(0L)) },
                 onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
                 onSeekForward = { player.seekTo(player.currentPosition + HOTFIX_SEEK_MS) },
-                onSkip = {
-                    activeSkip?.let { interval ->
-                        skippedInterval = interval
-                        player.seekTo((interval.endMs + 250L).coerceAtMost(skipDurationMs))
-                        player.play()
-                    }
-                },
                 onSeekFraction = { fraction ->
                     val duration = player.duration.takeIf { it > 0L } ?: 0L
                     if (duration > 0L) player.seekTo((duration * fraction.coerceIn(0f, 1f)).toLong())
@@ -622,6 +652,22 @@ private fun HotfixVideoPlayer(
                 onDiagnostics = { panel = HotfixPanel.DIAGNOSTICS },
                 onNext = { nextEpisode?.let(onPlayNext) },
                 onHide = { controlsVisible = false }
+            )
+        }
+
+        activeSkip?.takeIf { panel == HotfixPanel.NONE && !ended }?.let { interval ->
+            HotfixSkipPrompt(
+                interval = interval,
+                focusRequester = skipFocus,
+                controlsVisible = controlsVisible,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = 46.dp,
+                        bottom = if (controlsVisible) 128.dp else 42.dp
+                    ),
+                onFocused = { skipPromptFocused = it },
+                onClick = { performSkip(interval) }
             )
         }
 
@@ -708,6 +754,44 @@ private fun HotfixVideoPlayer(
 }
 
 @Composable
+private fun HotfixSkipPrompt(
+    interval: SkipInterval,
+    focusRequester: FocusRequester,
+    controlsVisible: Boolean,
+    modifier: Modifier = Modifier,
+    onFocused: (Boolean) -> Unit,
+    onClick: () -> Unit
+) {
+    FocusableSurface(
+        onClick = onClick,
+        modifier = modifier
+            .width(if (controlsVisible) 198.dp else 186.dp)
+            .height(52.dp)
+            .focusRequester(focusRequester)
+            .onFocusChanged { onFocused(it.isFocused) },
+        shape = RoundedCornerShape(7.dp),
+        unfocusedBackground = MiruroColors.Accent.copy(alpha = 0.94f),
+        focusedBackground = Color.White,
+        focusedBorderColor = MiruroColors.AccentSoft,
+        unfocusedBorderColor = Color.White.copy(alpha = 0.24f)
+    ) { focused ->
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 17.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                interval.kind.label,
+                color = if (focused) Color.Black else Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Black
+            )
+            Text("›", color = if (focused) Color.Black else Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
 private fun HotfixPlayerErrorScreen(
     message: String,
     canTryNext: Boolean,
@@ -756,7 +840,6 @@ private fun HotfixControls(
     diagnostics: HotfixDiagnostics,
     quality: HotfixQuality,
     speed: Float,
-    skipInterval: SkipInterval?,
     nextEpisode: AnimeEpisode?,
     playFocus: FocusRequester,
     largeControls: Boolean,
@@ -765,7 +848,6 @@ private fun HotfixControls(
     onSeekBack: () -> Unit,
     onPlayPause: () -> Unit,
     onSeekForward: () -> Unit,
-    onSkip: () -> Unit,
     onSeekFraction: (Float) -> Unit,
     onQuality: () -> Unit,
     onSource: () -> Unit,
@@ -840,9 +922,6 @@ private fun HotfixControls(
                 Modifier.focusRequester(playFocus),
                 primary = true
             )
-            if (skipInterval != null) {
-                HotfixButton(skipInterval.kind.label, 190, largeControls, highContrast, onSkip, primary = true)
-            }
             HotfixButton("+10s", 120, largeControls, highContrast, onSeekForward)
         }
 
