@@ -69,6 +69,7 @@ private sealed class Routes(val route: String) {
     data object Series : Routes("series")
     data object Genres : Routes("genres")
     data object Settings : Routes("settings")
+    data object Profiles : Routes("profiles")
     data object Details : Routes("details/{${Args.ID}}") {
         fun path(id: Int) = "details/$id"
     }
@@ -106,6 +107,7 @@ private fun navLabelFor(route: String?): String = when (route) {
     Routes.Series.route -> "Anime"
     Routes.Genres.route -> "Discover"
     Routes.Settings.route -> "Settings"
+    Routes.Profiles.route -> "Profiles"
     else -> ""
 }
 
@@ -226,6 +228,15 @@ private fun MiruroApp(
                 composable(Routes.Settings.route) {
                     EnhancedSettingsScreen(viewModel, features)
                 }
+                composable(Routes.Profiles.route) {
+                    MyAniStreamScreen(
+                        viewModel = viewModel,
+                        features = features,
+                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
+                        onPlayProgress = ::playProgress,
+                        openProfiles = true
+                    )
+                }
                 composable(
                     Routes.Details.route,
                     arguments = listOf(navArgument(Args.ID) { type = NavType.IntType })
@@ -322,6 +333,7 @@ private fun MiruroApp(
             if (topLevelRoute) {
                 ReliableTopBar(
                     current = currentLabel,
+                    profileName = profileState.activeProfile.name,
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
                     onAnime = { navController.navigateTopLevel(Routes.Series.route) },
                     onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
@@ -329,6 +341,7 @@ private fun MiruroApp(
                     onMyList = { navController.navigateTopLevel(Routes.Favorites.route) },
                     onSearch = { navController.navigateTopLevel(Routes.Search.route) },
                     onSettings = { navController.navigateTopLevel(Routes.Settings.route) },
+                    onProfiles = { navController.navigateTopLevel(Routes.Profiles.route) },
                     modifier = Modifier.align(Alignment.TopCenter).zIndex(100f)
                 )
             }
