@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,9 +38,9 @@ import com.ttvralph.miruroapp.data.TitleExtras
 import com.ttvralph.miruroapp.data.TitleReaction
 import com.ttvralph.miruroapp.ui.ErrorState
 import com.ttvralph.miruroapp.ui.LoadingState
+import com.ttvralph.miruroapp.ui.MinimalActionButton
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PosterCard
-import com.ttvralph.miruroapp.ui.PrimaryButton
 import com.ttvralph.miruroapp.ui.SecondaryButton
 import com.ttvralph.miruroapp.ui.SectionTitle
 import com.ttvralph.miruroapp.ui.StateMessage
@@ -70,32 +71,27 @@ fun EnhancedDetailsScreen(
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        Column(Modifier.fillMaxSize()) {
-            DetailsActionsBar(
-                animeId = animeId,
-                reaction = reactions[animeId],
-                reminderSet = animeId in reminders,
-                trackingLabel = trackingStatuses[animeId]?.label ?: "None",
-                noSpoilerMode = settings.noSpoilerMode,
-                extras = extras,
-                firstFocus = firstActionFocus,
-                onReaction = { features.setReaction(animeId, it) },
-                onReminder = { features.toggleReminder(animeId) },
-                onStatus = { showStatusPicker = true },
-                onGuide = onMoreLikeThis
-            )
+        DailyDetailsScreen(
+            viewModel = viewModel,
+            features = features,
+            animeId = animeId,
+            onBack = onBack,
+            onOpenEpisode = onOpenEpisode,
+            onPlayEpisode = onPlayEpisode
+        )
 
-            Box(Modifier.fillMaxWidth().weight(1f)) {
-                DailyDetailsScreen(
-                    viewModel = viewModel,
-                    features = features,
-                    animeId = animeId,
-                    onBack = onBack,
-                    onOpenEpisode = onOpenEpisode,
-                    onPlayEpisode = onPlayEpisode
-                )
-            }
-        }
+        DetailsActionsBar(
+            reaction = reactions[animeId],
+            reminderSet = animeId in reminders,
+            trackingLabel = trackingStatuses[animeId]?.label ?: "None",
+            noSpoilerMode = settings.noSpoilerMode,
+            extras = extras,
+            firstFocus = firstActionFocus,
+            onReaction = { features.setReaction(animeId, it) },
+            onReminder = { features.toggleReminder(animeId) },
+            onStatus = { showStatusPicker = true },
+            onGuide = onMoreLikeThis
+        )
 
         if (showStatusPicker) {
             TrackingStatusPicker(
@@ -113,7 +109,6 @@ fun EnhancedDetailsScreen(
 
 @Composable
 private fun DetailsActionsBar(
-    animeId: Int,
     reaction: TitleReaction?,
     reminderSet: Boolean,
     trackingLabel: String,
@@ -128,44 +123,47 @@ private fun DetailsActionsBar(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF0B0B0B))
-            .padding(horizontal = 24.dp, vertical = 10.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.Black.copy(alpha = 0.86f), Color.Black.copy(alpha = 0.44f), Color.Transparent)
+                )
+            )
+            .padding(start = 170.dp, end = 24.dp, top = 8.dp, bottom = 14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "TITLE ACTIONS",
-                color = MiruroColors.AccentSoft,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier.width(108.dp)
-            )
             ReactionButton(
                 text = "Like",
                 selected = reaction == TitleReaction.LIKE,
                 modifier = Modifier.focusRequester(firstFocus)
             ) { onReaction(TitleReaction.LIKE) }
             ReactionButton("Love", reaction == TitleReaction.LOVE) { onReaction(TitleReaction.LOVE) }
-            ReactionButton("Not for me", reaction == TitleReaction.DISLIKE, width = 132) {
+            ReactionButton("Not for me", reaction == TitleReaction.DISLIKE, width = 112) {
                 onReaction(TitleReaction.DISLIKE)
             }
-            SecondaryButton(
-                if (reminderSet) "✓ Reminder" else "Remind me",
-                Modifier.width(150.dp),
-                onReminder
+            MinimalActionButton(
+                text = if (reminderSet) "Reminder set" else "Remind me",
+                modifier = Modifier.width(124.dp),
+                selected = reminderSet,
+                onClick = onReminder
             )
-            SecondaryButton("Status: $trackingLabel", Modifier.width(210.dp), onStatus)
-            PrimaryButton("Anime guide", Modifier.width(160.dp), onGuide)
+            MinimalActionButton(
+                text = "Status: $trackingLabel",
+                modifier = Modifier.width(154.dp),
+                selected = trackingLabel != "None",
+                onClick = onStatus
+            )
+            MinimalActionButton("Anime guide", Modifier.width(116.dp), onClick = onGuide)
         }
 
         val next = (extras as? UiState.Success<TitleExtras>)?.data?.nextAiring
         if (next != null || noSpoilerMode) {
             Spacer(Modifier.height(7.dp))
             Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 116.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -195,13 +193,14 @@ private fun ReactionButton(
     text: String,
     selected: Boolean,
     modifier: Modifier = Modifier,
-    width: Int = 112,
+    width: Int = 82,
     onClick: () -> Unit
 ) {
-    SecondaryButton(
-        if (selected) "✓ $text" else text,
-        modifier.width(width.dp),
-        onClick
+    MinimalActionButton(
+        text = text,
+        modifier = modifier.width(width.dp),
+        selected = selected,
+        onClick = onClick
     )
 }
 
