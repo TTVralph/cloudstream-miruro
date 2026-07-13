@@ -49,7 +49,10 @@ fun EnhancedPostPlayOverlay(
 ) {
     val firstFocus = remember(nextEpisode) { FocusRequester() }
 
-    LaunchedEffect(nextEpisode) {
+    // Cancelling autoplay removes the focused Cancel button from composition.
+    // Re-home focus on the primary action after that state change so TV remotes
+    // can continue into the lower action row instead of becoming focusless.
+    LaunchedEffect(nextEpisode, autoplayCountdown <= 0) {
         delay(120L)
         runCatching { firstFocus.requestFocus() }
     }
@@ -153,7 +156,7 @@ fun EnhancedPostPlayOverlay(
                         if (autoplayCountdown > 0) {
                             "Playing automatically in ${autoplayCountdown}s"
                         } else {
-                            "Autoplay paused for this episode"
+                            "Autoplay cancelled for this episode"
                         },
                         color = Color.White.copy(alpha = 0.76f),
                         fontSize = 14.sp,
