@@ -18,13 +18,13 @@ fun GuardedTvPlayerScreen(
     Box(Modifier.fillMaxSize()) {
         HotfixTvPlayerScreen(
             viewModel = viewModel,
+            features = features,
             episode = episode,
             nextEpisode = nextEpisode,
             onBack = onBack,
             onPlayNext = onPlayNext
         )
         episode?.let { current ->
-            SkipPlayerOverlay(features, current)
             EnhancedPostPlayOverlay(
                 viewModel = viewModel,
                 episode = current,
