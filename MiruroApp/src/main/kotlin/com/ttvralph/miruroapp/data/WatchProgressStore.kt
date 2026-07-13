@@ -16,7 +16,9 @@ data class WatchProgress(
     val audioType: AudioType,
     val positionMs: Long,
     val durationMs: Long,
-    val updatedAtMs: Long
+    val updatedAtMs: Long,
+    val sourceProvider: String? = null,
+    val sourceLabel: String? = null
 ) {
     val key: String = makeKey(animeId, seasonNumber, episodeNumber, audioType)
     private val rawPercent: Float = if (durationMs > 0L) {
@@ -34,7 +36,9 @@ data class WatchProgress(
         audioType.name,
         positionMs,
         durationMs,
-        updatedAtMs
+        updatedAtMs,
+        sourceProvider.orEmpty().escapeProgressField(),
+        sourceLabel.orEmpty().escapeProgressField()
     ).joinToString("|")
 
     companion object {
@@ -49,7 +53,7 @@ data class WatchProgress(
 
         fun decode(value: String): WatchProgress? {
             val parts = value.split('|')
-            if (parts.size != 7) return null
+            if (parts.size != 7 && parts.size != 9) return null
             return WatchProgress(
                 animeId = parts[0].toIntOrNull() ?: return null,
                 seasonNumber = parts[1].toIntOrNull() ?: return null,
@@ -57,11 +61,16 @@ data class WatchProgress(
                 audioType = runCatching { AudioType.valueOf(parts[3]) }.getOrNull() ?: return null,
                 positionMs = parts[4].toLongOrNull() ?: return null,
                 durationMs = parts[5].toLongOrNull() ?: return null,
-                updatedAtMs = parts[6].toLongOrNull() ?: return null
+                updatedAtMs = parts[6].toLongOrNull() ?: return null,
+                sourceProvider = parts.getOrNull(7)?.unescapeProgressField()?.takeIf { it.isNotBlank() },
+                sourceLabel = parts.getOrNull(8)?.unescapeProgressField()?.takeIf { it.isNotBlank() }
             )
         }
     }
 }
+
+private fun String.escapeProgressField(): String = replace("%", "%25").replace("|", "%7C")
+private fun String.unescapeProgressField(): String = replace("%7C", "|").replace("%25", "%")
 
 private data class ProfileProgress(val profileId: String, val progress: WatchProgress) {
     fun encoded(): String = "$profileId~${progress.encoded()}"
