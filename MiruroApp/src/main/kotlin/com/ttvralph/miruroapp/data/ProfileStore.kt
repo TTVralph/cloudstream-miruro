@@ -46,12 +46,13 @@ class ProfileStore(private val context: Context) {
         ProfileState(profiles, active)
     }
 
-    suspend fun create(name: String): LocalProfile {
+    suspend fun create(name: String, avatarId: String = "crimson"): LocalProfile {
         val cleaned = name.trim().take(24).ifBlank { "Profile" }
         val profile = LocalProfile(
             id = "profile_${System.currentTimeMillis().toString(36)}",
             name = cleaned,
-            createdAtMs = System.currentTimeMillis()
+            createdAtMs = System.currentTimeMillis(),
+            avatarId = avatarId.takeIf { it in PROFILE_AVATAR_IDS } ?: "crimson"
         )
         context.profileDataStore.edit { preferences ->
             val existing = preferences[Keys.profiles].orEmpty().mapNotNull(::decodeProfile)
@@ -60,6 +61,20 @@ class ProfileStore(private val context: Context) {
         }
         ProfileSession.activate(profile.id)
         return profile
+    }
+
+    suspend fun update(profile: LocalProfile, name: String, avatarId: String) {
+        val updated = profile.copy(
+            name = name.trim().take(24).ifBlank { profile.name },
+            avatarId = avatarId.takeIf { it in PROFILE_AVATAR_IDS } ?: profile.avatarId
+        )
+        context.profileDataStore.edit { preferences ->
+            val existing = preferences[Keys.profiles]
+                .orEmpty()
+                .mapNotNull(::decodeProfile)
+                .filterNot { it.id == profile.id }
+            preferences[Keys.profiles] = (existing + updated).map(::encodeProfile).toSet()
+        }
     }
 
     suspend fun activate(id: String) {
@@ -83,16 +98,21 @@ class ProfileStore(private val context: Context) {
     private fun encodeProfile(profile: LocalProfile): String = listOf(
         profile.id.escapeProfileField(),
         profile.name.escapeProfileField(),
-        profile.createdAtMs.toString()
+        profile.createdAtMs.toString(),
+        profile.avatarId.escapeProfileField()
     ).joinToString("|")
 
     private fun decodeProfile(value: String): LocalProfile? {
         val parts = value.split('|')
-        if (parts.size != 3) return null
+        if (parts.size != 3 && parts.size != 4) return null
         val id = parts[0].unescapeProfileField().takeIf { it.isNotBlank() } ?: return null
         val name = parts[1].unescapeProfileField().takeIf { it.isNotBlank() } ?: return null
         val created = parts[2].toLongOrNull() ?: 0L
-        return LocalProfile(id, name, created)
+        val avatarId = parts.getOrNull(3)
+            ?.unescapeProfileField()
+            ?.takeIf { it in PROFILE_AVATAR_IDS }
+            ?: if (id == DEFAULT_PROFILE_ID) "crimson" else PROFILE_AVATAR_IDS[(id.hashCode() and Int.MAX_VALUE) % PROFILE_AVATAR_IDS.size]
+        return LocalProfile(id, name, created, avatarId)
     }
 }
 
