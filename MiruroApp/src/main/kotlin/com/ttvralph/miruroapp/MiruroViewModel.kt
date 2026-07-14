@@ -36,7 +36,6 @@ import kotlinx.coroutines.launch
 private const val MAX_DETAILS_CACHE_SIZE = 50
 private const val MAX_ITEM_CACHE_SIZE = 500
 private const val MAX_METADATA_QUEUE_SIZE = 20
-private const val PLAYER_TRANSITION_GRACE_MS = 1_500L
 
 sealed interface UiState<out T> {
     data object Loading : UiState<Nothing>
@@ -66,7 +65,6 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     private var genreJob: Job? = null
     private var playbackJob: Job? = null
     private var metadataJob: Job? = null
-    private var playbackStartedAtMs = 0L
     @Volatile private var pendingPreferredProvider: String? = null
 
     private val _homeRows = MutableStateFlow<UiState<List<HomeRow>>>(UiState.Loading)
@@ -90,14 +88,22 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
     private val _seasonErrors = MutableStateFlow<Map<Int, String>>(emptyMap())
     val seasonErrors: StateFlow<Map<Int, String>> = _seasonErrors.asStateFlow()
 
-    private val _playback = MutableStateFlow<UiState<PlaybackSource>?>(null)
-    val playback: StateFlow<UiState<PlaybackSource>?> = _playback.asStateFlow()
+    private val _playback = MutableStateFlow<EpisodePlaybackState?>(null)
+    val playback: StateFlow<EpisodePlaybackState?> = _playback.asStateFlow()
 
     private val _movies = MutableStateFlow<UiState<List<AnimeItem>>>(UiState.Loading)
     val movies: StateFlow<UiState<List<AnimeItem>>> = _movies.asStateFlow()
+    private val _moviesLoadingMore = MutableStateFlow(false)
+    val moviesLoadingMore: StateFlow<Boolean> = _moviesLoadingMore.asStateFlow()
+    private val _moviesLoadMoreError = MutableStateFlow<String?>(null)
+    val moviesLoadMoreError: StateFlow<String?> = _moviesLoadMoreError.asStateFlow()
 
     private val _series = MutableStateFlow<UiState<List<AnimeItem>>>(UiState.Loading)
     val series: StateFlow<UiState<List<AnimeItem>>> = _series.asStateFlow()
+    private val _seriesLoadingMore = MutableStateFlow(false)
+    val seriesLoadingMore: StateFlow<Boolean> = _seriesLoadingMore.asStateFlow()
+    private val _seriesLoadMoreError = MutableStateFlow<String?>(null)
+    val seriesLoadMoreError: StateFlow<String?> = _seriesLoadMoreError.asStateFlow()
 
     private val _genreResults = MutableStateFlow<UiState<List<AnimeItem>>?>(null)
     private var moviesPage = 0
@@ -204,43 +210,71 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
 
     fun loadMovies(force: Boolean = false, nextPage: Boolean = false) {
         if (!force && !nextPage && _movies.value is UiState.Success) return
+        if (nextPage && _moviesLoadingMore.value) return
         moviesJob?.cancel()
         moviesJob = viewModelScope.launch {
             val previous = (_movies.value as? UiState.Success)?.data.orEmpty()
                 .takeIf { nextPage }
                 .orEmpty()
             val page = if (nextPage) moviesPage + 1 else 1
-            _movies.value = UiState.Loading
-            val result = retryResult { repo.browse("MOVIE", page) }
-            if (!isActive) return@launch
-            result
-                .onSuccess { items ->
-                    moviesPage = page
-                    rememberItems(items)
-                    _movies.value = UiState.Success((previous + items).distinctBy { it.id })
-                }
-                .onFailure { _movies.value = UiState.Error("Could not load movies.") }
+            val appending = nextPage && previous.isNotEmpty()
+            _moviesLoadMoreError.value = null
+            if (appending) _moviesLoadingMore.value = true else _movies.value = UiState.Loading
+            try {
+                val result = retryResult { repo.browse("MOVIE", page) }
+                if (!isActive) return@launch
+                result
+                    .onSuccess { items ->
+                        moviesPage = page
+                        rememberItems(items)
+                        _movies.value = UiState.Success((previous + items).distinctBy { it.id })
+                    }
+                    .onFailure {
+                        if (appending) {
+                            _movies.value = UiState.Success(previous)
+                            _moviesLoadMoreError.value = "Could not load more movies. Try again."
+                        } else {
+                            _movies.value = UiState.Error("Could not load movies.")
+                        }
+                    }
+            } finally {
+                if (appending) _moviesLoadingMore.value = false
+            }
         }
     }
 
     fun loadSeries(force: Boolean = false, nextPage: Boolean = false) {
         if (!force && !nextPage && _series.value is UiState.Success) return
+        if (nextPage && _seriesLoadingMore.value) return
         seriesJob?.cancel()
         seriesJob = viewModelScope.launch {
             val previous = (_series.value as? UiState.Success)?.data.orEmpty()
                 .takeIf { nextPage }
                 .orEmpty()
             val page = if (nextPage) seriesPage + 1 else 1
-            _series.value = UiState.Loading
-            val result = retryResult { repo.browse("TV", page) }
-            if (!isActive) return@launch
-            result
-                .onSuccess { items ->
-                    seriesPage = page
-                    rememberItems(items)
-                    _series.value = UiState.Success((previous + items).distinctBy { it.id })
-                }
-                .onFailure { _series.value = UiState.Error("Could not load series.") }
+            val appending = nextPage && previous.isNotEmpty()
+            _seriesLoadMoreError.value = null
+            if (appending) _seriesLoadingMore.value = true else _series.value = UiState.Loading
+            try {
+                val result = retryResult { repo.browse("TV", page) }
+                if (!isActive) return@launch
+                result
+                    .onSuccess { items ->
+                        seriesPage = page
+                        rememberItems(items)
+                        _series.value = UiState.Success((previous + items).distinctBy { it.id })
+                    }
+                    .onFailure {
+                        if (appending) {
+                            _series.value = UiState.Success(previous)
+                            _seriesLoadMoreError.value = "Could not load more anime. Try again."
+                        } else {
+                            _series.value = UiState.Error("Could not load series.")
+                        }
+                    }
+            } finally {
+                if (appending) _seriesLoadingMore.value = false
+            }
         }
     }
 
@@ -539,6 +573,7 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         episode: AnimeEpisode,
         provider: String? = null
     ) {
+        val key = episode.playbackKey()
         val savedProvider = watchProgress.value.firstOrNull {
             it.animeId == episode.anilistId &&
                 it.seasonNumber == episode.seasonNumber &&
@@ -549,10 +584,9 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
             ?: pendingPreferredProvider?.also { pendingPreferredProvider = null }
             ?: savedProvider
             ?: settings.value.preferredProvider
-        playbackStartedAtMs = System.currentTimeMillis()
         playbackJob?.cancel()
+        _playback.value = EpisodePlaybackState(key, UiState.Loading)
         playbackJob = viewModelScope.launch {
-            _playback.value = UiState.Loading
             val resolution = runCatching { repo.resolveEpisodeSource(episode, requestedProvider) }
             if (!isActive) return@launch
             val result = resolution.getOrElse { e ->
@@ -563,19 +597,19 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
                 )
                 SourceResolution.NotFound(e.message ?: "Unexpected error: ${e::class.simpleName}")
             }
-            _playback.value = when (result) {
+            val state = when (result) {
                 is SourceResolution.Found -> UiState.Success(result.source)
                 is SourceResolution.NotFound -> UiState.Error(result.reason)
             }
+            _playback.value = EpisodePlaybackState(key, state)
         }
     }
 
-    fun clearPlayback() {
-        // During a Player -> Next Episode transition the outgoing screen is disposed
-        // after the incoming screen may already have started resolving. Do not let the
-        // outgoing screen cancel that fresh request and strand the new screen on Loading.
-        if (System.currentTimeMillis() - playbackStartedAtMs < PLAYER_TRANSITION_GRACE_MS) return
+    fun clearPlayback(episode: AnimeEpisode) {
+        // A disposed outgoing destination must never cancel the incoming episode's work.
+        if (_playback.value?.key != episode.playbackKey()) return
         playbackJob?.cancel()
+        playbackJob = null
         _playback.value = null
     }
 

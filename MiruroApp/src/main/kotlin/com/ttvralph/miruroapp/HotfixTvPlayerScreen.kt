@@ -97,6 +97,14 @@ private enum class HotfixPanel {
     DIAGNOSTICS
 }
 
+private enum class HotfixFocusTarget {
+    NONE,
+    ROOT,
+    PLAY,
+    MENU,
+    SKIP
+}
+
 private enum class HotfixQuality(
     val setting: String,
     val label: String,
@@ -160,8 +168,9 @@ fun HotfixTvPlayerScreen(
     }
 
     LaunchedEffect(episode) { viewModel.resolvePlayback(episode) }
-    DisposableEffect(episode) { onDispose { viewModel.clearPlayback() } }
-    val state by viewModel.playback.collectAsState()
+    DisposableEffect(episode) { onDispose { viewModel.clearPlayback(episode) } }
+    val playback by viewModel.playback.collectAsState()
+    val state = playback.stateFor(episode)
 
     when (val current = state) {
         null, is UiState.Loading -> LoadingState("Resolving stream…")
@@ -459,15 +468,21 @@ private fun HotfixVideoPlayer(
             if (autoplayCountdown == 1) playNextEpisode() else autoplayCountdown -= 1
         }
     }
-    LaunchedEffect(controlsVisible, panel, ended, playerError, activeSkip) {
+    val focusTarget = when {
+        playerError != null || ended -> HotfixFocusTarget.NONE
+        panel != HotfixPanel.NONE -> HotfixFocusTarget.MENU
+        controlsVisible -> HotfixFocusTarget.PLAY
+        activeSkip != null -> HotfixFocusTarget.SKIP
+        else -> HotfixFocusTarget.ROOT
+    }
+    LaunchedEffect(focusTarget) {
         delay(90L)
-        when {
-            playerError != null -> Unit
-            ended -> Unit
-            panel != HotfixPanel.NONE -> runCatching { menuFocus.requestFocus() }
-            controlsVisible -> runCatching { playFocus.requestFocus() }
-            activeSkip != null -> runCatching { skipFocus.requestFocus() }
-            else -> runCatching { rootFocus.requestFocus() }
+        when (focusTarget) {
+            HotfixFocusTarget.NONE -> Unit
+            HotfixFocusTarget.ROOT -> runCatching { rootFocus.requestFocus() }
+            HotfixFocusTarget.PLAY -> runCatching { playFocus.requestFocus() }
+            HotfixFocusTarget.MENU -> runCatching { menuFocus.requestFocus() }
+            HotfixFocusTarget.SKIP -> runCatching { skipFocus.requestFocus() }
         }
     }
     LaunchedEffect(controlsVisible, panel, ended, playerError, controlsActivity) {

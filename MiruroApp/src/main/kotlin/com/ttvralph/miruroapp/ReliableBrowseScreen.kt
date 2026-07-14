@@ -48,6 +48,12 @@ fun ReliableBrowseScreen(
     val moviesState by viewModel.movies.collectAsState()
     val seriesState by viewModel.series.collectAsState()
     val state = if (format == "MOVIE") moviesState else seriesState
+    val moviesLoadingMore by viewModel.moviesLoadingMore.collectAsState()
+    val seriesLoadingMore by viewModel.seriesLoadingMore.collectAsState()
+    val loadingMore = if (format == "MOVIE") moviesLoadingMore else seriesLoadingMore
+    val moviesLoadMoreError by viewModel.moviesLoadMoreError.collectAsState()
+    val seriesLoadMoreError by viewModel.seriesLoadMoreError.collectAsState()
+    val loadMoreError = if (format == "MOVIE") moviesLoadMoreError else seriesLoadMoreError
     val settings by viewModel.settings.collectAsState()
     var sessionItems by remember(format) { mutableStateOf<List<AnimeItem>>(emptyList()) }
     var automaticRetries by remember(format) { mutableIntStateOf(0) }
@@ -113,6 +119,11 @@ fun ReliableBrowseScreen(
             Spacer(Modifier.height(10.dp))
         }
 
+        loadMoreError?.let { error ->
+            Text(error, color = MiruroColors.AccentSoft, fontSize = 13.sp)
+            Spacer(Modifier.height(10.dp))
+        }
+
         LazyVerticalGrid(
             columns = GridCells.Adaptive(
                 when (settings.posterGridDensity) {
@@ -130,9 +141,14 @@ fun ReliableBrowseScreen(
                 PosterCard(anime) { onOpenDetails(anime.id) }
             }
             item {
-                SecondaryButton("Load more", Modifier.width(180.dp)) {
-                    if (format == "MOVIE") viewModel.loadMovies(nextPage = true)
-                    else viewModel.loadSeries(nextPage = true)
+                SecondaryButton(
+                    if (loadingMore) "Loading more…" else "Load more",
+                    Modifier.width(180.dp)
+                ) {
+                    if (!loadingMore) {
+                        if (format == "MOVIE") viewModel.loadMovies(nextPage = true)
+                        else viewModel.loadSeries(nextPage = true)
+                    }
                 }
             }
         }

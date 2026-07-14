@@ -20,13 +20,14 @@ class NetflixFeatureRepository {
         .callTimeout(10, TimeUnit.SECONDS)
         .build()
 
+    private val cacheLock = Any()
     private val extrasCache = linkedMapOf<Int, TitleExtras>()
     private val malIdCache = mutableMapOf<Int, Int?>()
     private val itemCache = linkedMapOf<Int, AnimeItem>()
     private val skipCache = linkedMapOf<String, List<SkipInterval>>()
 
     suspend fun titleExtras(animeId: Int): TitleExtras = withContext(Dispatchers.IO) {
-        extrasCache[animeId]?.let { return@withContext it }
+        synchronized(cacheLock) { extrasCache[animeId] }?.let { return@withContext it }
         val media = graphQl(EXTRAS_QUERY, mapOf("id" to animeId)).path("Media")
         if (!media.isObject) throw IOException("AniList did not return title extras.")
         val baseItem = media.toAnimeItem()
@@ -55,16 +56,19 @@ class NetflixFeatureRepository {
             recommendations = recommendations,
             nextAiring = next
         )
-        malIdCache[animeId] = extras.malId
-        extrasCache[animeId] = extras
-        trim(extrasCache, 40)
+        synchronized(cacheLock) {
+            malIdCache[animeId] = extras.malId
+            extrasCache[animeId] = extras
+            trimLocked(extrasCache, 40)
+        }
         extras
     }
 
     suspend fun items(ids: Set<Int>): List<AnimeItem> = withContext(Dispatchers.IO) {
         val validIds = ids.filter { it > 0 }.distinct().take(50)
-        val cached = validIds.mapNotNull(itemCache::get)
-        val missing = validIds.filterNot { it in itemCache }
+        val (cached, missing) = synchronized(cacheLock) {
+            validIds.mapNotNull(itemCache::get) to validIds.filterNot { it in itemCache }
+        }
         if (missing.isNotEmpty()) {
             val fetched = graphQl(ITEMS_QUERY, mapOf("ids" to missing))
                 .path("Page")
@@ -72,7 +76,7 @@ class NetflixFeatureRepository {
                 .mapNotNull { it.toAnimeItem() }
             rememberItems(fetched)
         }
-        validIds.mapNotNull(itemCache::get).ifEmpty { cached }
+        synchronized(cacheLock) { validIds.mapNotNull(itemCache::get) }.ifEmpty { cached }
     }
 
     suspend fun upcoming(ids: Set<Int>): List<UpcomingEpisode> = withContext(Dispatchers.IO) {
@@ -100,7 +104,7 @@ class NetflixFeatureRepository {
         if (episodeNumber <= 0 || episodeLengthSeconds <= 0.0) return@withContext emptyList()
         val lengthBucket = (episodeLengthSeconds / 30.0).toInt()
         val cacheKey = "$anilistId:$episodeNumber:$lengthBucket"
-        skipCache[cacheKey]?.let { return@withContext it }
+        synchronized(cacheLock) { skipCache[cacheKey] }?.let { return@withContext it }
 
         val malId = malIdFor(anilistId) ?: return@withContext emptyList()
         val url = "https://api.aniskip.com/v2/skip-times/$malId/$episodeNumber"
@@ -139,16 +143,20 @@ class NetflixFeatureRepository {
             }.distinctBy { Triple(it.kind, it.startMs, it.endMs) }
                 .sortedBy { it.startMs }
         }
-        skipCache[cacheKey] = intervals
-        trim(skipCache, 100)
+        synchronized(cacheLock) {
+            skipCache[cacheKey] = intervals
+            trimLocked(skipCache, 100)
+        }
         intervals
     }
 
     private fun malIdFor(anilistId: Int): Int? {
-        if (anilistId in malIdCache) return malIdCache[anilistId]
+        synchronized(cacheLock) {
+            if (anilistId in malIdCache) return malIdCache[anilistId]
+        }
         val media = graphQl(MAL_ID_QUERY, mapOf("id" to anilistId)).path("Media")
         val id = media.path("idMal").asInt(0).takeIf { it > 0 }
-        malIdCache[anilistId] = id
+        synchronized(cacheLock) { malIdCache[anilistId] = id }
         return id
     }
 
@@ -206,11 +214,14 @@ class NetflixFeatureRepository {
             ?.takeIf { it.isNotBlank() && it != "null" }
 
     private fun rememberItems(items: List<AnimeItem>) {
-        items.forEach { itemCache[it.id] = it }
-        trim(itemCache, 300)
+        synchronized(cacheLock) {
+            items.forEach { itemCache[it.id] = it }
+            trimLocked(itemCache, 300)
+        }
     }
 
-    private fun <K, V> trim(map: LinkedHashMap<K, V>, limit: Int) {
+    /** Caller must hold [cacheLock]. */
+    private fun <K, V> trimLocked(map: LinkedHashMap<K, V>, limit: Int) {
         while (map.size > limit) map.remove(map.keys.first())
     }
 
