@@ -140,7 +140,7 @@ fun ReliableBrowseScreen(
             items(visibleItems, key = { it.id }) { anime ->
                 PosterCard(anime) { onOpenDetails(anime.id) }
             }
-            item {
+            item(key = "load-more-$format") {
                 SecondaryButton(
                     if (loadingMore) "Loading more…" else "Load more",
                     Modifier.width(180.dp)
