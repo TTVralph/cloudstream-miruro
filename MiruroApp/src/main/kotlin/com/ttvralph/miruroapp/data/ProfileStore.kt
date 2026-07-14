@@ -62,9 +62,7 @@ class ProfileStore(private val context: Context) {
         context.profileDataStore.edit { preferences ->
             val existing = preferences[Keys.profiles].orEmpty().mapNotNull(::decodeProfile)
             preferences[Keys.profiles] = (existing + profile).map(::encodeProfile).toSet()
-            preferences[Keys.active] = profile.id
         }
-        ProfileSession.activate(profile.id)
         return profile
     }
 

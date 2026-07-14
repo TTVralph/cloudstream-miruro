@@ -143,8 +143,9 @@ fun ImprovedTvPlayerScreen(
     }
 
     LaunchedEffect(episode) { viewModel.resolvePlayback(episode) }
-    DisposableEffect(Unit) { onDispose { viewModel.clearPlayback() } }
-    val state by viewModel.playback.collectAsState()
+    DisposableEffect(episode) { onDispose { viewModel.clearPlayback(episode) } }
+    val playback by viewModel.playback.collectAsState()
+    val state = playback.stateFor(episode)
 
     when (val current = state) {
         null, is UiState.Loading -> LoadingState("Resolving stream…")

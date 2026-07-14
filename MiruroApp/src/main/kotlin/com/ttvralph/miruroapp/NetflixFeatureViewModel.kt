@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -40,9 +41,15 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
     private val repository = NetflixFeatureRepository()
     private val animeRepository = AniListRepository()
 
-    val profileState: StateFlow<ProfileState> = profilesStore.state.stateIn(
-        viewModelScope, SharingStarted.Eagerly, ProfileState()
-    )
+    /** Null until DataStore has produced the real cold-start profile snapshot. */
+    val loadedProfileState: StateFlow<ProfileState?> = profilesStore.state
+        .map<ProfileState, ProfileState?> { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val profileState: StateFlow<ProfileState> = loadedProfileState
+        .map { it ?: ProfileState() }
+        .stateIn(
+            viewModelScope, SharingStarted.Eagerly, ProfileState()
+        )
     val reactions: StateFlow<Map<Int, TitleReaction>> = engagement.reactions.stateIn(
         viewModelScope, SharingStarted.Eagerly, emptyMap()
     )

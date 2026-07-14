@@ -88,9 +88,10 @@ fun PlayerScreen(viewModel: MiruroViewModel, episode: AnimeEpisode?, onBack: () 
     }
 
     LaunchedEffect(episode) { viewModel.resolvePlayback(episode) }
-    DisposableEffect(Unit) { onDispose { viewModel.clearPlayback() } }
+    DisposableEffect(episode) { onDispose { viewModel.clearPlayback(episode) } }
 
-    val state by viewModel.playback.collectAsState()
+    val playback by viewModel.playback.collectAsState()
+    val state = playback.stateFor(episode)
     when (val s = state) {
         null, is UiState.Loading -> LoadingState("Resolving stream…")
         is UiState.Error -> ErrorState(s.message, onBack)

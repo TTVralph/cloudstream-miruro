@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -121,14 +122,33 @@ private fun MiruroApp(
     discovery: DiscoveryFeatureViewModel
 ) {
     val profileState by features.profileState.collectAsState()
-    var profileChosenThisSession by remember { mutableStateOf(false) }
-    if (profileState.profiles.size > 1 && !profileChosenThisSession) {
+    val loadedProfileState by features.loadedProfileState.collectAsState()
+    var startupProfileDecisionMade by rememberSaveable { mutableStateOf(false) }
+    var showStartupProfilePicker by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(loadedProfileState) {
+        if (!startupProfileDecisionMade) {
+            loadedProfileState?.let { loaded ->
+                showStartupProfilePicker = loaded.profiles.size > 1
+                startupProfileDecisionMade = true
+            }
+        }
+    }
+
+    if (!startupProfileDecisionMade) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
+            LoadingState("Loading profiles…")
+        }
+        return
+    }
+
+    if (showStartupProfilePicker) {
         Surface(modifier = Modifier.fillMaxSize(), color = MiruroColors.Background) {
             ProfilePickerScreen(
-                state = profileState,
+                state = loadedProfileState ?: profileState,
                 onSelect = { profile ->
                     features.switchProfile(profile)
-                    profileChosenThisSession = true
+                    showStartupProfilePicker = false
                 },
                 onCreate = { name, avatarId, themeColorId ->
                     features.createProfile(name, avatarId, themeColorId)

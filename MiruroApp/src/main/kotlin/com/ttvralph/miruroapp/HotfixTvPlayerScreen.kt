@@ -97,6 +97,14 @@ private enum class HotfixPanel {
     DIAGNOSTICS
 }
 
+private enum class HotfixFocusTarget {
+    NONE,
+    ROOT,
+    PLAY,
+    MENU,
+    SKIP
+}
+
 private enum class HotfixQuality(
     val setting: String,
     val label: String,
@@ -160,8 +168,9 @@ fun HotfixTvPlayerScreen(
     }
 
     LaunchedEffect(episode) { viewModel.resolvePlayback(episode) }
-    DisposableEffect(episode) { onDispose { viewModel.clearPlayback() } }
-    val state by viewModel.playback.collectAsState()
+    DisposableEffect(episode) { onDispose { viewModel.clearPlayback(episode) } }
+    val playback by viewModel.playback.collectAsState()
+    val state = playback.stateFor(episode)
 
     when (val current = state) {
         null, is UiState.Loading -> LoadingState("Resolving stream…")
@@ -247,12 +256,16 @@ private fun HotfixVideoPlayer(
     val skipIntervals by features.skipIntervals.collectAsState()
     var skipPositionMs by remember(episode) { mutableLongStateOf(0L) }
     var skipDurationMs by remember(episode) { mutableLongStateOf(0L) }
-    var handledSkipInterval by remember(episode) { mutableStateOf<SkipInterval?>(null) }
+    var dismissedSkipInterval by remember(episode) { mutableStateOf<SkipInterval?>(null) }
     var skipPromptFocused by remember(episode) { mutableStateOf(false) }
-    val activeSkip = remember(skipIntervals, episode, skipPositionMs, skipDurationMs, handledSkipInterval) {
+    val activeSkip = remember(skipIntervals, episode, skipPositionMs, skipDurationMs, dismissedSkipInterval) {
         features.intervalsFor(episode, skipDurationMs)
             .hotfixActiveAt(skipPositionMs)
-            ?.takeUnless { it == handledSkipInterval }
+            ?.takeUnless { it == dismissedSkipInterval }
+    }
+
+    LaunchedEffect(skipPositionMs, dismissedSkipInterval) {
+        dismissedSkipInterval = dismissedSkipInterval.hotfixDismissedAt(skipPositionMs)
     }
 
     val rootFocus = remember { FocusRequester() }
@@ -459,15 +472,21 @@ private fun HotfixVideoPlayer(
             if (autoplayCountdown == 1) playNextEpisode() else autoplayCountdown -= 1
         }
     }
-    LaunchedEffect(controlsVisible, panel, ended, playerError, activeSkip) {
+    val focusTarget = when {
+        playerError != null || ended -> HotfixFocusTarget.NONE
+        panel != HotfixPanel.NONE -> HotfixFocusTarget.MENU
+        controlsVisible -> HotfixFocusTarget.PLAY
+        activeSkip != null -> HotfixFocusTarget.SKIP
+        else -> HotfixFocusTarget.ROOT
+    }
+    LaunchedEffect(focusTarget) {
         delay(90L)
-        when {
-            playerError != null -> Unit
-            ended -> Unit
-            panel != HotfixPanel.NONE -> runCatching { menuFocus.requestFocus() }
-            controlsVisible -> runCatching { playFocus.requestFocus() }
-            activeSkip != null -> runCatching { skipFocus.requestFocus() }
-            else -> runCatching { rootFocus.requestFocus() }
+        when (focusTarget) {
+            HotfixFocusTarget.NONE -> Unit
+            HotfixFocusTarget.ROOT -> runCatching { rootFocus.requestFocus() }
+            HotfixFocusTarget.PLAY -> runCatching { playFocus.requestFocus() }
+            HotfixFocusTarget.MENU -> runCatching { menuFocus.requestFocus() }
+            HotfixFocusTarget.SKIP -> runCatching { skipFocus.requestFocus() }
         }
     }
     LaunchedEffect(controlsVisible, panel, ended, playerError, controlsActivity) {
@@ -519,7 +538,9 @@ private fun HotfixVideoPlayer(
     }
 
     fun performSkip(interval: SkipInterval) {
-        handledSkipInterval = interval
+        // Hide the prompt during the seek, then make it eligible again after the
+        // playhead leaves this interval. Rewinding into it can therefore show it again.
+        dismissedSkipInterval = interval
         controlsVisible = false
         panel = HotfixPanel.NONE
         player.seekTo((interval.endMs + 250L).coerceAtMost(skipDurationMs))
@@ -532,7 +553,7 @@ private fun HotfixVideoPlayer(
             panel != HotfixPanel.NONE -> panel = HotfixPanel.NONE
             ended -> onBack()
             controlsVisible -> controlsVisible = false
-            activeSkip != null -> handledSkipInterval = activeSkip
+            activeSkip != null -> dismissedSkipInterval = activeSkip
             else -> onBack()
         }
     }
@@ -1430,9 +1451,14 @@ private fun hotfixSourceForQuality(
 private fun hotfixProviderName(source: PlaybackSource): String =
     source.label.substringBefore(' ').takeIf { it.isNotBlank() } ?: "Unknown"
 
-private fun List<SkipInterval>.hotfixActiveAt(positionMs: Long): SkipInterval? = firstOrNull { interval ->
-    positionMs >= (interval.startMs - 350L).coerceAtLeast(0L) && positionMs < interval.endMs
-}
+internal fun SkipInterval.hotfixContains(positionMs: Long): Boolean =
+    positionMs >= (startMs - 350L).coerceAtLeast(0L) && positionMs < endMs
+
+internal fun List<SkipInterval>.hotfixActiveAt(positionMs: Long): SkipInterval? =
+    firstOrNull { interval -> interval.hotfixContains(positionMs) }
+
+internal fun SkipInterval?.hotfixDismissedAt(positionMs: Long): SkipInterval? =
+    this?.takeIf { interval -> interval.hotfixContains(positionMs) }
 
 private const val HOTFIX_AUTOPLAY_SECONDS = 10
 
