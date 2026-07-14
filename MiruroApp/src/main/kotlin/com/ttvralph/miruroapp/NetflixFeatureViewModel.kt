@@ -12,6 +12,8 @@ import com.ttvralph.miruroapp.data.LocalProfile
 import com.ttvralph.miruroapp.data.NetflixFeatureRepository
 import com.ttvralph.miruroapp.data.ProfileSession
 import com.ttvralph.miruroapp.data.ProfileState
+import com.ttvralph.miruroapp.data.PROFILE_AVATAR_IDS
+import com.ttvralph.miruroapp.data.PROFILE_THEME_COLOR_IDS
 import com.ttvralph.miruroapp.data.ProfileStore
 import com.ttvralph.miruroapp.data.SettingsStore
 import com.ttvralph.miruroapp.data.SkipInterval
@@ -22,6 +24,7 @@ import com.ttvralph.miruroapp.data.UpcomingEpisode
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.data.WatchProgressStore
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -60,6 +63,8 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
     val upcoming = _upcoming.asStateFlow()
     private val _skipIntervals = MutableStateFlow<Map<String, List<SkipInterval>>>(emptyMap())
     val skipIntervals = _skipIntervals.asStateFlow()
+    private val skipRequestsInFlight = mutableSetOf<String>()
+    private val skipRetryAfterMs = mutableMapOf<String, Long>()
 
     private var extrasJob: Job? = null
     private var homeJob: Job? = null
@@ -76,9 +81,21 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    fun createProfile() {
+    fun createProfile(name: String? = null, avatarId: String? = null, themeColorId: String? = null) {
         val number = profileState.value.profiles.size + 1
-        viewModelScope.launch { profilesStore.create("Profile $number") }
+        viewModelScope.launch {
+            profilesStore.create(
+                name = name?.trim().takeUnless { it.isNullOrBlank() } ?: "Profile $number",
+                avatarId = avatarId?.takeIf { it in PROFILE_AVATAR_IDS }
+                    ?: PROFILE_AVATAR_IDS[(number - 1) % PROFILE_AVATAR_IDS.size],
+                themeColorId = themeColorId?.takeIf { it in PROFILE_THEME_COLOR_IDS }
+                    ?: PROFILE_THEME_COLOR_IDS[(number - 1) % PROFILE_THEME_COLOR_IDS.size]
+            )
+        }
+    }
+
+    fun updateProfile(profile: LocalProfile, name: String, avatarId: String, themeColorId: String) {
+        viewModelScope.launch { profilesStore.update(profile, name, avatarId, themeColorId) }
     }
 
     fun switchProfile(profile: LocalProfile) {
@@ -195,13 +212,29 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
     fun loadSkipTimes(episode: AnimeEpisode, durationMs: Long) {
         if (durationMs <= 0L) return
         val key = skipKey(episode, durationMs)
-        if (key in _skipIntervals.value) return
-        _skipIntervals.value += key to emptyList()
+        val now = System.currentTimeMillis()
+        if (
+            key in _skipIntervals.value ||
+            key in skipRequestsInFlight ||
+            now < (skipRetryAfterMs[key] ?: 0L)
+        ) return
+        skipRequestsInFlight += key
         viewModelScope.launch {
-            val values = runCatching {
-                repository.skipTimes(episode.anilistId, episode.episodeNumber, durationMs / 1_000.0)
-            }.getOrDefault(emptyList())
-            _skipIntervals.value += key to values
+            try {
+                val values = repository.skipTimes(
+                    episode.anilistId,
+                    episode.episodeNumber,
+                    durationMs / 1_000.0
+                )
+                _skipIntervals.value += key to values
+                skipRetryAfterMs.remove(key)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                skipRetryAfterMs[key] = System.currentTimeMillis() + SKIP_RETRY_DELAY_MS
+            } finally {
+                skipRequestsInFlight -= key
+            }
         }
     }
 
@@ -283,9 +316,13 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
         _upcoming.value = emptyList()
         _extras.value = null
         _skipIntervals.value = emptyMap()
+        skipRequestsInFlight.clear()
+        skipRetryAfterMs.clear()
         lastHomeSignature = null
     }
 
     private fun skipKey(episode: AnimeEpisode, durationMs: Long): String =
         "${episode.anilistId}:${episode.episodeNumber}:${durationMs / 30_000L}"
 }
+
+private const val SKIP_RETRY_DELAY_MS = 15_000L

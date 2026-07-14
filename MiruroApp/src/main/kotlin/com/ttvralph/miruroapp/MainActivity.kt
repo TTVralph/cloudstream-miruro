@@ -49,7 +49,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val settings by viewModel.settings.collectAsState()
-            MiruroTheme(settings.themeMode) { MiruroApp(viewModel, featureViewModel, discoveryViewModel) }
+            val profileState by featureViewModel.profileState.collectAsState()
+            MiruroTheme(settings.themeMode, profileState.activeProfile.themeColorId) {
+                MiruroApp(viewModel, featureViewModel, discoveryViewModel)
+            }
         }
     }
 }
@@ -69,6 +72,7 @@ private sealed class Routes(val route: String) {
     data object Series : Routes("series")
     data object Genres : Routes("genres")
     data object Settings : Routes("settings")
+    data object Profiles : Routes("profiles")
     data object Details : Routes("details/{${Args.ID}}") {
         fun path(id: Int) = "details/$id"
     }
@@ -106,6 +110,7 @@ private fun navLabelFor(route: String?): String = when (route) {
     Routes.Series.route -> "Anime"
     Routes.Genres.route -> "Discover"
     Routes.Settings.route -> "Settings"
+    Routes.Profiles.route -> "Profiles"
     else -> ""
 }
 
@@ -125,7 +130,9 @@ private fun MiruroApp(
                     features.switchProfile(profile)
                     profileChosenThisSession = true
                 },
-                onCreate = features::createProfile
+                onCreate = { name, avatarId, themeColorId ->
+                    features.createProfile(name, avatarId, themeColorId)
+                }
             )
         }
         return
@@ -226,6 +233,15 @@ private fun MiruroApp(
                 composable(Routes.Settings.route) {
                     EnhancedSettingsScreen(viewModel, features)
                 }
+                composable(Routes.Profiles.route) {
+                    MyAniStreamScreen(
+                        viewModel = viewModel,
+                        features = features,
+                        onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
+                        onPlayProgress = ::playProgress,
+                        openProfiles = true
+                    )
+                }
                 composable(
                     Routes.Details.route,
                     arguments = listOf(navArgument(Args.ID) { type = NavType.IntType })
@@ -310,10 +326,12 @@ private fun MiruroApp(
                         audio = audio,
                         onBack = { navController.backOrHome() },
                         onPlayNext = { next ->
-                            navController.popBackStack()
                             navController.navigate(
                                 Routes.Player.path(id, next.seasonNumber, next.episodeNumber, next.audioType)
-                            )
+                            ) {
+                                popUpTo(entry.destination.id) { inclusive = true }
+                                launchSingleTop = true
+                            }
                         }
                     )
                 }
@@ -322,6 +340,8 @@ private fun MiruroApp(
             if (topLevelRoute) {
                 ReliableTopBar(
                     current = currentLabel,
+                    profileName = profileState.activeProfile.name,
+                    profileAvatarId = profileState.activeProfile.avatarId,
                     onHome = { navController.navigateTopLevel(Routes.Home.route) },
                     onAnime = { navController.navigateTopLevel(Routes.Series.route) },
                     onMovies = { navController.navigateTopLevel(Routes.Movies.route) },
@@ -329,6 +349,7 @@ private fun MiruroApp(
                     onMyList = { navController.navigateTopLevel(Routes.Favorites.route) },
                     onSearch = { navController.navigateTopLevel(Routes.Search.route) },
                     onSettings = { navController.navigateTopLevel(Routes.Settings.route) },
+                    onProfiles = { navController.navigateTopLevel(Routes.Profiles.route) },
                     modifier = Modifier.align(Alignment.TopCenter).zIndex(100f)
                 )
             }

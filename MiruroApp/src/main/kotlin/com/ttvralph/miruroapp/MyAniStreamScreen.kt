@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -31,11 +32,13 @@ import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AnimeType
 import com.ttvralph.miruroapp.data.DEFAULT_PROFILE_ID
+import com.ttvralph.miruroapp.data.LocalProfile
 import com.ttvralph.miruroapp.data.TitleReaction
 import com.ttvralph.miruroapp.data.TrackingStatus
 import com.ttvralph.miruroapp.data.UpcomingEpisode
 import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.ui.LandscapeCard
+import com.ttvralph.miruroapp.ui.MinimalActionButton
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PosterCard
 import com.ttvralph.miruroapp.ui.PrimaryButton
@@ -56,30 +59,36 @@ fun MyAniStreamScreen(
     viewModel: MiruroViewModel,
     features: NetflixFeatureViewModel,
     onOpenDetails: (Int) -> Unit,
-    onPlayProgress: (WatchProgress) -> Unit
+    onPlayProgress: (WatchProgress) -> Unit,
+    openProfiles: Boolean = false
 ) {
-    val profileState by features.profileState.collectAsState()
-    var tab by remember { mutableStateOf(MyAniStreamTab.OVERVIEW) }
+    var tab by remember(openProfiles) {
+        mutableStateOf(if (openProfiles) MyAniStreamTab.PROFILES else MyAniStreamTab.OVERVIEW)
+    }
+    var profileEditorOpen by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                "My AniStream • ${profileState.activeProfile.name}",
-                color = Color.White,
-                fontSize = 29.sp,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier.weight(1f)
-            )
-            MyAniStreamTab.entries.forEach { option ->
-                val selected = option == tab
-                val width = if (option == MyAniStreamTab.LIBRARY) 190.dp else 150.dp
-                if (selected) {
-                    PrimaryButton(option.label, Modifier.width(width)) { tab = option }
-                } else {
-                    SecondaryButton(option.label, Modifier.width(width)) { tab = option }
+        if (!profileEditorOpen) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "My AniStream",
+                    color = Color.White,
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                MyAniStreamTab.entries.forEach { option ->
+                    val selected = option == tab
+                    val width = if (option == MyAniStreamTab.LIBRARY) 170.dp else 132.dp
+                    MinimalActionButton(
+                        text = option.label,
+                        modifier = Modifier.width(width),
+                        selected = selected,
+                        onClick = { tab = option }
+                    )
                 }
             }
         }
@@ -88,7 +97,10 @@ fun MyAniStreamScreen(
             MyAniStreamTab.OVERVIEW -> MyAniStreamOverview(viewModel, features, onOpenDetails, onPlayProgress)
             MyAniStreamTab.TRACKING -> MyAniStreamTracking(viewModel, features, onOpenDetails)
             MyAniStreamTab.LIBRARY -> WatchManagementScreen(viewModel, onOpenDetails, onPlayProgress)
-            MyAniStreamTab.PROFILES -> MyAniStreamProfiles(features)
+            MyAniStreamTab.PROFILES -> MyAniStreamProfiles(
+                features = features,
+                onEditorOpenChanged = { profileEditorOpen = it }
+            )
         }
     }
 }
@@ -162,7 +174,7 @@ private fun MyAniStreamOverview(
                                 fontWeight = FontWeight.Bold
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SecondaryButton("Resume", Modifier.width(145.dp)) { onPlayProgress(saved) }
+                                PrimaryButton("Resume", Modifier.width(145.dp)) { onPlayProgress(saved) }
                                 SecondaryButton("Restart", Modifier.width(145.dp)) {
                                     features.removeProgress(saved)
                                     onPlayProgress(saved.copy(positionMs = 0L, updatedAtMs = System.currentTimeMillis()))
@@ -334,8 +346,37 @@ private fun UpcomingRow(
 }
 
 @Composable
-private fun MyAniStreamProfiles(features: NetflixFeatureViewModel) {
+private fun MyAniStreamProfiles(
+    features: NetflixFeatureViewModel,
+    onEditorOpenChanged: (Boolean) -> Unit
+) {
     val state by features.profileState.collectAsState()
+    var creating by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<LocalProfile?>(null) }
+    val editingProfile = editing
+    val editorOpen = creating || editingProfile != null
+    LaunchedEffect(editorOpen) { onEditorOpenChanged(editorOpen) }
+    if (editorOpen) {
+        ProfileEditorOverlay(
+            profile = editingProfile,
+            suggestedName = "Profile ${state.profiles.size + 1}",
+            onCancel = {
+                creating = false
+                editing = null
+            },
+            onSave = { name, avatarId, themeColorId ->
+                if (editingProfile == null) {
+                    features.createProfile(name, avatarId, themeColorId)
+                } else {
+                    features.updateProfile(editingProfile, name, avatarId, themeColorId)
+                }
+                creating = false
+                editing = null
+            }
+        )
+        return
+    }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
         item {
             SectionTitle("Local profiles", "${state.profiles.size} PROFILES")
@@ -345,13 +386,18 @@ private fun MyAniStreamProfiles(features: NetflixFeatureViewModel) {
                 fontSize = 14.sp
             )
             Spacer(Modifier.height(14.dp))
-            SecondaryButton("Add profile", Modifier.width(190.dp)) { features.createProfile() }
+            SecondaryButton("Add profile", Modifier.width(190.dp)) { creating = true }
         }
         items(state.profiles, key = { it.id }) { profile ->
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                ProfileAvatarArtwork(
+                    name = profile.name,
+                    avatarId = profile.avatarId,
+                    modifier = Modifier.size(58.dp)
+                )
                 Text(
                     if (profile.id == state.activeId) "${profile.name} • Active" else profile.name,
                     color = if (profile.id == state.activeId) MiruroColors.AccentSoft else Color.White,
@@ -359,9 +405,10 @@ private fun MyAniStreamProfiles(features: NetflixFeatureViewModel) {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f).padding(top = 14.dp)
                 )
-                SecondaryButton("Switch", Modifier.width(150.dp)) { features.switchProfile(profile) }
+                SecondaryButton("Switch", Modifier.width(130.dp)) { features.switchProfile(profile) }
+                SecondaryButton("Edit", Modifier.width(130.dp)) { editing = profile }
                 if (profile.id != DEFAULT_PROFILE_ID) {
-                    SecondaryButton("Delete", Modifier.width(150.dp)) { features.deleteProfile(profile) }
+                    SecondaryButton("Delete", Modifier.width(130.dp)) { features.deleteProfile(profile) }
                 }
             }
         }

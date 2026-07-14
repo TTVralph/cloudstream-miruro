@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -72,6 +73,7 @@ import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.PlaybackSource
 import com.ttvralph.miruroapp.data.PlaybackType
 import com.ttvralph.miruroapp.data.SettingsStore
+import com.ttvralph.miruroapp.data.SkipInterval
 import com.ttvralph.miruroapp.data.SubtitleTrack
 import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.LoadingState
@@ -84,6 +86,7 @@ import kotlinx.coroutines.launch
 private const val HOTFIX_PLAYER_TAG = "HotfixTvPlayer"
 private const val HOTFIX_SEEK_MS = 10_000L
 private const val HOTFIX_PROGRESS_SAVE_INTERVAL_MS = 10_000L
+private const val HOTFIX_CONTROLS_HIDE_DELAY_MS = 5_000L
 
 private enum class HotfixPanel {
     NONE,
@@ -139,6 +142,7 @@ private data class HotfixDiagnostics(
 @Composable
 fun HotfixTvPlayerScreen(
     viewModel: MiruroViewModel,
+    features: NetflixFeatureViewModel,
     episode: AnimeEpisode?,
     nextEpisode: AnimeEpisode?,
     onBack: () -> Unit,
@@ -173,6 +177,7 @@ fun HotfixTvPlayerScreen(
             episode = episode,
             nextEpisode = nextEpisode,
             viewModel = viewModel,
+            features = features,
             onBack = onBack,
             onPlayNext = onPlayNext
         )
@@ -185,6 +190,7 @@ private fun HotfixVideoPlayer(
     episode: AnimeEpisode,
     nextEpisode: AnimeEpisode?,
     viewModel: MiruroViewModel,
+    features: NetflixFeatureViewModel,
     onBack: () -> Unit,
     onPlayNext: (AnimeEpisode) -> Unit
 ) {
@@ -204,7 +210,16 @@ private fun HotfixVideoPlayer(
         (listOf(initialSource.copy(fallbackSources = emptyList())) + initialSource.fallbackSources)
             .distinctBy { it.url to it.type }
     }
-    var sourceIndex by remember(initialSource) { mutableIntStateOf(0) }
+    val resumeSourceIndex = remember(sources, savedProgress?.sourceProvider, savedProgress?.sourceLabel) {
+        sources.indexOfFirst { source ->
+            savedProgress?.sourceLabel?.let { source.label.equals(it, ignoreCase = true) } == true
+        }.takeIf { it >= 0 } ?: sources.indexOfFirst { source ->
+            savedProgress?.sourceProvider?.let {
+                hotfixProviderName(source).equals(it, ignoreCase = true)
+            } == true
+        }.coerceAtLeast(0)
+    }
+    var sourceIndex by remember(initialSource, resumeSourceIndex) { mutableIntStateOf(resumeSourceIndex) }
     val activeSource = sources[sourceIndex.coerceIn(0, sources.lastIndex)]
     var quality by remember(initialSource) { mutableStateOf(HotfixQuality.fromSetting(settings.preferredQuality)) }
     var subtitleChoice by remember(activeSource) {
@@ -217,20 +232,33 @@ private fun HotfixVideoPlayer(
     var subtitleBackground by remember(settings.subtitleBackground) { mutableStateOf(settings.subtitleBackground) }
     var speed by remember(initialSource) { mutableFloatStateOf(1f) }
     var controlsVisible by remember(initialSource) { mutableStateOf(true) }
+    var controlsActivity by remember(initialSource) { mutableIntStateOf(0) }
     var panel by remember(initialSource) { mutableStateOf(HotfixPanel.NONE) }
     var playerError by remember(initialSource) { mutableStateOf<String?>(null) }
     var lastPlaybackError by remember(initialSource) { mutableStateOf<String?>(null) }
     var message by remember(initialSource) { mutableStateOf<String?>(null) }
     var ended by remember(initialSource) { mutableStateOf(false) }
     var autoplayCountdown by remember(initialSource) { mutableIntStateOf(0) }
+    var advancingToNext by remember(initialSource) { mutableStateOf(false) }
     var pendingPosition by remember(initialSource) { mutableLongStateOf(0L) }
     var retryNonce by remember(initialSource) { mutableIntStateOf(0) }
     var fallbackEvents by remember(initialSource) { mutableStateOf(emptyList<String>()) }
     var diagnostics by remember(initialSource) { mutableStateOf(HotfixDiagnostics()) }
+    val skipIntervals by features.skipIntervals.collectAsState()
+    var skipPositionMs by remember(episode) { mutableLongStateOf(0L) }
+    var skipDurationMs by remember(episode) { mutableLongStateOf(0L) }
+    var handledSkipInterval by remember(episode) { mutableStateOf<SkipInterval?>(null) }
+    var skipPromptFocused by remember(episode) { mutableStateOf(false) }
+    val activeSkip = remember(skipIntervals, episode, skipPositionMs, skipDurationMs, handledSkipInterval) {
+        features.intervalsFor(episode, skipDurationMs)
+            .hotfixActiveAt(skipPositionMs)
+            ?.takeUnless { it == handledSkipInterval }
+    }
 
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
     val menuFocus = remember { FocusRequester() }
+    val skipFocus = remember { FocusRequester() }
 
     val trackSelector = remember(activeSource, quality, retryNonce) {
         DefaultTrackSelector(context).apply {
@@ -268,11 +296,17 @@ private fun HotfixVideoPlayer(
                             playerError = null
                         }
                         if (playbackState == Player.STATE_ENDED) {
-                            ended = true
-                            controlsVisible = false
-                            panel = HotfixPanel.NONE
-                            viewModel.setEpisodeWatched(episode, true)
-                            autoplayCountdown = if (settings.autoPlayNext && nextEpisode != null) 5 else 0
+                            if (!ended && !advancingToNext) {
+                                controlsVisible = false
+                                panel = HotfixPanel.NONE
+                                viewModel.setEpisodeWatched(episode, true)
+                                autoplayCountdown = if (settings.autoPlayNext && nextEpisode != null) {
+                                    HOTFIX_AUTOPLAY_SECONDS
+                                } else {
+                                    0
+                                }
+                                ended = true
+                            }
                         }
                     }
 
@@ -326,7 +360,15 @@ private fun HotfixVideoPlayer(
     DisposableEffect(player) {
         onDispose {
             val duration = player.duration.takeIf { it > 0L } ?: 0L
-            if (duration > 0L) viewModel.saveProgress(episode, player.currentPosition, duration)
+            if (duration > 0L) {
+                viewModel.saveProgress(
+                    episode,
+                    player.currentPosition,
+                    duration,
+                    hotfixProviderName(activeSource),
+                    activeSource.label
+                )
+            }
             player.release()
         }
     }
@@ -336,11 +378,20 @@ private fun HotfixVideoPlayer(
         while (true) {
             val duration = player.duration.takeIf { it > 0L } ?: 0L
             val position = player.currentPosition.coerceAtLeast(0L)
+            skipPositionMs = position
+            skipDurationMs = duration
+            if (duration > 0L) features.loadSkipTimes(episode, duration)
             if (
                 duration > 0L && position > 0L && !ended &&
                 abs(position - lastSavedPosition) >= HOTFIX_PROGRESS_SAVE_INTERVAL_MS
             ) {
-                viewModel.saveProgress(episode, position, duration)
+                viewModel.saveProgress(
+                    episode,
+                    position,
+                    duration,
+                    hotfixProviderName(activeSource),
+                    activeSource.label
+                )
                 lastSavedPosition = position
             }
             val format = player.videoFormat
@@ -390,20 +441,39 @@ private fun HotfixVideoPlayer(
             message = null
         }
     }
-    LaunchedEffect(autoplayCountdown) {
-        if (autoplayCountdown > 0 && nextEpisode != null) {
+
+    fun playNextEpisode() {
+        val target = nextEpisode ?: return
+        if (advancingToNext) return
+        advancingToNext = true
+        autoplayCountdown = 0
+        ended = false
+        controlsVisible = false
+        panel = HotfixPanel.NONE
+        onPlayNext(target)
+    }
+
+    LaunchedEffect(autoplayCountdown, nextEpisode, advancingToNext) {
+        if (autoplayCountdown > 0 && nextEpisode != null && !advancingToNext) {
             delay(1_000L)
-            if (autoplayCountdown == 1) onPlayNext(nextEpisode) else autoplayCountdown -= 1
+            if (autoplayCountdown == 1) playNextEpisode() else autoplayCountdown -= 1
         }
     }
-    LaunchedEffect(controlsVisible, panel, ended, playerError) {
+    LaunchedEffect(controlsVisible, panel, ended, playerError, activeSkip) {
         delay(90L)
         when {
             playerError != null -> Unit
             ended -> Unit
             panel != HotfixPanel.NONE -> runCatching { menuFocus.requestFocus() }
             controlsVisible -> runCatching { playFocus.requestFocus() }
+            activeSkip != null -> runCatching { skipFocus.requestFocus() }
             else -> runCatching { rootFocus.requestFocus() }
+        }
+    }
+    LaunchedEffect(controlsVisible, panel, ended, playerError, controlsActivity) {
+        if (controlsVisible && panel == HotfixPanel.NONE && !ended && playerError == null) {
+            delay(HOTFIX_CONTROLS_HIDE_DELAY_MS)
+            controlsVisible = false
         }
     }
 
@@ -448,12 +518,21 @@ private fun HotfixVideoPlayer(
         panel = HotfixPanel.NONE
     }
 
+    fun performSkip(interval: SkipInterval) {
+        handledSkipInterval = interval
+        controlsVisible = false
+        panel = HotfixPanel.NONE
+        player.seekTo((interval.endMs + 250L).coerceAtMost(skipDurationMs))
+        player.play()
+    }
+
     BackHandler {
         when {
             playerError != null -> onBack()
             panel != HotfixPanel.NONE -> panel = HotfixPanel.NONE
             ended -> onBack()
             controlsVisible -> controlsVisible = false
+            activeSkip != null -> handledSkipInterval = activeSkip
             else -> onBack()
         }
     }
@@ -486,6 +565,35 @@ private fun HotfixVideoPlayer(
             .focusable()
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (ended) return@onPreviewKeyEvent false
+                if (controlsVisible) controlsActivity += 1
+                val prompt = activeSkip
+                if (skipPromptFocused && prompt != null) {
+                    when (event.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                            performSkip(prompt)
+                            return@onPreviewKeyEvent true
+                        }
+                        Key.DirectionLeft -> {
+                            player.seekTo((player.currentPosition - HOTFIX_SEEK_MS).coerceAtLeast(0L))
+                            controlsVisible = false
+                            message = "Rewind 10 seconds"
+                            return@onPreviewKeyEvent true
+                        }
+                        Key.DirectionRight -> {
+                            player.seekTo(player.currentPosition + HOTFIX_SEEK_MS)
+                            controlsVisible = false
+                            message = "Forward 10 seconds"
+                            return@onPreviewKeyEvent true
+                        }
+                        Key.DirectionUp, Key.DirectionDown -> {
+                            controlsVisible = true
+                            controlsActivity += 1
+                            return@onPreviewKeyEvent true
+                        }
+                        else -> Unit
+                    }
+                }
                 when (event.key) {
                     Key.MediaPlayPause -> {
                         if (player.isPlaying) player.pause() else player.play()
@@ -506,13 +614,11 @@ private fun HotfixVideoPlayer(
                     }
                     Key.DirectionLeft -> if (!controlsVisible) {
                         player.seekTo((player.currentPosition - HOTFIX_SEEK_MS).coerceAtLeast(0L))
-                        controlsVisible = true
                         message = "Rewind 10 seconds"
                         true
                     } else false
                     Key.DirectionRight -> if (!controlsVisible) {
                         player.seekTo(player.currentPosition + HOTFIX_SEEK_MS)
-                        controlsVisible = true
                         message = "Forward 10 seconds"
                         true
                     } else false
@@ -529,6 +635,7 @@ private fun HotfixVideoPlayer(
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
                     useController = false
+                    keepScreenOn = true
                     setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
                     isFocusable = false
                     isFocusableInTouchMode = false
@@ -570,8 +677,24 @@ private fun HotfixVideoPlayer(
                 onSubtitle = { panel = HotfixPanel.SUBTITLES },
                 onSpeed = { panel = HotfixPanel.SPEED },
                 onDiagnostics = { panel = HotfixPanel.DIAGNOSTICS },
-                onNext = { nextEpisode?.let(onPlayNext) },
+                onNext = ::playNextEpisode,
                 onHide = { controlsVisible = false }
+            )
+        }
+
+        activeSkip?.takeIf { panel == HotfixPanel.NONE && !ended }?.let { interval ->
+            HotfixSkipPrompt(
+                interval = interval,
+                focusRequester = skipFocus,
+                controlsVisible = controlsVisible,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = 46.dp,
+                        bottom = if (controlsVisible) 128.dp else 42.dp
+                    ),
+                onFocused = { skipPromptFocused = it },
+                onClick = { performSkip(interval) }
             )
         }
 
@@ -605,6 +728,7 @@ private fun HotfixVideoPlayer(
                 focusRequester = menuFocus,
                 largeControls = settings.largePlayerControls,
                 highContrast = settings.highContrastPlayerControls,
+                onClose = { panel = HotfixPanel.NONE },
                 onTrackSelected = ::selectSubtitle,
                 onSizeSelected = { value ->
                     subtitleSize = value
@@ -652,6 +776,65 @@ private fun HotfixVideoPlayer(
                     )
                     .padding(horizontal = 20.dp, vertical = 12.dp)
             )
+        }
+
+        if (ended) {
+            EnhancedPostPlayOverlay(
+                episode = episode,
+                nextEpisode = nextEpisode,
+                autoplayEnabled = settings.autoPlayNext,
+                autoplayCountdown = autoplayCountdown,
+                onCancelAutoplay = { autoplayCountdown = 0 },
+                onPlayNext = ::playNextEpisode,
+                onReplay = {
+                    autoplayCountdown = 0
+                    advancingToNext = false
+                    ended = false
+                    controlsVisible = false
+                    player.seekTo(0L)
+                    player.play()
+                },
+                onMarkUnwatched = { viewModel.setEpisodeWatched(episode, false) },
+                onBack = onBack
+            )
+        }
+    }
+}
+
+@Composable
+private fun HotfixSkipPrompt(
+    interval: SkipInterval,
+    focusRequester: FocusRequester,
+    controlsVisible: Boolean,
+    modifier: Modifier = Modifier,
+    onFocused: (Boolean) -> Unit,
+    onClick: () -> Unit
+) {
+    FocusableSurface(
+        onClick = onClick,
+        modifier = modifier
+            .width(if (controlsVisible) 198.dp else 186.dp)
+            .height(52.dp)
+            .focusRequester(focusRequester)
+            .onFocusChanged { onFocused(it.isFocused) },
+        shape = RoundedCornerShape(7.dp),
+        unfocusedBackground = MiruroColors.Accent.copy(alpha = 0.94f),
+        focusedBackground = Color.White,
+        focusedBorderColor = MiruroColors.AccentSoft,
+        unfocusedBorderColor = Color.White.copy(alpha = 0.24f)
+    ) { focused ->
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 17.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                interval.kind.label,
+                color = if (focused) Color.Black else Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Black
+            )
+            Text("›", color = if (focused) Color.Black else Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -972,53 +1155,81 @@ private fun HotfixSubtitlePanel(
     focusRequester: FocusRequester,
     largeControls: Boolean,
     highContrast: Boolean,
+    onClose: () -> Unit,
     onTrackSelected: (HotfixSubtitleChoice) -> Unit,
     onSizeSelected: (String) -> Unit,
     onBackgroundSelected: (String) -> Unit
 ) {
     HotfixPlayerPanel("Subtitles & captions") {
-        item { HotfixPanelSection("Track") }
         item {
-            HotfixPanelRow(
-                text = "Off",
-                supporting = null,
-                selected = selected is HotfixSubtitleChoice.Off,
-                modifier = Modifier.focusRequester(focusRequester),
-                large = largeControls,
-                highContrast = highContrast
-            ) { onTrackSelected(HotfixSubtitleChoice.Off) }
+            Text(
+                if (source.subtitleTracks.isEmpty()) {
+                    "No provider returned a switchable subtitle track for this episode. Any text visible in the video is baked in and cannot be hidden, resized, or restyled."
+                } else {
+                    "Switchable tracks returned across this episode's providers are listed here. Text baked into the video cannot be changed."
+                },
+                color = Color.White.copy(alpha = 0.70f),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.padding(start = 5.dp, end = 5.dp, bottom = 8.dp)
+            )
         }
-        item {
-            HotfixPanelRow(
-                text = "Auto (${source.subtitleTracks.getOrNull(automatic)?.let(::hotfixSubtitleLabel) ?: "preferred language"})",
-                supporting = "Follows the preferred subtitle language",
-                selected = selected is HotfixSubtitleChoice.Auto,
-                modifier = Modifier,
-                large = largeControls,
-                highContrast = highContrast
-            ) { onTrackSelected(HotfixSubtitleChoice.Auto) }
-        }
-        itemsIndexed(source.subtitleTracks) { index, track ->
-            val label = hotfixSubtitleLabel(track)
-            HotfixPanelRow(
-                text = label,
-                supporting = if (label.contains("SDH") || label.contains("CC")) "Caption track" else track.language,
-                selected = selected is HotfixSubtitleChoice.Track && selected.index == index,
-                modifier = Modifier,
-                large = largeControls,
-                highContrast = highContrast
-            ) { onTrackSelected(HotfixSubtitleChoice.Track(index)) }
-        }
-        item { HotfixPanelSection("Text size") }
-        itemsIndexed(listOf("Small", "Medium", "Large", "Extra Large")) { _, option ->
-            HotfixPanelRow(option, "Applies immediately", option == textSize, Modifier, largeControls, highContrast) {
-                onSizeSelected(option)
+        if (source.subtitleTracks.isEmpty()) {
+            item {
+                HotfixPanelRow(
+                    text = "Back to player",
+                    supporting = "Keep the current video source",
+                    selected = false,
+                    modifier = Modifier.focusRequester(focusRequester),
+                    large = largeControls,
+                    highContrast = highContrast,
+                    onClick = onClose
+                )
             }
-        }
-        item { HotfixPanelSection("Background opacity") }
-        itemsIndexed(listOf("Off", "Low", "Medium", "High")) { _, option ->
-            HotfixPanelRow(option, "Applies immediately", option == background, Modifier, largeControls, highContrast) {
-                onBackgroundSelected(option)
+        } else {
+            item { HotfixPanelSection("External track") }
+            item {
+                HotfixPanelRow(
+                    text = "Off",
+                    supporting = null,
+                    selected = selected is HotfixSubtitleChoice.Off,
+                    modifier = Modifier.focusRequester(focusRequester),
+                    large = largeControls,
+                    highContrast = highContrast
+                ) { onTrackSelected(HotfixSubtitleChoice.Off) }
+            }
+            item {
+                HotfixPanelRow(
+                    text = "Auto (${source.subtitleTracks.getOrNull(automatic)?.let(::hotfixSubtitleLabel) ?: "preferred language"})",
+                    supporting = "Follows the preferred subtitle language",
+                    selected = selected is HotfixSubtitleChoice.Auto,
+                    modifier = Modifier,
+                    large = largeControls,
+                    highContrast = highContrast
+                ) { onTrackSelected(HotfixSubtitleChoice.Auto) }
+            }
+            itemsIndexed(source.subtitleTracks) { index, track ->
+                val label = hotfixSubtitleLabel(track)
+                HotfixPanelRow(
+                    text = label,
+                    supporting = if (label.contains("SDH") || label.contains("CC")) "Caption track" else track.language,
+                    selected = selected is HotfixSubtitleChoice.Track && selected.index == index,
+                    modifier = Modifier,
+                    large = largeControls,
+                    highContrast = highContrast
+                ) { onTrackSelected(HotfixSubtitleChoice.Track(index)) }
+            }
+            item { HotfixPanelSection("Text size") }
+            itemsIndexed(listOf("Small", "Medium", "Large", "Extra Large")) { _, option ->
+                HotfixPanelRow(option, "Applies to external captions", option == textSize, Modifier, largeControls, highContrast) {
+                    onSizeSelected(option)
+                }
+            }
+            item { HotfixPanelSection("Background opacity") }
+            itemsIndexed(listOf("Off", "Low", "Medium", "High")) { _, option ->
+                HotfixPanelRow(option, "Applies to external captions", option == background, Modifier, largeControls, highContrast) {
+                    onBackgroundSelected(option)
+                }
             }
         }
     }
@@ -1218,6 +1429,12 @@ private fun hotfixSourceForQuality(
 
 private fun hotfixProviderName(source: PlaybackSource): String =
     source.label.substringBefore(' ').takeIf { it.isNotBlank() } ?: "Unknown"
+
+private fun List<SkipInterval>.hotfixActiveAt(positionMs: Long): SkipInterval? = firstOrNull { interval ->
+    positionMs >= (interval.startMs - 350L).coerceAtLeast(0L) && positionMs < interval.endMs
+}
+
+private const val HOTFIX_AUTOPLAY_SECONDS = 10
 
 private fun hotfixQualityHeight(source: PlaybackSource): Int? =
     Regex("""(?i)(2160|1440|1080|720|480|360)p""")

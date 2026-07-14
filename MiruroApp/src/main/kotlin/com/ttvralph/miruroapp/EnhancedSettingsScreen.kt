@@ -6,10 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,13 +44,18 @@ fun EnhancedSettingsScreen(
     val store = remember(context) { SettingsStore(context) }
     val scope = rememberCoroutineScope()
 
-    Box(Modifier.fillMaxSize()) {
-        AuditSettingsScreen(viewModel)
+    Row(
+        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(24.dp)
+    ) {
+        AuditSettingsScreen(
+            viewModel = viewModel,
+            modifier = Modifier.weight(1f).fillMaxHeight()
+        )
         LazyColumn(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .width(430.dp)
-                .heightIn(max = 610.dp)
+                .width(400.dp)
+                .fillMaxHeight()
                 .background(Color.Black.copy(alpha = 0.94f), RoundedCornerShape(12.dp))
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -67,6 +72,13 @@ fun EnhancedSettingsScreen(
                     color = MiruroColors.Subtle,
                     fontSize = 12.sp
                 )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Caption controls affect switchable tracks only. Subtitles baked into a provider's video cannot be hidden, resized, or restyled.",
+                    color = MiruroColors.AccentSoft,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp
+                )
             }
 
             item {
@@ -80,6 +92,15 @@ fun EnhancedSettingsScreen(
 
             item {
                 PlayerSettingChoices(
+                    title = "Subtitle contrast",
+                    description = "Default uses a shadow; High Contrast adds a solid outline and black backdrop.",
+                    options = listOf("Default", "High Contrast"),
+                    selected = if (settings.subtitleStyle == "High Contrast") "High Contrast" else "Default"
+                ) { value -> scope.launch { store.updateSubtitleStyle(value) } }
+            }
+
+            item {
+                PlayerSettingChoices(
                     title = "Subtitle size",
                     description = "Changes caption text size during playback.",
                     options = listOf("Small", "Medium", "Large", "Extra Large"),
@@ -89,8 +110,8 @@ fun EnhancedSettingsScreen(
 
             item {
                 PlayerSettingChoices(
-                    title = "Subtitle background",
-                    description = "Controls the black background behind caption text.",
+                    title = "Subtitle background opacity",
+                    description = "Controls how dark the black backdrop behind captions appears.",
                     options = listOf("Off", "Low", "Medium", "High"),
                     selected = settings.subtitleBackground
                 ) { value -> scope.launch { store.updateSubtitleBackground(value) } }

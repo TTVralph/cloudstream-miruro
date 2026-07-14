@@ -531,7 +531,7 @@ private fun StitchCard(
                 Modifier.align(Alignment.BottomStart)
                     .fillMaxWidth(it.coerceIn(0f, 1f))
                     .height(4.dp)
-                    .background(Color(0xFFE50914))
+                    .background(MiruroColors.Accent)
             )
         }
     }

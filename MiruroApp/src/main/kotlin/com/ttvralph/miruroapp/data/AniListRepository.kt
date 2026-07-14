@@ -146,13 +146,8 @@ class AniListRepository {
     suspend fun resolveEpisodeSource(episode: AnimeEpisode, provider: String? = null): SourceResolution =
         miruro.resolveSource(
             episode.anilistId,
-            episode.sourceCandidates.let { candidates ->
-                provider
-                    ?.takeIf { it != "Auto" }
-                    ?.let { selected -> candidates.filter { it.provider.equals(selected, ignoreCase = true) } }
-                    ?.ifEmpty { candidates }
-                    ?: candidates
-            }
+            episode.sourceCandidates,
+            provider?.takeUnless { it.equals("Auto", ignoreCase = true) }
         )
 
     /**

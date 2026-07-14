@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ttvralph.miruroapp.data.AnimeEpisode
-import com.ttvralph.miruroapp.ui.GenreChip
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PrimaryButton
 import com.ttvralph.miruroapp.ui.SecondaryButton
@@ -71,7 +70,7 @@ fun AutomaticEpisodeDetailsScreen(
         episode.seasonNumber,
         episode.episodeNumber
     ) in hiddenKeys
-    val providers = episode.sourceCandidates
+    val providers = listOf("Auto") + episode.sourceCandidates
         .map { it.provider.lowercase(Locale.ROOT) }
         .distinct()
 
@@ -169,7 +168,7 @@ fun AutomaticEpisodeDetailsScreen(
                     )
                     Spacer(Modifier.height(18.dp))
                     Text(
-                        "AniStream will try every available provider automatically and switch sources if one fails. Resolutions and manual choices appear in Quality & Source during playback.",
+                        "Choose a provider below, or leave Auto selected so AniStream can try each available provider and fall back when one fails.",
                         color = MiruroColors.Subtle,
                         fontSize = 14.sp,
                         lineHeight = 20.sp
@@ -177,7 +176,7 @@ fun AutomaticEpisodeDetailsScreen(
                 }
             }
         }
-        if (providers.isNotEmpty()) {
+        if (episode.sourceCandidates.isNotEmpty()) {
             item {
                 Text(
                     "Available providers",
@@ -188,7 +187,14 @@ fun AutomaticEpisodeDetailsScreen(
                 Spacer(Modifier.height(10.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(providers, key = { it }) { provider ->
-                        GenreChip(provider.uppercase(Locale.ROOT))
+                        DiscoveryChoice(
+                            text = provider.uppercase(Locale.ROOT),
+                            selected = provider.equals(settings.preferredProvider, ignoreCase = true),
+                            settings = settings,
+                            modifier = Modifier.width(160.dp)
+                        ) {
+                            viewModel.updatePreferredProvider(provider)
+                        }
                     }
                 }
             }

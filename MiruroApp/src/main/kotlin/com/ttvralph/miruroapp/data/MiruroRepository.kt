@@ -134,7 +134,8 @@ class MiruroRepository {
 
     suspend fun resolveSource(
         anilistId: Int,
-        candidates: List<EpisodeSourceCandidate>
+        candidates: List<EpisodeSourceCandidate>,
+        preferredProvider: String? = null
     ): SourceResolution = withContext(Dispatchers.IO) {
         if (candidates.isEmpty()) {
             return@withContext SourceResolution.NotFound(
@@ -150,7 +151,14 @@ class MiruroRepository {
                     it.category.lowercase(Locale.ROOT)
                 )
             }
-            .sortedBy { providerRank(it.provider) }
+            .sortedWith(
+                compareBy<EpisodeSourceCandidate> { candidate ->
+                    if (
+                        preferredProvider != null &&
+                        candidate.provider.equals(preferredProvider, ignoreCase = true)
+                    ) 0 else 1
+                }.thenBy { providerRank(it.provider) }
+            )
             .take(MAX_PROVIDER_ATTEMPTS)
 
         val fetched = supervisorScope {
@@ -191,7 +199,7 @@ class MiruroRepository {
                     ?: return@mapNotNull null
                 SubtitleTrack(
                     url = subtitleUrl,
-                    label = text(subtitle, "label", "lang", "language") ?: "Subtitle",
+                    label = "${candidate.provider.uppercase(Locale.ROOT)} • ${text(subtitle, "label", "lang", "language") ?: "Subtitle"}",
                     language = text(subtitle, "lang", "language")
                 )
             }.orEmpty()
@@ -229,11 +237,20 @@ class MiruroRepository {
             .distinctBy { source -> source.url to source.type }
             .take(MAX_QUALITY_CHOICES)
 
-        val first = uniqueSources.firstOrNull()
+        val sharedSubtitles = uniqueSources
+            .flatMap { it.subtitleTracks }
+            .distinctBy { it.url }
+        val enrichedSources = uniqueSources.map { source ->
+            source.copy(
+                subtitleTracks = (source.subtitleTracks + sharedSubtitles).distinctBy { it.url }
+            )
+        }
+
+        val first = enrichedSources.firstOrNull()
             ?: return@withContext SourceResolution.NotFound(lastReason)
 
         SourceResolution.Found(
-            first.copy(fallbackSources = uniqueSources.drop(1))
+            first.copy(fallbackSources = enrichedSources.drop(1))
         )
     }
 
