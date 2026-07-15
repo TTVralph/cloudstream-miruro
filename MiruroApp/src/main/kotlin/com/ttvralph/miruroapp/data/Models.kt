@@ -54,6 +54,8 @@ data class PlaybackSource(
     val url: String,
     val label: String,
     val type: PlaybackType,
+    val providerId: String? = null,
+    val sourceId: String? = null,
     val headers: Map<String, String> = emptyMap(),
     val subtitleTracks: List<SubtitleTrack> = emptyList(),
     val fallbackSources: List<PlaybackSource> = emptyList()
@@ -64,7 +66,11 @@ enum class PlaybackType { HLS, DASH, MP4, UNKNOWN }
 data class SubtitleTrack(
     val url: String,
     val label: String,
-    val language: String? = null
+    val language: String? = null,
+    val id: String? = null,
+    val mimeType: String? = null,
+    val providerId: String? = null,
+    val headers: Map<String, String> = emptyMap()
 )
 
 enum class AudioType { SUB, DUB }

@@ -4,6 +4,7 @@ package com.ttvralph.miruroapp
 
 import android.graphics.Color as AndroidColor
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
@@ -38,7 +39,9 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -57,18 +60,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.dash.DashMediaSource
-import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.data.PlaybackSource
 import com.ttvralph.miruroapp.data.PlaybackType
@@ -80,6 +85,7 @@ import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -101,8 +107,7 @@ private enum class HotfixFocusTarget {
     NONE,
     ROOT,
     PLAY,
-    MENU,
-    SKIP
+    MENU
 }
 
 private enum class HotfixQuality(
@@ -167,8 +172,9 @@ fun HotfixTvPlayerScreen(
         return
     }
 
-    LaunchedEffect(episode) { viewModel.resolvePlayback(episode) }
-    DisposableEffect(episode) { onDispose { viewModel.clearPlayback(episode) } }
+    val playbackKey = episode.playbackKey()
+    LaunchedEffect(playbackKey) { viewModel.resolvePlayback(episode) }
+    DisposableEffect(playbackKey) { onDispose { viewModel.clearPlayback(playbackKey) } }
     val playback by viewModel.playback.collectAsState()
     val state = playback.stateFor(episode)
 
@@ -204,7 +210,9 @@ private fun HotfixVideoPlayer(
     onPlayNext: (AnimeEpisode) -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
+    val playbackKey = episode.playbackKey()
     val settingsStore = remember(context) { SettingsStore(context) }
     val settings by viewModel.settings.collectAsState()
     val watchProgress by viewModel.watchProgress.collectAsState()
@@ -219,20 +227,24 @@ private fun HotfixVideoPlayer(
         (listOf(initialSource.copy(fallbackSources = emptyList())) + initialSource.fallbackSources)
             .distinctBy { it.url to it.type }
     }
-    val resumeSourceIndex = remember(sources, savedProgress?.sourceProvider, savedProgress?.sourceLabel) {
-        sources.indexOfFirst { source ->
-            savedProgress?.sourceLabel?.let { source.label.equals(it, ignoreCase = true) } == true
-        }.takeIf { it >= 0 } ?: sources.indexOfFirst { source ->
-            savedProgress?.sourceProvider?.let {
-                hotfixProviderName(source).equals(it, ignoreCase = true)
-            } == true
-        }.coerceAtLeast(0)
+    val resumeSourceIndex = remember(
+        sources,
+        savedProgress?.sourceId,
+        savedProgress?.sourceProvider,
+        savedProgress?.sourceLabel
+    ) {
+        hotfixResumeSourceIndex(
+            sources = sources,
+            sourceId = savedProgress?.sourceId,
+            sourceProvider = savedProgress?.sourceProvider,
+            sourceLabel = savedProgress?.sourceLabel
+        )
     }
     var sourceIndex by remember(initialSource, resumeSourceIndex) { mutableIntStateOf(resumeSourceIndex) }
     val activeSource = sources[sourceIndex.coerceIn(0, sources.lastIndex)]
     var quality by remember(initialSource) { mutableStateOf(HotfixQuality.fromSetting(settings.preferredQuality)) }
     var subtitleChoice by remember(activeSource) {
-        mutableStateOf(hotfixSubtitleChoiceFromSetting(activeSource.subtitleTracks, settings.subtitleChoice, settings.subtitleLanguage))
+        mutableStateOf(hotfixSubtitleChoiceFromSetting(activeSource.subtitleTracks, settings.subtitleChoice))
     }
     val subtitleIndex = hotfixSubtitleIndex(activeSource.subtitleTracks, subtitleChoice, settings.subtitleLanguage)
     var subtitleRecoveryChoice by remember(activeSource) { mutableStateOf<HotfixSubtitleChoice?>(null) }
@@ -248,16 +260,24 @@ private fun HotfixVideoPlayer(
     var message by remember(initialSource) { mutableStateOf<String?>(null) }
     var ended by remember(initialSource) { mutableStateOf(false) }
     var autoplayCountdown by remember(initialSource) { mutableIntStateOf(0) }
+    var autoplayDeadlineMs by remember(initialSource) { mutableLongStateOf(0L) }
+    var pausedAutoplayRemainingMs by remember(initialSource) { mutableLongStateOf(0L) }
+    var autoplayCancelled by remember(initialSource) { mutableStateOf(false) }
     var advancingToNext by remember(initialSource) { mutableStateOf(false) }
     var pendingPosition by remember(initialSource) { mutableLongStateOf(0L) }
     var retryNonce by remember(initialSource) { mutableIntStateOf(0) }
+    var automaticRetryCount by remember(activeSource.sourceId ?: activeSource.url) { mutableIntStateOf(0) }
     var fallbackEvents by remember(initialSource) { mutableStateOf(emptyList<String>()) }
     var diagnostics by remember(initialSource) { mutableStateOf(HotfixDiagnostics()) }
     val skipIntervals by features.skipIntervals.collectAsState()
-    var skipPositionMs by remember(episode) { mutableLongStateOf(0L) }
-    var skipDurationMs by remember(episode) { mutableLongStateOf(0L) }
-    var dismissedSkipInterval by remember(episode) { mutableStateOf<SkipInterval?>(null) }
-    var skipPromptFocused by remember(episode) { mutableStateOf(false) }
+    var skipPositionMs by remember(playbackKey) { mutableLongStateOf(0L) }
+    var skipDurationMs by remember(playbackKey) { mutableLongStateOf(0L) }
+    var dismissedSkipInterval by remember(playbackKey) { mutableStateOf<SkipInterval?>(null) }
+    var skipPromptFocused by remember(playbackKey) { mutableStateOf(false) }
+    var lifecycleActive by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    var desiredPlayWhenReady by remember(playbackKey) { mutableStateOf(true) }
     val activeSkip = remember(skipIntervals, episode, skipPositionMs, skipDurationMs, dismissedSkipInterval) {
         features.intervalsFor(episode, skipDurationMs)
             .hotfixActiveAt(skipPositionMs)
@@ -273,16 +293,23 @@ private fun HotfixVideoPlayer(
     val menuFocus = remember { FocusRequester() }
     val skipFocus = remember { FocusRequester() }
 
-    val trackSelector = remember(activeSource, quality, retryNonce) {
+    val subtitlesDisabled = subtitleChoice is HotfixSubtitleChoice.Off
+    val trackSelector = remember(activeSource, quality, subtitlesDisabled, settings.subtitleLanguage, retryNonce) {
         DefaultTrackSelector(context).apply {
+            val builder = buildUponParameters()
             if (quality != HotfixQuality.AUTO) {
-                val builder = buildUponParameters()
                 quality.maxWidth?.let { width ->
                     builder.setMaxVideoSize(width, quality.maxHeight ?: Int.MAX_VALUE)
                 }
                 quality.maxBitrate?.let(builder::setMaxVideoBitrate)
-                setParameters(builder)
             }
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitlesDisabled)
+            if (!subtitlesDisabled) {
+                builder
+                    .setPreferredTextLanguage(hotfixSubtitleLanguageTag(settings.subtitleLanguage))
+                    .setSelectUndeterminedTextLanguage(true)
+            }
+            setParameters(builder)
         }
     }
 
@@ -293,16 +320,16 @@ private fun HotfixVideoPlayer(
             .setDefaultRequestProperties(headers)
             .apply { if (userAgent != null) setUserAgent(userAgent) }
         val mediaItem = hotfixMediaItem(activeSource, subtitleIndex)
-        val mediaSource = when (activeSource.type) {
-            PlaybackType.HLS -> HlsMediaSource.Factory(dataSource).createMediaSource(mediaItem)
-            PlaybackType.DASH -> DashMediaSource.Factory(dataSource).createMediaSource(mediaItem)
-            else -> ProgressiveMediaSource.Factory(dataSource).createMediaSource(mediaItem)
-        }
+        // DefaultMediaSourceFactory merges MediaItem subtitle configurations with
+        // the video source. Constructing HLS/DASH/Progressive sources directly
+        // silently dropped sidecar subtitle tracks.
+        val mediaSource = DefaultMediaSourceFactory(dataSource).createMediaSource(mediaItem)
 
         ExoPlayer.Builder(context)
             .setTrackSelector(trackSelector)
             .build()
             .apply {
+                setAudioAttributes(AudioAttributes.DEFAULT, true)
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_READY) {
@@ -312,11 +339,19 @@ private fun HotfixVideoPlayer(
                             if (!ended && !advancingToNext) {
                                 controlsVisible = false
                                 panel = HotfixPanel.NONE
+                                desiredPlayWhenReady = false
                                 viewModel.setEpisodeWatched(episode, true)
+                                autoplayCancelled = false
+                                pausedAutoplayRemainingMs = 0L
                                 autoplayCountdown = if (settings.autoPlayNext && nextEpisode != null) {
                                     HOTFIX_AUTOPLAY_SECONDS
                                 } else {
                                     0
+                                }
+                                autoplayDeadlineMs = if (autoplayCountdown > 0) {
+                                    SystemClock.elapsedRealtime() + HOTFIX_AUTOPLAY_SECONDS * 1_000L
+                                } else {
+                                    0L
                                 }
                                 ended = true
                             }
@@ -339,7 +374,12 @@ private fun HotfixVideoPlayer(
                         subtitleRecoveryChoice = null
                         subtitleRecoveryUntilMs = 0L
 
-                        if (sourceIndex < sources.lastIndex) {
+                        if (hotfixShouldFallbackSource(error.errorCode) && automaticRetryCount == 0) {
+                            pendingPosition = currentPosition.coerceAtLeast(0L)
+                            automaticRetryCount = 1
+                            message = "${activeSource.label} interrupted. Retrying once…"
+                            retryNonce += 1
+                        } else if (hotfixShouldFallbackSource(error.errorCode) && sourceIndex < sources.lastIndex) {
                             pendingPosition = currentPosition.coerceAtLeast(0L)
                             val nextLabel = sources[sourceIndex + 1].label
                             fallbackEvents = (fallbackEvents + "${activeSource.label} failed → $nextLabel").takeLast(8)
@@ -352,9 +392,28 @@ private fun HotfixVideoPlayer(
                 })
                 setMediaSource(mediaSource)
                 setPlaybackSpeed(speed)
-                playWhenReady = true
+                playWhenReady = desiredPlayWhenReady && lifecycleActive
                 prepare()
             }
+    }
+
+    val shouldResumeAfterLifecycle by rememberUpdatedState(
+        desiredPlayWhenReady && !ended && playerError == null
+    )
+    DisposableEffect(lifecycleOwner, player) {
+        val observer = LifecycleEventObserver { source, _ ->
+            val active = source.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            if (!active && lifecycleActive) {
+                player.pause()
+            } else if (
+                active && !lifecycleActive && shouldResumeAfterLifecycle
+            ) {
+                player.play()
+            }
+            lifecycleActive = active
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     var initialSeekApplied by remember(player) { mutableStateOf(false) }
@@ -379,14 +438,18 @@ private fun HotfixVideoPlayer(
                     player.currentPosition,
                     duration,
                     hotfixProviderName(activeSource),
-                    activeSource.label
+                    activeSource.label,
+                    activeSource.sourceId
                 )
             }
             player.release()
         }
     }
 
-    LaunchedEffect(player, activeSource, quality, subtitleChoice, speed, lastPlaybackError) {
+    // The player instance already changes when the source, quality, or subtitle
+    // pipeline changes. Keeping mutable diagnostics values out of the effect key
+    // prevents the save loop from restarting and forgetting its last checkpoint.
+    LaunchedEffect(player) {
         var lastSavedPosition = -HOTFIX_PROGRESS_SAVE_INTERVAL_MS
         while (true) {
             val duration = player.duration.takeIf { it > 0L } ?: 0L
@@ -403,7 +466,8 @@ private fun HotfixVideoPlayer(
                     position,
                     duration,
                     hotfixProviderName(activeSource),
-                    activeSource.label
+                    activeSource.label,
+                    activeSource.sourceId
                 )
                 lastSavedPosition = position
             }
@@ -460,33 +524,77 @@ private fun HotfixVideoPlayer(
         if (advancingToNext) return
         advancingToNext = true
         autoplayCountdown = 0
+        autoplayDeadlineMs = 0L
+        pausedAutoplayRemainingMs = 0L
         ended = false
         controlsVisible = false
         panel = HotfixPanel.NONE
         onPlayNext(target)
     }
 
-    LaunchedEffect(autoplayCountdown, nextEpisode, advancingToNext) {
-        if (autoplayCountdown > 0 && nextEpisode != null && !advancingToNext) {
-            delay(1_000L)
-            if (autoplayCountdown == 1) playNextEpisode() else autoplayCountdown -= 1
+    LaunchedEffect(lifecycleActive) {
+        val now = SystemClock.elapsedRealtime()
+        if (!lifecycleActive && autoplayDeadlineMs > 0L) {
+            pausedAutoplayRemainingMs = (autoplayDeadlineMs - now).coerceAtLeast(0L)
+            autoplayCountdown = hotfixAutoplaySecondsRemaining(now + pausedAutoplayRemainingMs, now)
+            autoplayDeadlineMs = 0L
+        } else if (
+            lifecycleActive && pausedAutoplayRemainingMs > 0L && ended &&
+            !autoplayCancelled && !advancingToNext
+        ) {
+            autoplayDeadlineMs = now + pausedAutoplayRemainingMs
+            pausedAutoplayRemainingMs = 0L
+        }
+    }
+    LaunchedEffect(ended, nextEpisode, settings.autoPlayNext, autoplayCancelled, lifecycleActive) {
+        if (
+            ended && nextEpisode != null && settings.autoPlayNext && !autoplayCancelled &&
+            !advancingToNext && lifecycleActive && autoplayDeadlineMs <= 0L &&
+            pausedAutoplayRemainingMs <= 0L
+        ) {
+            autoplayCountdown = HOTFIX_AUTOPLAY_SECONDS
+            autoplayDeadlineMs = SystemClock.elapsedRealtime() + HOTFIX_AUTOPLAY_SECONDS * 1_000L
+        }
+    }
+    LaunchedEffect(autoplayDeadlineMs, nextEpisode, advancingToNext, lifecycleActive) {
+        while (
+            autoplayDeadlineMs > 0L && nextEpisode != null && !advancingToNext &&
+            lifecycleActive
+        ) {
+            val now = SystemClock.elapsedRealtime()
+            val remaining = autoplayDeadlineMs - now
+            if (remaining <= 0L) {
+                autoplayCountdown = 0
+                playNextEpisode()
+                break
+            }
+            autoplayCountdown = hotfixAutoplaySecondsRemaining(autoplayDeadlineMs, now)
+            delay(minOf(250L, remaining))
         }
     }
     val focusTarget = when {
         playerError != null || ended -> HotfixFocusTarget.NONE
         panel != HotfixPanel.NONE -> HotfixFocusTarget.MENU
         controlsVisible -> HotfixFocusTarget.PLAY
-        activeSkip != null -> HotfixFocusTarget.SKIP
         else -> HotfixFocusTarget.ROOT
     }
     LaunchedEffect(focusTarget) {
-        delay(90L)
+        withFrameNanos { }
         when (focusTarget) {
             HotfixFocusTarget.NONE -> Unit
             HotfixFocusTarget.ROOT -> runCatching { rootFocus.requestFocus() }
             HotfixFocusTarget.PLAY -> runCatching { playFocus.requestFocus() }
             HotfixFocusTarget.MENU -> runCatching { menuFocus.requestFocus() }
-            HotfixFocusTarget.SKIP -> runCatching { skipFocus.requestFocus() }
+        }
+    }
+    LaunchedEffect(activeSkip == null, controlsVisible, panel, ended, playerError) {
+        if (
+            activeSkip == null && !controlsVisible && panel == HotfixPanel.NONE &&
+            !ended && playerError == null
+        ) {
+            skipPromptFocused = false
+            withFrameNanos { }
+            runCatching { rootFocus.requestFocus() }
         }
     }
     LaunchedEffect(controlsVisible, panel, ended, playerError, controlsActivity) {
@@ -544,6 +652,7 @@ private fun HotfixVideoPlayer(
         controlsVisible = false
         panel = HotfixPanel.NONE
         player.seekTo((interval.endMs + 250L).coerceAtMost(skipDurationMs))
+        desiredPlayWhenReady = true
         player.play()
     }
 
@@ -553,7 +662,7 @@ private fun HotfixVideoPlayer(
             panel != HotfixPanel.NONE -> panel = HotfixPanel.NONE
             ended -> onBack()
             controlsVisible -> controlsVisible = false
-            activeSkip != null -> dismissedSkipInterval = activeSkip
+            skipPromptFocused -> runCatching { rootFocus.requestFocus() }
             else -> onBack()
         }
     }
@@ -566,6 +675,7 @@ private fun HotfixVideoPlayer(
             onRetry = {
                 pendingPosition = player.currentPosition.coerceAtLeast(0L)
                 playerError = null
+                automaticRetryCount = 0
                 retryNonce += 1
             },
             onTryNext = {
@@ -617,20 +727,33 @@ private fun HotfixVideoPlayer(
                 }
                 when (event.key) {
                     Key.MediaPlayPause -> {
-                        if (player.isPlaying) player.pause() else player.play()
+                        desiredPlayWhenReady = !player.playWhenReady
+                        if (desiredPlayWhenReady) player.play() else player.pause()
                         controlsVisible = true
                         true
                     }
-                    Key.MediaPlay -> { player.play(); controlsVisible = true; true }
-                    Key.MediaPause -> { player.pause(); controlsVisible = true; true }
+                    Key.MediaPlay -> {
+                        desiredPlayWhenReady = true
+                        player.play()
+                        controlsVisible = true
+                        true
+                    }
+                    Key.MediaPause -> {
+                        desiredPlayWhenReady = false
+                        player.pause()
+                        controlsVisible = true
+                        true
+                    }
                     Key.MediaRewind -> {
                         player.seekTo((player.currentPosition - HOTFIX_SEEK_MS).coerceAtLeast(0L))
-                        controlsVisible = true
+                        controlsVisible = false
+                        message = "Rewind 10 seconds"
                         true
                     }
                     Key.MediaFastForward -> {
                         player.seekTo(player.currentPosition + HOTFIX_SEEK_MS)
-                        controlsVisible = true
+                        controlsVisible = false
+                        message = "Forward 10 seconds"
                         true
                     }
                     Key.DirectionLeft -> if (!controlsVisible) {
@@ -643,7 +766,14 @@ private fun HotfixVideoPlayer(
                         message = "Forward 10 seconds"
                         true
                     } else false
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.DirectionUp, Key.DirectionDown -> if (!controlsVisible) {
+                    Key.DirectionDown -> if (!controlsVisible && prompt != null) {
+                        runCatching { skipFocus.requestFocus() }
+                        true
+                    } else if (!controlsVisible) {
+                        controlsVisible = true
+                        true
+                    } else false
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.DirectionUp -> if (!controlsVisible) {
                         controlsVisible = true
                         true
                     } else false
@@ -687,7 +817,10 @@ private fun HotfixVideoPlayer(
                 highContrast = settings.highContrastPlayerControls,
                 onBack = onBack,
                 onSeekBack = { player.seekTo((player.currentPosition - HOTFIX_SEEK_MS).coerceAtLeast(0L)) },
-                onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+                onPlayPause = {
+                    desiredPlayWhenReady = !player.playWhenReady
+                    if (desiredPlayWhenReady) player.play() else player.pause()
+                },
                 onSeekForward = { player.seekTo(player.currentPosition + HOTFIX_SEEK_MS) },
                 onSeekFraction = { fraction ->
                     val duration = player.duration.takeIf { it > 0L } ?: 0L
@@ -749,7 +882,6 @@ private fun HotfixVideoPlayer(
                 focusRequester = menuFocus,
                 largeControls = settings.largePlayerControls,
                 highContrast = settings.highContrastPlayerControls,
-                onClose = { panel = HotfixPanel.NONE },
                 onTrackSelected = ::selectSubtitle,
                 onSizeSelected = { value ->
                     subtitleSize = value
@@ -805,14 +937,23 @@ private fun HotfixVideoPlayer(
                 nextEpisode = nextEpisode,
                 autoplayEnabled = settings.autoPlayNext,
                 autoplayCountdown = autoplayCountdown,
-                onCancelAutoplay = { autoplayCountdown = 0 },
+                onCancelAutoplay = {
+                    autoplayCancelled = true
+                    autoplayCountdown = 0
+                    autoplayDeadlineMs = 0L
+                    pausedAutoplayRemainingMs = 0L
+                },
                 onPlayNext = ::playNextEpisode,
                 onReplay = {
                     autoplayCountdown = 0
+                    autoplayDeadlineMs = 0L
+                    pausedAutoplayRemainingMs = 0L
+                    autoplayCancelled = false
                     advancingToNext = false
                     ended = false
                     controlsVisible = false
                     player.seekTo(0L)
+                    desiredPlayWhenReady = true
                     player.play()
                 },
                 onMarkUnwatched = { viewModel.setEpisodeWatched(episode, false) },
@@ -870,7 +1011,7 @@ private fun HotfixPlayerErrorScreen(
 ) {
     val retryFocus = remember { FocusRequester() }
     LaunchedEffect(message) {
-        delay(100L)
+        withFrameNanos { }
         runCatching { retryFocus.requestFocus() }
     }
     BackHandler(onBack = onBack)
@@ -1176,7 +1317,6 @@ private fun HotfixSubtitlePanel(
     focusRequester: FocusRequester,
     largeControls: Boolean,
     highContrast: Boolean,
-    onClose: () -> Unit,
     onTrackSelected: (HotfixSubtitleChoice) -> Unit,
     onSizeSelected: (String) -> Unit,
     onBackgroundSelected: (String) -> Unit
@@ -1185,9 +1325,9 @@ private fun HotfixSubtitlePanel(
         item {
             Text(
                 if (source.subtitleTracks.isEmpty()) {
-                    "No provider returned a switchable subtitle track for this episode. Any text visible in the video is baked in and cannot be hidden, resized, or restyled."
+                    "No external subtitle file was returned for this source. Auto can still use a subtitle track embedded in the stream. Text baked into the picture cannot be changed."
                 } else {
-                    "Switchable tracks returned across this episode's providers are listed here. Text baked into the video cannot be changed."
+                    "Switchable tracks returned by this video source are listed here. Auto can also use an embedded track. Text baked into the picture cannot be changed."
                 },
                 color = Color.White.copy(alpha = 0.70f),
                 fontSize = 12.sp,
@@ -1195,40 +1335,29 @@ private fun HotfixSubtitlePanel(
                 modifier = Modifier.padding(start = 5.dp, end = 5.dp, bottom = 8.dp)
             )
         }
-        if (source.subtitleTracks.isEmpty()) {
-            item {
-                HotfixPanelRow(
-                    text = "Back to player",
-                    supporting = "Keep the current video source",
-                    selected = false,
-                    modifier = Modifier.focusRequester(focusRequester),
-                    large = largeControls,
-                    highContrast = highContrast,
-                    onClick = onClose
-                )
-            }
-        } else {
-            item { HotfixPanelSection("External track") }
-            item {
-                HotfixPanelRow(
-                    text = "Off",
-                    supporting = null,
-                    selected = selected is HotfixSubtitleChoice.Off,
-                    modifier = Modifier.focusRequester(focusRequester),
-                    large = largeControls,
-                    highContrast = highContrast
-                ) { onTrackSelected(HotfixSubtitleChoice.Off) }
-            }
-            item {
-                HotfixPanelRow(
-                    text = "Auto (${source.subtitleTracks.getOrNull(automatic)?.let(::hotfixSubtitleLabel) ?: "preferred language"})",
-                    supporting = "Follows the preferred subtitle language",
-                    selected = selected is HotfixSubtitleChoice.Auto,
-                    modifier = Modifier,
-                    large = largeControls,
-                    highContrast = highContrast
-                ) { onTrackSelected(HotfixSubtitleChoice.Auto) }
-            }
+        item { HotfixPanelSection("Caption track") }
+        item {
+            HotfixPanelRow(
+                text = "Off",
+                supporting = "Disables external and embedded switchable captions",
+                selected = selected is HotfixSubtitleChoice.Off,
+                modifier = Modifier.focusRequester(focusRequester),
+                large = largeControls,
+                highContrast = highContrast
+            ) { onTrackSelected(HotfixSubtitleChoice.Off) }
+        }
+        item {
+            HotfixPanelRow(
+                text = "Auto (${source.subtitleTracks.getOrNull(automatic)?.let(::hotfixSubtitleLabel) ?: "embedded/provider default"})",
+                supporting = "Uses the preferred external or embedded language when available",
+                selected = selected is HotfixSubtitleChoice.Auto,
+                modifier = Modifier,
+                large = largeControls,
+                highContrast = highContrast
+            ) { onTrackSelected(HotfixSubtitleChoice.Auto) }
+        }
+        if (source.subtitleTracks.isNotEmpty()) {
+            item { HotfixPanelSection("External tracks") }
             itemsIndexed(source.subtitleTracks) { index, track ->
                 val label = hotfixSubtitleLabel(track)
                 HotfixPanelRow(
@@ -1240,17 +1369,17 @@ private fun HotfixSubtitlePanel(
                     highContrast = highContrast
                 ) { onTrackSelected(HotfixSubtitleChoice.Track(index)) }
             }
-            item { HotfixPanelSection("Text size") }
-            itemsIndexed(listOf("Small", "Medium", "Large", "Extra Large")) { _, option ->
-                HotfixPanelRow(option, "Applies to external captions", option == textSize, Modifier, largeControls, highContrast) {
-                    onSizeSelected(option)
-                }
+        }
+        item { HotfixPanelSection("Text size") }
+        itemsIndexed(listOf("Small", "Medium", "Large", "Extra Large")) { _, option ->
+            HotfixPanelRow(option, "Applies to switchable captions", option == textSize, Modifier, largeControls, highContrast) {
+                onSizeSelected(option)
             }
-            item { HotfixPanelSection("Background opacity") }
-            itemsIndexed(listOf("Off", "Low", "Medium", "High")) { _, option ->
-                HotfixPanelRow(option, "Applies to external captions", option == background, Modifier, largeControls, highContrast) {
-                    onBackgroundSelected(option)
-                }
+        }
+        item { HotfixPanelSection("Background opacity") }
+        itemsIndexed(listOf("Off", "Low", "Medium", "High")) { _, option ->
+            HotfixPanelRow(option, "Applies to switchable captions", option == background, Modifier, largeControls, highContrast) {
+                onBackgroundSelected(option)
             }
         }
     }
@@ -1449,7 +1578,31 @@ private fun hotfixSourceForQuality(
 }
 
 private fun hotfixProviderName(source: PlaybackSource): String =
-    source.label.substringBefore(' ').takeIf { it.isNotBlank() } ?: "Unknown"
+    source.providerId?.takeIf { it.isNotBlank() }
+        ?: source.label.substringBefore(' ').takeIf { it.isNotBlank() }
+        ?: "Unknown"
+
+internal fun hotfixResumeSourceIndex(
+    sources: List<PlaybackSource>,
+    sourceId: String?,
+    sourceProvider: String?,
+    sourceLabel: String?
+): Int {
+    if (sources.isEmpty()) return 0
+    val exact = sourceId?.let { savedId ->
+        sources.indexOfFirst { it.sourceId == savedId }.takeIf { it >= 0 }
+    }
+    val byLabel = sourceLabel?.let { savedLabel ->
+        sources.indexOfFirst { it.label.equals(savedLabel, ignoreCase = true) }
+            .takeIf { it >= 0 }
+    }
+    val byProvider = sourceProvider?.let { savedProvider ->
+        sources.indexOfFirst {
+            hotfixProviderName(it).equals(savedProvider, ignoreCase = true)
+        }.takeIf { it >= 0 }
+    }
+    return exact ?: byLabel ?: byProvider ?: 0
+}
 
 internal fun SkipInterval.hotfixContains(positionMs: Long): Boolean =
     positionMs >= (startMs - 350L).coerceAtLeast(0L) && positionMs < endMs
@@ -1461,6 +1614,12 @@ internal fun SkipInterval?.hotfixDismissedAt(positionMs: Long): SkipInterval? =
     this?.takeIf { interval -> interval.hotfixContains(positionMs) }
 
 private const val HOTFIX_AUTOPLAY_SECONDS = 10
+
+internal fun hotfixAutoplaySecondsRemaining(deadlineMs: Long, nowMs: Long): Int =
+    ceil((deadlineMs - nowMs).coerceAtLeast(0L) / 1_000.0).toInt()
+
+/** Transport and manifest failures may be source-specific; decoder/device failures are not. */
+internal fun hotfixShouldFallbackSource(errorCode: Int): Boolean = errorCode in 2_000..3_999
 
 private fun hotfixQualityHeight(source: PlaybackSource): Int? =
     Regex("""(?i)(2160|1440|1080|720|480|360)p""")
@@ -1488,8 +1647,7 @@ private fun hotfixSubtitleLabel(track: SubtitleTrack): String {
 
 private fun hotfixSubtitleChoiceFromSetting(
     tracks: List<SubtitleTrack>,
-    setting: String,
-    preferredLanguage: String
+    setting: String
 ): HotfixSubtitleChoice = when {
     setting.equals("Off", ignoreCase = true) -> HotfixSubtitleChoice.Off
     setting.equals("Auto", ignoreCase = true) -> HotfixSubtitleChoice.Auto
@@ -1500,8 +1658,7 @@ private fun hotfixSubtitleChoiceFromSetting(
                 hotfixSubtitleLabel(track).equals(setting, ignoreCase = true)
         }
         if (index >= 0) HotfixSubtitleChoice.Track(index)
-        else if (hotfixPreferredSubtitle(tracks, preferredLanguage) >= 0) HotfixSubtitleChoice.Auto
-        else HotfixSubtitleChoice.Off
+        else HotfixSubtitleChoice.Auto
     }
 }
 
@@ -1521,6 +1678,12 @@ private fun hotfixPreferredSubtitle(tracks: List<SubtitleTrack>, language: Strin
         track.language?.lowercase(Locale.ROOT)?.contains(preferred.take(2)) == true ||
             track.label.lowercase(Locale.ROOT).contains(preferred)
     }.takeIf { it >= 0 } ?: -1
+}
+
+private fun hotfixSubtitleLanguageTag(value: String): String = when (value.lowercase(Locale.ROOT)) {
+    "spanish" -> "es"
+    "japanese" -> "ja"
+    else -> "en"
 }
 
 private fun hotfixCaptionStyle(style: String, background: String): CaptionStyleCompat {
@@ -1561,7 +1724,8 @@ private fun hotfixMediaItem(source: PlaybackSource, subtitleIndex: Int): MediaIt
             source.subtitleTracks.mapIndexedNotNull { index, track ->
                 if (subtitleIndex == -1 || index != subtitleIndex || track.url.isBlank()) return@mapIndexedNotNull null
                 MediaItem.SubtitleConfiguration.Builder(Uri.parse(track.url))
-                    .setMimeType(hotfixSubtitleMime(track.url))
+                    .setId(track.id)
+                    .setMimeType(track.mimeType ?: hotfixSubtitleMime(track.url))
                     .setLanguage(track.language)
                     .setLabel(track.label)
                     .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)

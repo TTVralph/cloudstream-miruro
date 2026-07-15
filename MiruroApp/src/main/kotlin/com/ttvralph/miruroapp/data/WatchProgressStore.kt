@@ -18,7 +18,8 @@ data class WatchProgress(
     val durationMs: Long,
     val updatedAtMs: Long,
     val sourceProvider: String? = null,
-    val sourceLabel: String? = null
+    val sourceLabel: String? = null,
+    val sourceId: String? = null
 ) {
     val key: String = makeKey(animeId, seasonNumber, episodeNumber, audioType)
     private val rawPercent: Float = if (durationMs > 0L) {
@@ -38,7 +39,8 @@ data class WatchProgress(
         durationMs,
         updatedAtMs,
         sourceProvider.orEmpty().escapeProgressField(),
-        sourceLabel.orEmpty().escapeProgressField()
+        sourceLabel.orEmpty().escapeProgressField(),
+        sourceId.orEmpty().escapeProgressField()
     ).joinToString("|")
 
     companion object {
@@ -53,7 +55,7 @@ data class WatchProgress(
 
         fun decode(value: String): WatchProgress? {
             val parts = value.split('|')
-            if (parts.size != 7 && parts.size != 9) return null
+            if (parts.size !in setOf(7, 9, 10)) return null
             return WatchProgress(
                 animeId = parts[0].toIntOrNull() ?: return null,
                 seasonNumber = parts[1].toIntOrNull() ?: return null,
@@ -63,7 +65,8 @@ data class WatchProgress(
                 durationMs = parts[5].toLongOrNull() ?: return null,
                 updatedAtMs = parts[6].toLongOrNull() ?: return null,
                 sourceProvider = parts.getOrNull(7)?.unescapeProgressField()?.takeIf { it.isNotBlank() },
-                sourceLabel = parts.getOrNull(8)?.unescapeProgressField()?.takeIf { it.isNotBlank() }
+                sourceLabel = parts.getOrNull(8)?.unescapeProgressField()?.takeIf { it.isNotBlank() },
+                sourceId = parts.getOrNull(9)?.unescapeProgressField()?.takeIf { it.isNotBlank() }
             )
         }
     }

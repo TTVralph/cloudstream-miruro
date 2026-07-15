@@ -41,6 +41,18 @@ class EpisodePlaybackStateTest {
         assertNull(resolved.stateFor(dub))
     }
 
+    @Test
+    fun decorativeMetadataDoesNotChangePlaybackIdentity() {
+        val original = episode(number = 2)
+        val updated = original.copy(
+            title = "A late title",
+            releaseDate = "2026-07-15",
+            thumbnailUrl = "https://example.test/new-image.webp"
+        )
+
+        assertEquals(original.playbackKey(), updated.playbackKey())
+    }
+
     private fun episode(number: Int, audio: AudioType = AudioType.SUB) = AnimeEpisode(
         seasonNumber = 1,
         episodeNumber = number,

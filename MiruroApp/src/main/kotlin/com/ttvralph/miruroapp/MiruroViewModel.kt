@@ -23,6 +23,7 @@ import com.ttvralph.miruroapp.data.WatchProgressStore
 import com.ttvralph.miruroapp.data.WatchlistEntry
 import com.ttvralph.miruroapp.data.WatchlistSort
 import com.ttvralph.miruroapp.data.WatchlistStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -154,7 +155,13 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
             if (previous == null) _homeRows.value = UiState.Loading
             var lastFailure: Throwable? = null
             repeat(2) { attempt ->
-                val result = runCatching { repo.homeRows() }
+                val result = try {
+                    Result.success(repo.homeRows())
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    Result.failure(error)
+                }
                 if (!isActive) return@launch
                 val rows = result.getOrNull().orEmpty()
                 if (rows.isNotEmpty()) {
@@ -333,31 +340,32 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         _seasonLoading.value = _seasonLoading.value + seasonId
         _seasonErrors.value = _seasonErrors.value - seasonId
         seasonJobs[seasonId] = viewModelScope.launch {
-            val result = retryResult(attempts = 2) { repo.loadSeasonEpisodes(season) }
-            if (!isActive) return@launch
-            result
-                .onSuccess { loaded ->
-                    updateSeason(root.id, loaded)
-                    _seasonLoading.value = _seasonLoading.value - seasonId
-                    viewModelScope.launch {
-                        val dates = repo.loadSeasonAirDates(seasonId)
-                        if (dates.isNotEmpty()) {
-                            val dated = loaded.copy(
-                                episodes = loaded.episodes.map { episode ->
-                                    episode.copy(releaseDate = dates[episode.episodeNumber])
-                                }
-                            )
-                            updateSeason(root.id, dated)
-                        }
+            val ownJob = coroutineContext[Job]
+            try {
+                val loaded = retryResult(attempts = 2) { repo.loadSeasonEpisodes(season) }
+                    .getOrElse { error ->
+                        Log.w("MiruroViewModel", "Season episodes failed for seasonId=$seasonId", error)
+                        _seasonErrors.value = _seasonErrors.value +
+                            (seasonId to "Could not load this season's episodes. Select Retry episodes.")
+                        return@launch
                     }
+                if (!isActive) return@launch
+                updateSeason(root.id, loaded)
+                _seasonLoading.value = _seasonLoading.value - seasonId
+
+                val dates = repo.loadSeasonAirDates(seasonId)
+                if (isActive && dates.isNotEmpty()) {
+                    val dated = loaded.copy(
+                        episodes = loaded.episodes.map { episode ->
+                            episode.copy(releaseDate = dates[episode.episodeNumber])
+                        }
+                    )
+                    updateSeason(root.id, dated)
                 }
-                .onFailure { error ->
-                    Log.w("MiruroViewModel", "Season episodes failed for seasonId=$seasonId", error)
-                    _seasonLoading.value = _seasonLoading.value - seasonId
-                    _seasonErrors.value = _seasonErrors.value +
-                        (seasonId to "Could not load this season's episodes. Select Retry episodes.")
-                }
-            seasonJobs.remove(seasonId)
+            } finally {
+                _seasonLoading.value = _seasonLoading.value - seasonId
+                if (seasonJobs[seasonId] === ownJob) seasonJobs.remove(seasonId)
+            }
         }
     }
 
@@ -390,31 +398,32 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
             _seasonLoading.value = _seasonLoading.value + target.id
             _seasonErrors.value = _seasonErrors.value - target.id
             _details.value = UiState.Success(root)
-            val loadedResult = retryResult(attempts = 2) { repo.loadSeasonEpisodes(target) }
-            loadedResult
-                .onSuccess { loaded ->
-                    updateSeason(animeId, loaded)
-                    _seasonLoading.value = _seasonLoading.value - target.id
-                    viewModelScope.launch {
-                        val dates = repo.loadSeasonAirDates(target.id)
-                        if (dates.isNotEmpty()) {
-                            updateSeason(
-                                animeId,
-                                loaded.copy(
-                                    episodes = loaded.episodes.map { episode ->
-                                        episode.copy(releaseDate = dates[episode.episodeNumber])
-                                    }
-                                )
-                            )
-                        }
+            try {
+                val loaded = retryResult(attempts = 2) { repo.loadSeasonEpisodes(target) }
+                    .getOrElse { error ->
+                        Log.w("MiruroViewModel", "Saved episode season failed for seasonId=${target.id}", error)
+                        _seasonErrors.value = _seasonErrors.value +
+                            (target.id to "Could not load this season's episodes.")
+                        return@launch
                     }
+                if (!isActive) return@launch
+                updateSeason(animeId, loaded)
+                _seasonLoading.value = _seasonLoading.value - target.id
+
+                val dates = repo.loadSeasonAirDates(target.id)
+                if (isActive && dates.isNotEmpty()) {
+                    updateSeason(
+                        animeId,
+                        loaded.copy(
+                            episodes = loaded.episodes.map { episode ->
+                                episode.copy(releaseDate = dates[episode.episodeNumber])
+                            }
+                        )
+                    )
                 }
-                .onFailure { error ->
-                    Log.w("MiruroViewModel", "Saved episode season failed for seasonId=${target.id}", error)
-                    _seasonLoading.value = _seasonLoading.value - target.id
-                    _seasonErrors.value = _seasonErrors.value +
-                        (target.id to "Could not load this season's episodes.")
-                }
+            } finally {
+                _seasonLoading.value = _seasonLoading.value - target.id
+            }
         }
     }
 
@@ -439,7 +448,9 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         repeat(attempts) { attempt ->
             val result = runCatching { block() }
             if (result.isSuccess) return result
-            lastError = result.exceptionOrNull()
+            val failure = result.exceptionOrNull()
+            if (failure is CancellationException) throw failure
+            lastError = failure
             if (attempt < attempts - 1) delay(450L * (attempt + 1))
         }
         return Result.failure(lastError ?: IllegalStateException("Request failed"))
@@ -482,7 +493,8 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         positionMs: Long,
         durationMs: Long,
         sourceProvider: String? = null,
-        sourceLabel: String? = null
+        sourceLabel: String? = null,
+        sourceId: String? = null
     ) {
         if (durationMs <= 0L) return
         val previous = watchProgress.value.firstOrNull {
@@ -502,7 +514,8 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
                     durationMs = durationMs,
                     updatedAtMs = System.currentTimeMillis(),
                     sourceProvider = sourceProvider ?: previous?.sourceProvider,
-                    sourceLabel = sourceLabel ?: previous?.sourceLabel
+                    sourceLabel = sourceLabel ?: previous?.sourceLabel,
+                    sourceId = sourceId ?: previous?.sourceId
                 )
             )
         }
@@ -531,7 +544,8 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
                         durationMs = 10_000L,
                         updatedAtMs = System.currentTimeMillis(),
                         sourceProvider = previous?.sourceProvider,
-                        sourceLabel = previous?.sourceLabel
+                        sourceLabel = previous?.sourceLabel,
+                        sourceId = previous?.sourceId
                     )
                 )
             } else {
@@ -587,7 +601,13 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         playbackJob?.cancel()
         _playback.value = EpisodePlaybackState(key, UiState.Loading)
         playbackJob = viewModelScope.launch {
-            val resolution = runCatching { repo.resolveEpisodeSource(episode, requestedProvider) }
+            val resolution = try {
+                Result.success(repo.resolveEpisodeSource(episode, requestedProvider))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Result.failure(error)
+            }
             if (!isActive) return@launch
             val result = resolution.getOrElse { e ->
                 Log.w(
@@ -605,13 +625,15 @@ class MiruroViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun clearPlayback(episode: AnimeEpisode) {
+    fun clearPlayback(key: EpisodePlaybackKey) {
         // A disposed outgoing destination must never cancel the incoming episode's work.
-        if (_playback.value?.key != episode.playbackKey()) return
+        if (_playback.value?.key != key) return
         playbackJob?.cancel()
         playbackJob = null
         _playback.value = null
     }
+
+    fun clearPlayback(episode: AnimeEpisode) = clearPlayback(episode.playbackKey())
 
     fun updatePreferredAudio(value: com.ttvralph.miruroapp.data.AudioType) {
         viewModelScope.launch { settingsStore.updatePreferredAudio(value) }

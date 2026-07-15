@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -33,7 +34,6 @@ import com.ttvralph.miruroapp.data.AnimeEpisode
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PrimaryButton
 import com.ttvralph.miruroapp.ui.SecondaryButton
-import kotlinx.coroutines.delay
 
 @Composable
 fun EnhancedPostPlayOverlay(
@@ -47,13 +47,14 @@ fun EnhancedPostPlayOverlay(
     onMarkUnwatched: () -> Unit,
     onBack: () -> Unit
 ) {
-    val firstFocus = remember(nextEpisode) { FocusRequester() }
+    val nextPlaybackKey = nextEpisode?.playbackKey()
+    val firstFocus = remember(nextPlaybackKey) { FocusRequester() }
 
     // Cancelling autoplay removes the focused Cancel button from composition.
     // Re-home focus on the primary action after that state change so TV remotes
     // can continue into the lower action row instead of becoming focusless.
-    LaunchedEffect(nextEpisode, autoplayCountdown <= 0) {
-        delay(120L)
+    LaunchedEffect(nextPlaybackKey, autoplayCountdown <= 0) {
+        withFrameNanos { }
         runCatching { firstFocus.requestFocus() }
     }
 

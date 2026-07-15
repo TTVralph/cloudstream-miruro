@@ -24,7 +24,7 @@ class NetflixFeatureRepository {
     private val extrasCache = linkedMapOf<Int, TitleExtras>()
     private val malIdCache = mutableMapOf<Int, Int?>()
     private val itemCache = linkedMapOf<Int, AnimeItem>()
-    private val skipCache = linkedMapOf<String, List<SkipInterval>>()
+    private val skipCache = linkedMapOf<String, SkipCacheEntry>()
 
     suspend fun titleExtras(animeId: Int): TitleExtras = withContext(Dispatchers.IO) {
         synchronized(cacheLock) { extrasCache[animeId] }?.let { return@withContext it }
@@ -104,7 +104,16 @@ class NetflixFeatureRepository {
         if (episodeNumber <= 0 || episodeLengthSeconds <= 0.0) return@withContext emptyList()
         val lengthBucket = (episodeLengthSeconds / 30.0).toInt()
         val cacheKey = "$anilistId:$episodeNumber:$lengthBucket"
-        synchronized(cacheLock) { skipCache[cacheKey] }?.let { return@withContext it }
+        val now = System.currentTimeMillis()
+        synchronized(cacheLock) {
+            skipCache[cacheKey]
+                ?.takeIf { it.expiresAtMs > now }
+                ?.intervals
+                ?: run {
+                    skipCache.remove(cacheKey)
+                    null
+                }
+        }?.let { return@withContext it }
 
         val malId = malIdFor(anilistId) ?: return@withContext emptyList()
         val url = "https://api.aniskip.com/v2/skip-times/$malId/$episodeNumber"
@@ -144,7 +153,14 @@ class NetflixFeatureRepository {
                 .sortedBy { it.startMs }
         }
         synchronized(cacheLock) {
-            skipCache[cacheKey] = intervals
+            skipCache[cacheKey] = SkipCacheEntry(
+                intervals = intervals,
+                expiresAtMs = System.currentTimeMillis() + if (intervals.isEmpty()) {
+                    SKIP_NEGATIVE_CACHE_MS
+                } else {
+                    SKIP_POSITIVE_CACHE_MS
+                }
+            )
             trimLocked(skipCache, 100)
         }
         intervals
@@ -226,6 +242,8 @@ class NetflixFeatureRepository {
     }
 
     companion object {
+        private const val SKIP_NEGATIVE_CACHE_MS = 2 * 60_000L
+        private const val SKIP_POSITIVE_CACHE_MS = 6 * 60 * 60_000L
         private const val ITEM_FIELDS = "id title{romaji english native} coverImage{large extraLarge} bannerImage format seasonYear startDate{year} averageScore"
         private const val ITEMS_QUERY = "query(\$ids:[Int]){Page(page:1,perPage:50){media(id_in:\$ids,type:ANIME,isAdult:false){$ITEM_FIELDS}}}"
         private const val UPCOMING_QUERY = "query(\$ids:[Int]){Page(page:1,perPage:50){media(id_in:\$ids,type:ANIME,isAdult:false){$ITEM_FIELDS nextAiringEpisode{episode airingAt}}}}"
@@ -233,3 +251,8 @@ class NetflixFeatureRepository {
         private const val MAL_ID_QUERY = "query(\$id:Int){Media(id:\$id,type:ANIME){idMal}}"
     }
 }
+
+private data class SkipCacheEntry(
+    val intervals: List<SkipInterval>,
+    val expiresAtMs: Long
+)

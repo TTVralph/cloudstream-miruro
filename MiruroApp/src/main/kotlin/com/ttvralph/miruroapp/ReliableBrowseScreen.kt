@@ -13,7 +13,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,7 +24,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,6 +61,12 @@ fun ReliableBrowseScreen(
     val settings by viewModel.settings.collectAsState()
     var sessionItems by remember(format) { mutableStateOf<List<AnimeItem>>(emptyList()) }
     var automaticRetries by remember(format) { mutableIntStateOf(0) }
+    var loadMoreWasRunning by remember(format) { mutableStateOf(false) }
+    var pendingNewItemIndex by remember(format) { mutableStateOf<Int?>(null) }
+    var focusedNewItemId by remember(format) { mutableStateOf<Int?>(null) }
+    val gridState = rememberLazyGridState()
+    val firstNewItemFocus = remember(format) { FocusRequester() }
+    val loadMoreFocus = remember(format) { FocusRequester() }
 
     val networkItems = remember(state, format) {
         (state as? UiState.Success<List<AnimeItem>>)
@@ -82,6 +92,22 @@ fun ReliableBrowseScreen(
             if (format == "MOVIE") viewModel.loadMovies(force = true)
             else viewModel.loadSeries(force = true)
         }
+    }
+    LaunchedEffect(loadingMore, visibleItems.size) {
+        if (loadMoreWasRunning && !loadingMore) {
+            val targetIndex = pendingNewItemIndex
+            if (targetIndex != null && targetIndex in visibleItems.indices) {
+                focusedNewItemId = visibleItems[targetIndex].id
+                gridState.scrollToItem(targetIndex)
+                withFrameNanos { }
+                runCatching { firstNewItemFocus.requestFocus() }
+            } else {
+                withFrameNanos { }
+                runCatching { loadMoreFocus.requestFocus() }
+            }
+            pendingNewItemIndex = null
+        }
+        loadMoreWasRunning = loadingMore
     }
 
     Column(
@@ -125,6 +151,7 @@ fun ReliableBrowseScreen(
         }
 
         LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Adaptive(
                 when (settings.posterGridDensity) {
                     PosterGridDensity.COMPACT -> 140.dp
@@ -137,15 +164,25 @@ fun ReliableBrowseScreen(
             contentPadding = PaddingValues(bottom = 86.dp),
             modifier = Modifier.weight(1f).fillMaxWidth()
         ) {
-            items(visibleItems, key = { it.id }) { anime ->
-                PosterCard(anime) { onOpenDetails(anime.id) }
+            itemsIndexed(visibleItems, key = { _, anime -> anime.id }) { _, anime ->
+                PosterCard(
+                    item = anime,
+                    modifier = if (anime.id == focusedNewItemId) {
+                        Modifier.focusRequester(firstNewItemFocus)
+                    } else {
+                        Modifier
+                    },
+                    onClick = { onOpenDetails(anime.id) }
+                )
             }
             item(key = "load-more-$format") {
                 SecondaryButton(
                     if (loadingMore) "Loading more…" else "Load more",
-                    Modifier.width(180.dp)
+                    Modifier.width(180.dp).focusRequester(loadMoreFocus)
                 ) {
                     if (!loadingMore) {
+                        pendingNewItemIndex = visibleItems.size
+                        focusedNewItemId = null
                         if (format == "MOVIE") viewModel.loadMovies(nextPage = true)
                         else viewModel.loadSeries(nextPage = true)
                     }

@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class NetflixFeatureViewModel(application: Application) : AndroidViewModel(application) {
@@ -143,7 +144,14 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
         val missing = ids.filterNot { it in _metadata.value }.toSet()
         if (missing.isEmpty()) return
         viewModelScope.launch {
-            val items = runCatching { repository.items(missing) }.getOrDefault(emptyList())
+            val items = try {
+                repository.items(missing)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                emptyList()
+            }
+            if (!isActive) return@launch
             if (items.isNotEmpty()) _metadata.value += items.associateBy { it.id }
         }
     }
@@ -152,13 +160,17 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
         extrasJob?.cancel()
         extrasJob = viewModelScope.launch {
             _extras.value = UiState.Loading
-            runCatching { repository.titleExtras(animeId) }
-                .onSuccess { value ->
-                    val items = value.related + value.recommendations + listOfNotNull(value.nextAiring?.anime)
-                    _metadata.value += items.associateBy { it.id }
-                    _extras.value = UiState.Success(value)
-                }
-                .onFailure { _extras.value = UiState.Error("Could not load related anime right now.") }
+            try {
+                val value = repository.titleExtras(animeId)
+                if (!isActive) return@launch
+                val items = value.related + value.recommendations + listOfNotNull(value.nextAiring?.anime)
+                _metadata.value += items.associateBy { it.id }
+                _extras.value = UiState.Success(value)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (isActive) _extras.value = UiState.Error("Could not load related anime right now.")
+            }
         }
     }
 
@@ -189,9 +201,17 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
         lastHomeSignature = signature
         homeJob?.cancel()
         homeJob = viewModelScope.launch {
+            val requestedProfileId = profileState.value.activeId
             val rows = mutableListOf<HomeRow>()
             positive.take(3).forEach { id ->
-                val value = runCatching { repository.titleExtras(id) }.getOrNull() ?: return@forEach
+                val value = try {
+                    repository.titleExtras(id)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                } ?: return@forEach
+                if (!isActive || profileState.value.activeId != requestedProfileId) return@launch
                 val source = _metadata.value[id]?.title
                     ?: catalogue.firstOrNull { it.id == id }?.title
                     ?: "a title you liked"
@@ -200,17 +220,31 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
                     .take(18)
                 if (items.isNotEmpty()) rows += HomeRow("Because You Liked $source", items)
             }
+            if (!isActive || profileState.value.activeId != requestedProfileId) return@launch
             if (rows.isEmpty()) {
                 val items = catalogue.filterNot { it.id in disliked }
                     .sortedByDescending { it.score ?: 0 }
                     .distinctBy { it.id }
                     .take(18)
                 if (items.isNotEmpty()) {
-                    rows += HomeRow("Top Picks for ${profileState.value.activeProfile.name}", items)
+                    val profileName = profileState.value.profiles
+                        .firstOrNull { it.id == requestedProfileId }
+                        ?.name
+                        ?: "You"
+                    rows += HomeRow("Top Picks for $profileName", items)
                 }
             }
+            if (!isActive || profileState.value.activeId != requestedProfileId) return@launch
             _personalizedRows.value = rows.distinctBy { it.title }.take(3)
-            _upcoming.value = runCatching { repository.upcoming(seeds) }.getOrDefault(emptyList())
+            val upcoming = try {
+                repository.upcoming(seeds)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                emptyList()
+            }
+            if (!isActive || profileState.value.activeId != requestedProfileId) return@launch
+            _upcoming.value = upcoming
             val found = rows.flatMap { it.items } + _upcoming.value.map { it.anime }
             _metadata.value += found.associateBy { it.id }
         }
@@ -233,8 +267,15 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
                     episode.episodeNumber,
                     durationMs / 1_000.0
                 )
-                _skipIntervals.value += key to values
-                skipRetryAfterMs.remove(key)
+                if (values.isEmpty()) {
+                    // AniSkip can legitimately return no data, but that answer
+                    // must not become a permanent miss if duration or upstream
+                    // data stabilizes later.
+                    skipRetryAfterMs[key] = System.currentTimeMillis() + SKIP_NO_DATA_RETRY_DELAY_MS
+                } else {
+                    _skipIntervals.value += key to values
+                    skipRetryAfterMs.remove(key)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -289,7 +330,14 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
 
     fun setTitleWatched(animeId: Int, watched: Boolean) {
         viewModelScope.launch {
-            val details = runCatching { animeRepository.details(animeId) }.getOrNull() ?: return@launch
+            val details = try {
+                animeRepository.details(animeId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                return@launch
+            }
+            if (!isActive) return@launch
             if (watched) {
                 details.seasons.forEach { season ->
                     selectUniqueEpisodes(season.episodes).forEach { episode ->
@@ -333,3 +381,4 @@ class NetflixFeatureViewModel(application: Application) : AndroidViewModel(appli
 }
 
 private const val SKIP_RETRY_DELAY_MS = 15_000L
+private const val SKIP_NO_DATA_RETRY_DELAY_MS = 2 * 60_000L

@@ -10,10 +10,12 @@ import com.ttvralph.miruroapp.data.DiscoveryRepository
 import com.ttvralph.miruroapp.data.DiscoverySearchFilters
 import com.ttvralph.miruroapp.data.DiscoveryTitleInfo
 import com.ttvralph.miruroapp.data.StudioOption
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class DiscoveryFeatureViewModel(application: Application) : AndroidViewModel(application) {
@@ -32,13 +34,21 @@ class DiscoveryFeatureViewModel(application: Application) : AndroidViewModel(app
     val titleInfo: StateFlow<UiState<DiscoveryTitleInfo>?> = _titleInfo.asStateFlow()
 
     private var searchJob: Job? = null
+    private var studiosJob: Job? = null
     private var pickJob: Job? = null
     private var titleJob: Job? = null
 
     fun loadStudios() {
-        if (_studios.value.isNotEmpty()) return
-        viewModelScope.launch {
-            _studios.value = runCatching { repository.studioOptions() }.getOrDefault(emptyList())
+        if (_studios.value.isNotEmpty() || studiosJob?.isActive == true) return
+        studiosJob = viewModelScope.launch {
+            try {
+                val values = repository.studioOptions()
+                if (isActive) _studios.value = values
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // Search remains usable without studio suggestions.
+            }
         }
     }
 
@@ -50,9 +60,13 @@ class DiscoveryFeatureViewModel(application: Application) : AndroidViewModel(app
         }
         searchJob = viewModelScope.launch {
             _searchResults.value = UiState.Loading
-            runCatching { repository.search(filters, favoriteIds) }
-                .onSuccess { _searchResults.value = UiState.Success(it) }
-                .onFailure {
+            try {
+                val values = repository.search(filters, favoriteIds)
+                if (isActive) _searchResults.value = UiState.Success(values)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (isActive) {
                     _searchResults.value = UiState.Error(
                         if (filters.dubbedOnly) {
                             "Search failed while checking dubbed availability. Try again or turn off Dubbed Only."
@@ -61,6 +75,7 @@ class DiscoveryFeatureViewModel(application: Application) : AndroidViewModel(app
                         }
                     )
                 }
+            }
         }
     }
 
@@ -74,9 +89,14 @@ class DiscoveryFeatureViewModel(application: Application) : AndroidViewModel(app
         pickJob?.cancel()
         pickJob = viewModelScope.launch {
             _pick.value = UiState.Loading
-            runCatching { repository.pick(mode, excludedIds) }
-                .onSuccess { _pick.value = UiState.Success(it) }
-                .onFailure { _pick.value = UiState.Error("Could not choose a title right now.") }
+            try {
+                val value = repository.pick(mode, excludedIds)
+                if (isActive) _pick.value = UiState.Success(value)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (isActive) _pick.value = UiState.Error("Could not choose a title right now.")
+            }
         }
     }
 
@@ -94,9 +114,14 @@ class DiscoveryFeatureViewModel(application: Application) : AndroidViewModel(app
         titleJob?.cancel()
         titleJob = viewModelScope.launch {
             _titleInfo.value = UiState.Loading
-            runCatching { repository.titleInfo(animeId) }
-                .onSuccess { _titleInfo.value = UiState.Success(it) }
-                .onFailure { _titleInfo.value = UiState.Error("Could not load the full anime guide right now.") }
+            try {
+                val value = repository.titleInfo(animeId)
+                if (isActive) _titleInfo.value = UiState.Success(value)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (isActive) _titleInfo.value = UiState.Error("Could not load the full anime guide right now.")
+            }
         }
     }
 }

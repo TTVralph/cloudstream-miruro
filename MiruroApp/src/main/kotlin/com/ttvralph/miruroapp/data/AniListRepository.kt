@@ -10,6 +10,7 @@ import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -318,7 +319,7 @@ class AniListRepository {
 
     suspend fun loadSeasonAirDates(seasonId: Int): Map<Int, String> {
         dateCache[seasonId]?.let { return it }
-        val values = runCatching {
+        val values = try {
             withContext(Dispatchers.IO) {
                 retryRequest(attempts = 2) {
                     anilist(AIRING_QUERY, mapOf("mediaId" to seasonId))
@@ -328,7 +329,11 @@ class AniListRepository {
                         it.path("episode").asInt() to epochDate(it.path("airingAt").asLong())
                     }
             }
-        }.getOrDefault(emptyMap())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            emptyMap()
+        }
         dateCache[seasonId] = values
         return values
     }
@@ -443,6 +448,7 @@ class AniListRepository {
             try {
                 return block()
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 lastError = error
                 if (attempt < attempts - 1) delay(350L * (attempt + 1))
             }
