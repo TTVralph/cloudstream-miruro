@@ -281,7 +281,7 @@ class DiscoveryRepository {
         val request = Request.Builder()
             .url("https://api.jikan.moe/v4/anime/$malId/themes")
             .header("Accept", "application/json")
-            .header("User-Agent", "AniStream-TV/1.0")
+            .header("User-Agent", "Yume-TV/1.0")
             .build()
         return client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@use emptyList<String>() to emptyList()
@@ -300,7 +300,7 @@ class DiscoveryRepository {
             .url("https://graphql.anilist.co")
             .post(body.toRequestBody(jsonType))
             .header("Accept", "application/json")
-            .header("User-Agent", "AniStream-TV/1.0")
+            .header("User-Agent", "Yume-TV/1.0")
             .build()
         return client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()

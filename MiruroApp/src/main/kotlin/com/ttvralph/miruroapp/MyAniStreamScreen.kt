@@ -45,6 +45,7 @@ import com.ttvralph.miruroapp.ui.PrimaryButton
 import com.ttvralph.miruroapp.ui.SecondaryButton
 import com.ttvralph.miruroapp.ui.SectionTitle
 import com.ttvralph.miruroapp.ui.StateMessage
+import com.ttvralph.miruroapp.ui.YumeBrand
 import java.util.Locale
 
 private enum class MyAniStreamTab(val label: String) {
@@ -60,6 +61,8 @@ fun MyAniStreamScreen(
     features: NetflixFeatureViewModel,
     onOpenDetails: (Int) -> Unit,
     onPlayProgress: (WatchProgress) -> Unit,
+    onOpenProfilePicker: () -> Unit,
+    onExitApp: () -> Unit,
     openProfiles: Boolean = false
 ) {
     var tab by remember(openProfiles) {
@@ -74,7 +77,7 @@ fun MyAniStreamScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    "My AniStream",
+                    YumeBrand.LibraryLabel,
                     color = Color.White,
                     fontSize = 21.sp,
                     fontWeight = FontWeight.Bold,
@@ -99,7 +102,9 @@ fun MyAniStreamScreen(
             MyAniStreamTab.LIBRARY -> WatchManagementScreen(viewModel, onOpenDetails, onPlayProgress)
             MyAniStreamTab.PROFILES -> MyAniStreamProfiles(
                 features = features,
-                onEditorOpenChanged = { profileEditorOpen = it }
+                onEditorOpenChanged = { profileEditorOpen = it },
+                onOpenProfilePicker = onOpenProfilePicker,
+                onExitApp = onExitApp
             )
         }
     }
@@ -348,7 +353,9 @@ private fun UpcomingRow(
 @Composable
 private fun MyAniStreamProfiles(
     features: NetflixFeatureViewModel,
-    onEditorOpenChanged: (Boolean) -> Unit
+    onEditorOpenChanged: (Boolean) -> Unit,
+    onOpenProfilePicker: () -> Unit,
+    onExitApp: () -> Unit
 ) {
     val state by features.profileState.collectAsState()
     var creating by remember { mutableStateOf(false) }
@@ -386,7 +393,11 @@ private fun MyAniStreamProfiles(
                 fontSize = 14.sp
             )
             Spacer(Modifier.height(14.dp))
-            SecondaryButton("Add profile", Modifier.width(190.dp)) { creating = true }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SecondaryButton("Choose profile", Modifier.width(190.dp), onOpenProfilePicker)
+                SecondaryButton("Add profile", Modifier.width(170.dp)) { creating = true }
+                SecondaryButton("Exit Yume", Modifier.width(150.dp), onExitApp)
+            }
         }
         items(state.profiles, key = { it.id }) { profile ->
             Row(

@@ -357,7 +357,7 @@ private fun DiscoveryPickHero(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "AniStream can choose from your unfinished shows or the current catalogue without storing new catalogue data on disk.",
+                        "Yume can choose from your unfinished shows or the current catalogue without storing new catalogue data on disk.",
                         color = Color.White.copy(alpha = 0.70f),
                         fontSize = (if (settings.largeUiText) 16 else 14).sp,
                         lineHeight = (if (settings.largeUiText) 22 else 19).sp

@@ -176,18 +176,6 @@ fun TopBar(
 }
 
 @Composable
-fun Logo(modifier: Modifier = Modifier) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(MiruroColors.AccentSoft, MiruroColors.Accent))), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Text("Ani", color = MiruroColors.Text, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
-        Text("Stream", color = MiruroColors.AccentSoft, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
-    }
-}
-
-@Composable
 private fun NavPill(label: String, selected: Boolean, onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()

@@ -64,7 +64,9 @@ import kotlinx.coroutines.delay
 fun ProfilePickerScreen(
     state: ProfileState,
     onSelect: (LocalProfile) -> Unit,
-    onCreate: (String, String, String) -> Unit
+    onCreate: (String, String, String) -> Unit,
+    onBack: (() -> Unit)?,
+    onExit: () -> Unit
 ) {
     var creating by remember { mutableStateOf(false) }
     if (creating) {
@@ -79,6 +81,8 @@ fun ProfilePickerScreen(
         )
         return
     }
+
+    BackHandler { onBack?.invoke() ?: onExit() }
 
     val initialFocus = remember { FocusRequester() }
     val focusIndex = state.profiles.indexOfFirst { it.id == state.activeId }.coerceAtLeast(0)
@@ -96,7 +100,7 @@ fun ProfilePickerScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Logo()
+        Logo(showTagline = true)
         Spacer(Modifier.height(24.dp))
         Text("Who's watching?", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black)
         Spacer(Modifier.height(5.dp))
@@ -121,8 +125,15 @@ fun ProfilePickerScreen(
             }
         }
         Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (onBack != null) {
+                SecondaryButton("Back to Yume", Modifier.width(170.dp), onBack)
+            }
+            SecondaryButton("Exit Yume", Modifier.width(150.dp), onExit)
+        }
+        Spacer(Modifier.height(8.dp))
         Text(
-            "Names, avatars, and colors can be changed from My AniStream › Profiles.",
+            "Names, avatars, and colors can be changed from My Yume › Profiles.",
             color = MiruroColors.Subtle,
             fontSize = 12.sp
         )

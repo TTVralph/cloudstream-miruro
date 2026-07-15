@@ -218,7 +218,7 @@ fun TvHomeScreen(
     }
 
     when (val current = state) {
-        is UiState.Loading -> LoadingState("Loading AniStream…")
+        is UiState.Loading -> LoadingState("Loading Yume…")
         is UiState.Error -> ErrorState(current.message) { viewModel.loadHome() }
         is UiState.Success -> {
             val rows = current.data
@@ -975,7 +975,7 @@ fun TvSettingsScreen(viewModel: MiruroViewModel) {
                     .border(1.dp, MiruroColors.Border, RoundedCornerShape(12.dp))
                     .padding(18.dp)
             ) {
-                Text("AniStream TV", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                Text("Yume TV", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
                 Text("Release channel: Stable", color = MiruroColors.AccentSoft, fontSize = 14.sp)
                 Text("Version ${BuildConfig.VERSION_NAME}", color = MiruroColors.Subtle, fontSize = 13.sp)
                 Spacer(Modifier.height(6.dp))

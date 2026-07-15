@@ -112,7 +112,7 @@ fun ReliableHomeScreen(
 
     if (rows.isEmpty()) {
         when (val current = state) {
-            is UiState.Loading -> LoadingState("Loading AniStream…")
+            is UiState.Loading -> LoadingState("Loading Yume…")
             is UiState.Error -> ErrorState(current.message) {
                 automaticRetries = 0
                 viewModel.loadHome()

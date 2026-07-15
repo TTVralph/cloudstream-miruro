@@ -168,7 +168,7 @@ fun AutomaticEpisodeDetailsScreen(
                     )
                     Spacer(Modifier.height(18.dp))
                     Text(
-                        "Choose a provider below, or leave Auto selected so AniStream can try each available provider and fall back when one fails.",
+                        "Choose a provider below, or leave Auto selected so Yume can try each available provider and fall back when one fails.",
                         color = MiruroColors.Subtle,
                         fontSize = 14.sp,
                         lineHeight = 20.sp

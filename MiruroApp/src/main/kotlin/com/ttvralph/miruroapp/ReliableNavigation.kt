@@ -44,6 +44,7 @@ import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.Logo
 import com.ttvralph.miruroapp.ui.MiruroColors
+import com.ttvralph.miruroapp.ui.YumeBrand
 
 internal val ReliableSafeX = 52.dp
 internal val ReliableNavHeight = 76.dp
@@ -98,7 +99,7 @@ fun ReliableTopBar(
         ReliableNavText("Anime", current == "Anime", onAnime, onDown = onMoveDown)
         ReliableNavText("Movies", current == "Movies", onMovies, onDown = onMoveDown)
         ReliableNavText("Discover", current == "Discover", onDiscover, 104.dp, onMoveDown)
-        ReliableNavText("My AniStream", current == "My AniStream", onMyList, 124.dp, onMoveDown)
+        ReliableNavText(YumeBrand.LibraryLabel, current == YumeBrand.LibraryLabel, onMyList, 112.dp, onMoveDown)
         Spacer(Modifier.weight(1f))
         ReliableNavIcon(Icons.Filled.Search, "Search", current == "Search", onSearch, onMoveDown)
         Spacer(Modifier.width(10.dp))
