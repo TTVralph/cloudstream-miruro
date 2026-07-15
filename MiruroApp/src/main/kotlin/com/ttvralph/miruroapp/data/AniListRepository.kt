@@ -464,7 +464,7 @@ class AniListRepository {
             .url("https://graphql.anilist.co")
             .post(requestBody.toRequestBody(jsonType))
             .header("Accept", "application/json")
-            .header("User-Agent", "AniStream-TV/1.0")
+            .header("User-Agent", "Yume-TV/1.0")
             .build()
 
         return client.newCall(request).execute().use { response ->

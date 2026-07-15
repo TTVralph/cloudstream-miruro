@@ -39,6 +39,7 @@ import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.MiruroTheme
 import com.ttvralph.miruroapp.ui.StateMessage
+import com.ttvralph.miruroapp.ui.YumeBrand
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MiruroViewModel by viewModels()
@@ -51,7 +52,12 @@ class MainActivity : ComponentActivity() {
             val settings by viewModel.settings.collectAsState()
             val profileState by featureViewModel.profileState.collectAsState()
             MiruroTheme(settings.themeMode, profileState.activeProfile.themeColorId) {
-                MiruroApp(viewModel, featureViewModel, discoveryViewModel)
+                MiruroApp(
+                    viewModel = viewModel,
+                    features = featureViewModel,
+                    discovery = discoveryViewModel,
+                    onExitApp = { finishAndRemoveTask() }
+                )
             }
         }
     }
@@ -105,7 +111,7 @@ private fun NavHostController.backOrHome() {
 private fun navLabelFor(route: String?): String = when (route) {
     Routes.Home.route -> "Home"
     Routes.Search.route -> "Search"
-    Routes.Favorites.route -> "My AniStream"
+    Routes.Favorites.route -> YumeBrand.LibraryLabel
     Routes.Movies.route -> "Movies"
     Routes.Series.route -> "Anime"
     Routes.Genres.route -> "Discover"
@@ -118,17 +124,22 @@ private fun navLabelFor(route: String?): String = when (route) {
 private fun MiruroApp(
     viewModel: MiruroViewModel,
     features: NetflixFeatureViewModel,
-    discovery: DiscoveryFeatureViewModel
+    discovery: DiscoveryFeatureViewModel,
+    onExitApp: () -> Unit
 ) {
     val profileState by features.profileState.collectAsState()
     val loadedProfileState by features.loadedProfileState.collectAsState()
     var startupProfileDecisionMade by rememberSaveable { mutableStateOf(false) }
     var showStartupProfilePicker by rememberSaveable { mutableStateOf(false) }
+    var profilePickerCanReturnToApp by rememberSaveable { mutableStateOf(false) }
+    // Keep the navigation stack alive while the full-screen profile picker is shown.
+    val navController = rememberNavController()
 
     LaunchedEffect(loadedProfileState) {
         if (!startupProfileDecisionMade) {
             loadedProfileState?.let { loaded ->
                 showStartupProfilePicker = loaded.profiles.size > 1
+                profilePickerCanReturnToApp = false
                 startupProfileDecisionMade = true
             }
         }
@@ -148,16 +159,25 @@ private fun MiruroApp(
                 onSelect = { profile ->
                     features.switchProfile(profile)
                     showStartupProfilePicker = false
+                    profilePickerCanReturnToApp = false
                 },
                 onCreate = { name, avatarId, themeColorId ->
                     features.createProfile(name, avatarId, themeColorId)
-                }
+                },
+                onBack = if (profilePickerCanReturnToApp) {
+                    {
+                        showStartupProfilePicker = false
+                        profilePickerCanReturnToApp = false
+                    }
+                } else {
+                    null
+                },
+                onExit = onExitApp
             )
         }
         return
     }
 
-    val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val fullScreenRoute = currentRoute == Routes.Player.route ||
@@ -170,6 +190,13 @@ private fun MiruroApp(
     val horizontalPadding = if (fullScreenRoute || homeRoute) 0.dp else 58.dp
     val topPadding = if (topLevelRoute && !homeRoute) ReliableNavHeight + 8.dp else 0.dp
     val bottomPadding = if (topLevelRoute && !homeRoute) 8.dp else 0.dp
+
+    fun openFullProfilePicker() {
+        profilePickerCanReturnToApp = true
+        showStartupProfilePicker = true
+    }
+
+    BackHandler(enabled = homeRoute, onBack = onExitApp)
 
     fun playProgress(progress: WatchProgress) {
         navController.navigate(
@@ -220,7 +247,9 @@ private fun MiruroApp(
                         viewModel = viewModel,
                         features = features,
                         onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
-                        onPlayProgress = ::playProgress
+                        onPlayProgress = ::playProgress,
+                        onOpenProfilePicker = ::openFullProfilePicker,
+                        onExitApp = onExitApp
                     )
                 }
                 composable(Routes.Movies.route) {
@@ -258,7 +287,9 @@ private fun MiruroApp(
                         features = features,
                         onOpenDetails = { id -> navController.navigate(Routes.Details.path(id)) },
                         onPlayProgress = ::playProgress,
-                        openProfiles = true
+                        openProfiles = true,
+                        onOpenProfilePicker = ::openFullProfilePicker,
+                        onExitApp = onExitApp
                     )
                 }
                 composable(
@@ -368,7 +399,7 @@ private fun MiruroApp(
                     onMyList = { navController.navigateTopLevel(Routes.Favorites.route) },
                     onSearch = { navController.navigateTopLevel(Routes.Search.route) },
                     onSettings = { navController.navigateTopLevel(Routes.Settings.route) },
-                    onProfiles = { navController.navigateTopLevel(Routes.Profiles.route) },
+                    onProfiles = ::openFullProfilePicker,
                     modifier = Modifier.align(Alignment.TopCenter).zIndex(100f)
                 )
             }

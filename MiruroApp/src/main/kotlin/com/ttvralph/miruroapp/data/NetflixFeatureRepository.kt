@@ -129,7 +129,7 @@ class NetflixFeatureRepository {
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/json")
-            .header("User-Agent", "AniStream-TV/1.0")
+            .header("User-Agent", "Yume-TV/1.0")
             .build()
 
         val intervals = client.newCall(request).execute().use { response ->
@@ -182,7 +182,7 @@ class NetflixFeatureRepository {
             .url("https://graphql.anilist.co")
             .post(payload.toRequestBody(jsonType))
             .header("Accept", "application/json")
-            .header("User-Agent", "AniStream-TV/1.0")
+            .header("User-Agent", "Yume-TV/1.0")
             .build()
         return client.newCall(request).execute().use { response ->
             val responseText = response.body?.string().orEmpty()

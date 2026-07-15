@@ -545,7 +545,7 @@ fun SettingsScreen(viewModel: MiruroViewModel? = null) {
         SectionTitle("Playback preferences")
         FilterRow("Audio", listOf("SUB" as String? to "Sub", "DUB" as String? to "Dub"), settings.preferredAudio.name) { it?.let { v -> viewModel?.updatePreferredAudio(AudioType.valueOf(v)) } }
         FilterRow("Provider", listOf("Auto" as String? to "Auto", "zoro" as String? to "Zoro", "animepahe" as String? to "AnimePahe", "gogoanime" as String? to "Gogo", "kiwi" as String? to "Kiwi"), settings.preferredProvider) { viewModel?.updatePreferredProvider(it ?: "Auto") }
-        StateMessage("AniStream TV uses a dark-only interface, so light/system theme choices are hidden to keep settings consistent with the UI.")
+        StateMessage("Yume TV uses a dark-only interface, so light/system theme choices are hidden to keep settings consistent with the UI.")
         FilterRow("Grid", PosterGridDensity.values().map { it.name as String? to it.name.lowercase(Locale.ROOT).replaceFirstChar { c -> c.titlecase(Locale.ROOT) } }, settings.posterGridDensity.name) { it?.let { v -> viewModel?.updatePosterGridDensity(PosterGridDensity.valueOf(v)) } }
         FilterRow("Autoplay", listOf("true" as String? to "On", "false" as String? to "Off"), settings.autoPlayNext.toString()) { viewModel?.updateAutoPlayNext(it == "true") }
         FilterRow("Resume", listOf("true" as String? to "On", "false" as String? to "Off"), settings.resumePlayback.toString()) { viewModel?.updateResumePlayback(it == "true") }

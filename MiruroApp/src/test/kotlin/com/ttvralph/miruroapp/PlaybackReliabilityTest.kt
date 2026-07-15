@@ -124,6 +124,9 @@ class PlaybackReliabilityTest {
         seasonNumber = season,
         episodeNumber = number,
         title = "Episode $number",
+        thumbnailUrl = null,
+        runtimeMinutes = null,
+        releaseDate = null,
         audioType = audio,
         sourceCandidates = listOf(
             EpisodeSourceCandidate("provider", "$season-$number-${audio.name}", audio.name.lowercase())

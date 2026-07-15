@@ -127,7 +127,7 @@ internal fun ReliableHero(
             .zIndex(4f)
     ) {
         Text(
-            "ANISTREAM  •  FEATURED",
+            "YUME  •  FEATURED",
             color = Color.White.copy(alpha = 0.72f),
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,

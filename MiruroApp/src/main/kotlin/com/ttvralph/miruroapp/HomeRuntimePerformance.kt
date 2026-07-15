@@ -78,7 +78,7 @@ internal object ContinueWatchingMetadataStore {
             .url("https://graphql.anilist.co")
             .post(body.toRequestBody(jsonType))
             .header("Accept", "application/json")
-            .header("User-Agent", "AniStream-TV/1.0")
+            .header("User-Agent", "Yume-TV/1.0")
             .build()
 
         client.newCall(request).execute().use { response ->

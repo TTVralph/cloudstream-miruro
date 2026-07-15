@@ -131,7 +131,7 @@ fun AuditHomeScreen(
     }
 
     when (val current = state) {
-        is UiState.Loading -> LoadingState("Loading AniStream…")
+        is UiState.Loading -> LoadingState("Loading Yume…")
         is UiState.Error -> ErrorState(current.message) { viewModel.loadHome() }
         is UiState.Success -> {
             val rows = current.data
@@ -277,7 +277,7 @@ private fun AuditHomeHero(
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Black, Color.Black.copy(.94f), Color.Black.copy(.55f), Color.Transparent))))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(.20f), Color.Transparent, Color.Black))))
         Column(Modifier.align(Alignment.BottomStart).padding(start = AuditSafeX, bottom = 38.dp).width(560.dp)) {
-            Text("ANISTREAM  •  FEATURED", color = Color.White.copy(.72f), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Text("YUME  •  FEATURED", color = Color.White.copy(.72f), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             Spacer(Modifier.height(10.dp))
             Text(item.title, color = Color.White, fontSize = 38.sp, lineHeight = 41.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(10.dp))
@@ -654,7 +654,7 @@ fun AuditSettingsScreen(
             AuditInfoRow("Watch history", "Removes Continue Watching and all locally saved progress.", "Clear watch history") { confirmClear = true }
         }
         item { AuditSettingsHeader("App") }
-        item { AuditInfoRow("AniStream TV", "Version ${BuildConfig.VERSION_NAME}", null) {} }
+        item { AuditInfoRow("Yume TV", "Version ${BuildConfig.VERSION_NAME}", null) {} }
     }
 }
 
