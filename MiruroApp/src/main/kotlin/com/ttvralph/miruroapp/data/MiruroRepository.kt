@@ -7,9 +7,11 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -58,7 +60,7 @@ class MiruroRepository {
 
     suspend fun episodeData(anilistId: Int): Map<Int, EpisodeMetadataWithSources> =
         withContext(Dispatchers.IO) {
-            val providers = runCatching { fetchRawEpisodes(anilistId) }
+            val providers = resultPreservingCancellation { fetchRawEpisodes(anilistId) }
                 .onFailure { error ->
                     Log.w(TAG, "episodeData: fetchRawEpisodes failed for anilistId=$anilistId", error)
                 }
@@ -164,7 +166,9 @@ class MiruroRepository {
         val fetched = supervisorScope {
             orderedCandidates.map { candidate ->
                 async {
-                    candidate to runCatching { fetchSources(candidate, anilistId) }
+                    candidate to resultPreservingCancellation {
+                        fetchSources(candidate, anilistId)
+                    }
                 }
             }.awaitAll()
         }
@@ -192,6 +196,7 @@ class MiruroRepository {
                 return@forEach
             }
 
+            val providerHeaders = playbackHeaders(candidate.provider)
             val subtitles = findFirstArray(sources, *SUBTITLE_ARRAY_KEYS)?.mapNotNull { subtitle ->
                 val subtitleUrl = text(subtitle, *STREAM_URL_KEYS)
                     ?.let(::normalizeStreamUrl)
@@ -200,7 +205,11 @@ class MiruroRepository {
                 SubtitleTrack(
                     url = subtitleUrl,
                     label = "${candidate.provider.uppercase(Locale.ROOT)} • ${text(subtitle, "label", "lang", "language") ?: "Subtitle"}",
-                    language = text(subtitle, "lang", "language")
+                    language = text(subtitle, "lang", "language"),
+                    id = "${candidate.provider.lowercase(Locale.ROOT)}:${stableSourcePathFingerprint(subtitleUrl)}",
+                    mimeType = subtitleMimeType(subtitle, subtitleUrl),
+                    providerId = candidate.provider,
+                    headers = providerHeaders
                 )
             }.orEmpty()
 
@@ -211,11 +220,21 @@ class MiruroRepository {
                         ?: return@mapNotNull null
                     val type = playbackType(streamType(stream)?.lowercase(Locale.ROOT), rawUrl)
                     val quality = streamQuality(stream).ifBlank { "Auto" }
+                    val streamName = text(stream, "server", "name", "id") ?: quality
                     PlaybackSource(
                         url = rawUrl,
                         label = "${candidate.provider.uppercase(Locale.ROOT)} $quality",
                         type = type,
-                        headers = playbackHeaders(candidate.provider),
+                        providerId = candidate.provider,
+                        sourceId = listOf(
+                            candidate.provider.lowercase(Locale.ROOT),
+                            candidate.episodeId,
+                            streamName.lowercase(Locale.ROOT),
+                            quality.lowercase(Locale.ROOT),
+                            type.name,
+                            stableSourcePathFingerprint(rawUrl)
+                        ).joinToString(":"),
+                        headers = providerHeaders,
                         subtitleTracks = subtitles
                     )
                 }
@@ -237,26 +256,22 @@ class MiruroRepository {
             .distinctBy { source -> source.url to source.type }
             .take(MAX_QUALITY_CHOICES)
 
-        val sharedSubtitles = uniqueSources
-            .flatMap { it.subtitleTracks }
-            .distinctBy { it.url }
-        val enrichedSources = uniqueSources.map { source ->
-            source.copy(
-                subtitleTracks = (source.subtitleTracks + sharedSubtitles).distinctBy { it.url }
-            )
-        }
-
-        val first = enrichedSources.firstOrNull()
+        // Subtitle URLs and their required headers belong to the provider that
+        // returned them. Mixing all providers' tracks into every source made
+        // fallback sources request captions with unrelated video headers.
+        val first = uniqueSources.firstOrNull()
             ?: return@withContext SourceResolution.NotFound(lastReason)
 
         SourceResolution.Found(
-            first.copy(fallbackSources = enrichedSources.drop(1))
+            first.copy(fallbackSources = uniqueSources.drop(1))
         )
     }
 
     private fun fetchSources(candidate: EpisodeSourceCandidate, anilistId: Int): JsonNode {
         if (candidate.episodeId.startsWith("watch/")) {
-            val direct = runCatching { pipeGet(candidate.episodeId) }.getOrNull()
+            val direct = resultPreservingCancellation {
+                pipeGet(candidate.episodeId)
+            }.getOrNull()
             if (direct != null && hasPlayableStreams(direct)) return direct
         }
 
@@ -346,9 +361,40 @@ class MiruroRepository {
         String(Base64.decode(padded, Base64.URL_SAFE or Base64.NO_WRAP))
     }.getOrNull()
 
+    private inline fun <T> resultPreservingCancellation(block: () -> T): Result<T> =
+        try {
+            Result.success(block())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            Result.failure(error)
+        }
+
     private fun normalizeEpisodeId(value: String): String {
         val decoded = decodeUrlSafeBase64Text(value)
         return if (decoded != null && ":" in decoded) decoded else value
+    }
+
+    private fun stableSourcePathFingerprint(url: String): String {
+        val stablePart = url.substringBefore('?').substringBefore('#').lowercase(Locale.ROOT)
+        return MessageDigest.getInstance("SHA-256")
+            .digest(stablePart.toByteArray())
+            .take(8)
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+    }
+
+    private fun subtitleMimeType(node: JsonNode, url: String): String {
+        val declared = text(node, "mimeType", "mime", "format", "type")
+            ?.lowercase(Locale.ROOT)
+            .orEmpty()
+        val path = url.substringBefore('?').lowercase(Locale.ROOT)
+        return when {
+            "subrip" in declared || "srt" in declared || path.endsWith(".srt") ->
+                "application/x-subrip"
+            "ssa" in declared || "ass" in declared || path.endsWith(".ssa") || path.endsWith(".ass") ->
+                "text/x-ssa"
+            else -> "text/vtt"
+        }
     }
 
     private fun generatedEpisodeSlug(episodeId: String, number: Int): String {

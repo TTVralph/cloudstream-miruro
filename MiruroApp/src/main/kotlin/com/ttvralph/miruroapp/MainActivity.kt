@@ -39,7 +39,6 @@ import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.MiruroTheme
 import com.ttvralph.miruroapp.ui.StateMessage
-import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MiruroViewModel by viewModels()
@@ -398,7 +397,6 @@ private fun ResolvedPlayerRoute(
         requestSettled = false
         if (findEpisode(viewModel, animeId, season, episodeNumber, audio) == null) {
             viewModel.ensureSeasonLoaded(animeId, season)
-            delay(120L)
         }
         requestSettled = true
     }
@@ -415,6 +413,12 @@ private fun ResolvedPlayerRoute(
             ?.firstOrNull { it.seasonNumber == season }
             ?.id
     }
+    val targetSeasonAwaitingEpisodes = remember(animeId, season, detailsState, metadataVersion) {
+        viewModel.cachedDetails(animeId)
+            ?.seasons
+            ?.firstOrNull { it.seasonNumber == season }
+            ?.episodesLoaded == false
+    }
     val targetSeasonLoading = targetSeasonId?.let { it in seasonLoading } == true
     val targetSeasonError = targetSeasonId?.let { seasonErrors[it] }
 
@@ -422,7 +426,8 @@ private fun ResolvedPlayerRoute(
 
     when {
         episode != null -> {
-            val nextEpisode = remember(episode, metadataVersion) {
+            val playbackKey = episode.playbackKey()
+            val nextEpisode = remember(playbackKey, detailsState, metadataVersion) {
                 findNextEpisode(
                     viewModel,
                     animeId,
@@ -430,6 +435,16 @@ private fun ResolvedPlayerRoute(
                     episode.episodeNumber,
                     episode.audioType
                 )
+            }
+            val nextUnloadedSeason = remember(playbackKey, detailsState, metadataVersion) {
+                if (nextEpisode == null) {
+                    findNextUnloadedSeasonNumber(viewModel, animeId, episode.seasonNumber)
+                } else {
+                    null
+                }
+            }
+            LaunchedEffect(playbackKey, nextUnloadedSeason) {
+                nextUnloadedSeason?.let { viewModel.ensureSeasonLoaded(animeId, it) }
             }
             GuardedTvPlayerScreen(
                 viewModel = viewModel,
@@ -440,7 +455,8 @@ private fun ResolvedPlayerRoute(
                 onPlayNext = onPlayNext
             )
         }
-        !requestSettled || detailsState is UiState.Loading || targetSeasonLoading ->
+        !requestSettled || detailsState is UiState.Loading || targetSeasonLoading ||
+            (targetSeasonAwaitingEpisodes && targetSeasonError == null) ->
             LoadingState("Loading saved episode…")
         targetSeasonError != null -> ErrorState(targetSeasonError) {
             viewModel.ensureSeasonLoaded(animeId, season)
@@ -484,20 +500,58 @@ private fun findNextEpisode(
     audio: AudioType
 ): AnimeEpisode? {
     val details = viewModel.cachedDetails(animeId) ?: return null
-    return details.seasons
-        .flatMap { animeSeason ->
-            animeSeason.episodes
-                .filter { it.sourceCandidates.isNotEmpty() }
-                .groupBy { it.episodeNumber }
-                .mapNotNull { (_, versions) ->
-                    versions.firstOrNull { it.audioType == audio }
-                        ?: versions.firstOrNull { it.audioType == viewModel.settings.value.preferredAudio }
-                        ?: versions.firstOrNull()
-                }
-        }
-        .sortedWith(compareBy<AnimeEpisode> { it.seasonNumber }.thenBy { it.episodeNumber })
-        .firstOrNull {
-            it.seasonNumber > season ||
-                (it.seasonNumber == season && it.episodeNumber > episodeNumber)
-        }
+    return nextPlayableEpisode(
+        seasons = details.seasons,
+        currentSeason = season,
+        currentEpisode = episodeNumber,
+        requestedAudio = audio,
+        preferredAudio = viewModel.settings.value.preferredAudio
+    )
 }
+
+internal fun nextPlayableEpisode(
+    seasons: List<com.ttvralph.miruroapp.data.AnimeSeason>,
+    currentSeason: Int,
+    currentEpisode: Int,
+    requestedAudio: AudioType,
+    preferredAudio: AudioType
+): AnimeEpisode? {
+    for (season in seasons.filter { it.seasonNumber >= currentSeason }.sortedBy { it.seasonNumber }) {
+        // Do not jump over a nearer season shell just because a later season was
+        // loaded previously. The caller will load this shell and ask again.
+        if (!season.episodesLoaded) return null
+        val nextNumber = season.episodes
+            .asSequence()
+            .filter { episode ->
+                episode.sourceCandidates.isNotEmpty() &&
+                    (season.seasonNumber > currentSeason || episode.episodeNumber > currentEpisode)
+            }
+            .minOfOrNull { it.episodeNumber }
+            ?: continue
+        val versions = season.episodes.filter { episode ->
+            episode.episodeNumber == nextNumber && episode.sourceCandidates.isNotEmpty()
+        }
+        return versions.firstOrNull { it.audioType == requestedAudio }
+            ?: versions.firstOrNull { it.audioType == preferredAudio }
+            ?: versions.firstOrNull()
+    }
+    return null
+}
+
+private fun findNextUnloadedSeasonNumber(
+    viewModel: MiruroViewModel,
+    animeId: Int,
+    currentSeason: Int
+): Int? = nextUnloadedSeasonNumber(
+    viewModel.cachedDetails(animeId)?.seasons.orEmpty(),
+    currentSeason
+)
+
+internal fun nextUnloadedSeasonNumber(
+    seasons: List<com.ttvralph.miruroapp.data.AnimeSeason>,
+    currentSeason: Int
+): Int? = seasons
+    .asSequence()
+    .filter { it.seasonNumber > currentSeason && !it.episodesLoaded }
+    .minByOrNull { it.seasonNumber }
+    ?.seasonNumber

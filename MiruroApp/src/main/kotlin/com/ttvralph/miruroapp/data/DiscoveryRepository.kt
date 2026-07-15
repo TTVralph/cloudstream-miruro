@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -24,6 +25,7 @@ class DiscoveryRepository {
         .callTimeout(14, TimeUnit.SECONDS)
         .build()
     private val miruro = MiruroRepository()
+    private val cacheLock = Any()
     private val titleCache = linkedMapOf<Int, DiscoveryTitleInfo>()
     private var studioCache: List<StudioOption>? = null
 
@@ -84,7 +86,7 @@ class DiscoveryRepository {
     }
 
     suspend fun studioOptions(): List<StudioOption> = withContext(Dispatchers.IO) {
-        studioCache?.let { return@withContext it }
+        synchronized(cacheLock) { studioCache }?.let { return@withContext it }
         val values = graphQl(STUDIO_QUERY, emptyMap())
             .path("Page")
             .path("studios")
@@ -95,7 +97,7 @@ class DiscoveryRepository {
             }
             .distinctBy { it.id }
             .take(30)
-        studioCache = values
+        synchronized(cacheLock) { studioCache = values }
         values
     }
 
@@ -152,7 +154,7 @@ class DiscoveryRepository {
     }
 
     suspend fun titleInfo(animeId: Int): DiscoveryTitleInfo = withContext(Dispatchers.IO) {
-        titleCache[animeId]?.let { return@withContext it }
+        synchronized(cacheLock) { titleCache[animeId] }?.let { return@withContext it }
         val media = graphQl(TITLE_QUERY, mapOf("id" to animeId)).path("Media")
         if (!media.isObject) throw IOException("AniList did not return title information.")
         val anime = media.toAnimeItem() ?: throw IOException("AniList returned incomplete title information.")
@@ -258,16 +260,22 @@ class DiscoveryRepository {
             openingThemes = themes.first.take(12),
             endingThemes = themes.second.take(12)
         )
-        titleCache[animeId] = info
-        while (titleCache.size > 30) titleCache.remove(titleCache.keys.first())
+        synchronized(cacheLock) {
+            titleCache[animeId] = info
+            while (titleCache.size > 30) titleCache.remove(titleCache.keys.first())
+        }
         info
     }
 
-    private suspend fun dubbedAvailable(animeId: Int): Boolean = runCatching {
+    private suspend fun dubbedAvailable(animeId: Int): Boolean = try {
         miruro.episodeData(animeId).values.any { data ->
             data.candidates.any { it.category.equals("dub", ignoreCase = true) }
         }
-    }.getOrDefault(false)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        false
+    }
 
     private fun fetchThemes(malId: Int): Pair<List<String>, List<String>> {
         val request = Request.Builder()

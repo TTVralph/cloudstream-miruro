@@ -335,8 +335,19 @@ fun RatingLabel(score: String) {
 }
 
 @Composable
-fun PosterCard(item: AnimeItem, width: Dp = 166.dp, rank: String? = null, selected: Boolean = false, onClick: () -> Unit) {
-    FocusableSurface(onClick = onClick, modifier = Modifier.width(width).height(width * 1.48f), unfocusedBackground = MiruroColors.Card) { focused ->
+fun PosterCard(
+    item: AnimeItem,
+    modifier: Modifier = Modifier,
+    width: Dp = 166.dp,
+    rank: String? = null,
+    selected: Boolean = false,
+    onClick: () -> Unit
+) {
+    FocusableSurface(
+        onClick = onClick,
+        modifier = modifier.width(width).height(width * 1.48f),
+        unfocusedBackground = MiruroColors.Card
+    ) { focused ->
         Box(modifier = Modifier.fillMaxSize()) {
             CardImage(item.posterUrl, item.title)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.88f)))))

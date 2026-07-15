@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -28,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,9 +82,13 @@ fun ProfilePickerScreen(
 
     val initialFocus = remember { FocusRequester() }
     val focusIndex = state.profiles.indexOfFirst { it.id == state.activeId }.coerceAtLeast(0)
+    val profileListState = rememberLazyListState()
     LaunchedEffect(state.profiles.map { it.id }, state.activeId) {
-        delay(120L)
-        runCatching { initialFocus.requestFocus() }
+        if (state.profiles.isNotEmpty()) {
+            profileListState.scrollToItem(focusIndex)
+            withFrameNanos { }
+            runCatching { initialFocus.requestFocus() }
+        }
     }
 
     Column(
@@ -97,6 +103,7 @@ fun ProfilePickerScreen(
         Text("Choose a profile to continue", color = MiruroColors.Muted, fontSize = 16.sp)
         Spacer(Modifier.height(24.dp))
         LazyRow(
+            state = profileListState,
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(24.dp),
             contentPadding = PaddingValues(horizontal = 74.dp, vertical = 12.dp)
