@@ -26,9 +26,9 @@ fun Logo(
     showTagline: Boolean = false
 ) {
     val image = if (showTagline) {
-        R.drawable.yume_lockup_exact
+        R.drawable.yume_lockup_transparent
     } else {
-        R.drawable.yume_wordmark_exact
+        R.drawable.yume_wordmark_transparent
     }
     val width = if (showTagline) 198.dp else 112.dp
     val height = if (showTagline) 110.dp else 46.dp
