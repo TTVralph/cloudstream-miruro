@@ -228,6 +228,7 @@ fun DailyDetailsScreen(
                                 total = seasonTotal,
                                 percent = seasonPercent,
                                 nextTarget = nextTarget,
+                                showSeasonNumber = details.seasons.size > 1,
                                 loading = isLoading,
                                 loadError = loadError,
                                 onLoad = { viewModel.loadSeason(season.id, force = loadError != null) },
@@ -317,7 +318,12 @@ fun DailyDetailsScreen(
                                                         modalContent = SynopsisModalContent(
                                                             eyebrow = "Episode synopsis",
                                                             title = episode.title ?: "Episode ${episode.episodeNumber}",
-                                                            metadata = "Season ${season.seasonNumber} • Episode ${episode.episodeNumber} • ${episode.audioType.name}",
+                                                            metadata = listOfNotNull(
+                                                                "Season ${season.seasonNumber}"
+                                                                    .takeIf { details.seasons.size > 1 },
+                                                                "Episode ${episode.episodeNumber}",
+                                                                episode.audioType.name
+                                                            ).joinToString(" • "),
                                                             synopsis = synopsis
                                                         )
                                                     }
@@ -392,7 +398,11 @@ private fun DailyDetailsHero(
                 Text(
                     listOfNotNull(
                         details.year?.toString(),
-                        "${details.seasons.size} season${if (details.seasons.size == 1) "" else "s"}",
+                        if (details.seasons.size > 1) {
+                            "${details.seasons.size} seasons"
+                        } else {
+                            knownTotal.takeIf { it > 0 }?.let { "$it episodes" }
+                        },
                         knownTotal.takeIf { it > 0 }?.let { "$watched/$it watched" }
                     ).joinToString(" • "),
                     color = Color.White.copy(alpha = 0.78f),
@@ -426,8 +436,13 @@ private fun DailyDetailsHero(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 target?.let {
                     PrimaryButton(
-                        if (isResume) "Resume S${it.seasonNumber} E${it.episode.episodeNumber}"
-                        else "Play S${it.seasonNumber} E${it.episode.episodeNumber}",
+                        if (details.seasons.size > 1) {
+                            if (isResume) "Resume S${it.seasonNumber} E${it.episode.episodeNumber}"
+                            else "Play S${it.seasonNumber} E${it.episode.episodeNumber}"
+                        } else {
+                            if (isResume) "Resume E${it.episode.episodeNumber}"
+                            else "Play E${it.episode.episodeNumber}"
+                        },
                         Modifier.width(260.dp)
                     ) { onPlay(it) }
                 }
@@ -449,6 +464,7 @@ private fun DailySeasonHeader(
     total: Int,
     percent: Float,
     nextTarget: DailyEpisodeTarget?,
+    showSeasonNumber: Boolean,
     loading: Boolean,
     loadError: String?,
     onLoad: () -> Unit,
@@ -465,7 +481,11 @@ private fun DailySeasonHeader(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Season ${season.seasonNumber}: ${season.title}",
+                    if (showSeasonNumber) {
+                        "Season ${season.seasonNumber}: ${season.title}"
+                    } else {
+                        season.title
+                    },
                     color = Color.White,
                     fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,

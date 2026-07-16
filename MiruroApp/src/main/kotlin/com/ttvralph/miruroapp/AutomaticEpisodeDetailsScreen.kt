@@ -123,7 +123,11 @@ fun AutomaticEpisodeDetailsScreen(
                 }
                 Column(Modifier.weight(1.15f)) {
                     Text(
-                        "Season ${episode.seasonNumber} • Episode ${episode.episodeNumber}",
+                        if ((details?.seasons?.size ?: 0) > 1) {
+                            "Season ${episode.seasonNumber} • Episode ${episode.episodeNumber}"
+                        } else {
+                            "Episode ${episode.episodeNumber}"
+                        },
                         color = Color.White,
                         fontSize = 27.sp,
                         fontWeight = FontWeight.Bold
