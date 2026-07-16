@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -28,6 +29,7 @@ class DiscoveryRepository {
     private val cacheLock = Any()
     private val titleCache = linkedMapOf<Int, DiscoveryTitleInfo>()
     private var studioCache: List<StudioOption>? = null
+    private var catalogLastPageCache: Int? = null
 
     suspend fun search(
         filters: DiscoverySearchFilters,
@@ -108,7 +110,58 @@ class DiscoveryRepository {
         require(mode != DiscoveryMode.CONTINUE_SOMETHING) {
             "Continue Something is selected from local watch progress."
         }
+        val all = if (mode == DiscoveryMode.SURPRISE_ME) {
+            surpriseCandidates(excludedIds)
+        } else {
+            pickCandidates(mode = mode, page = 1)
+        }
+        val available = all.filterNot { it.id in excludedIds }.ifEmpty { all }
+        val item = available.takeIf { it.isNotEmpty() }?.let { it[Random.nextInt(it.size)] }
+        DiscoveryPick(
+            mode = mode,
+            anime = item,
+            reason = when (mode) {
+                DiscoveryMode.SURPRISE_ME -> "A random pick from across the anime catalogue."
+                DiscoveryMode.PICK_A_MOVIE -> "A well-rated anime movie."
+                DiscoveryMode.ONE_EPISODE_WATCH -> "A movie, OVA, or special designed for a shorter watch."
+                DiscoveryMode.START_SOMETHING_NEW -> "A recent title outside your current library and history."
+                DiscoveryMode.CONTINUE_SOMETHING -> "Resume an unfinished episode."
+            }
+        )
+    }
+
+    private fun surpriseCandidates(excludedIds: Set<Int>): List<AnimeItem> {
+        val lastPage = catalogLastPage()
+        var fallback = emptyList<AnimeItem>()
+        repeat(SURPRISE_PAGE_ATTEMPTS) {
+            val candidates = pickCandidates(
+                mode = DiscoveryMode.SURPRISE_ME,
+                page = Random.nextInt(lastPage) + 1
+            )
+            if (fallback.isEmpty()) fallback = candidates
+            if (candidates.any { it.id !in excludedIds }) return candidates
+        }
+        return fallback.ifEmpty {
+            pickCandidates(mode = DiscoveryMode.SURPRISE_ME, page = 1)
+        }
+    }
+
+    private fun catalogLastPage(): Int {
+        synchronized(cacheLock) { catalogLastPageCache }?.let { return it }
+        val lastPage = runCatching {
+            graphQl(CATALOG_PAGE_INFO_QUERY, emptyMap())
+                .path("Page")
+                .path("pageInfo")
+                .path("lastPage")
+                .asInt(DEFAULT_CATALOG_LAST_PAGE)
+        }.getOrDefault(DEFAULT_CATALOG_LAST_PAGE).coerceIn(1, MAX_CATALOG_LAST_PAGE)
+        synchronized(cacheLock) { catalogLastPageCache = lastPage }
+        return lastPage
+    }
+
+    private fun pickCandidates(mode: DiscoveryMode, page: Int): List<AnimeItem> {
         val variables = linkedMapOf<String, Any?>(
+            "page" to page,
             "formatIn" to when (mode) {
                 DiscoveryMode.PICK_A_MOVIE -> listOf("MOVIE")
                 DiscoveryMode.ONE_EPISODE_WATCH -> listOf("MOVIE", "OVA", "SPECIAL")
@@ -127,30 +180,17 @@ class DiscoveryRepository {
                     DiscoveryMode.PICK_A_MOVIE -> "SCORE_DESC"
                     DiscoveryMode.ONE_EPISODE_WATCH -> "POPULARITY_DESC"
                     DiscoveryMode.START_SOMETHING_NEW -> "START_DATE_DESC"
-                    else -> "TRENDING_DESC"
+                    DiscoveryMode.SURPRISE_ME -> "ID"
+                    DiscoveryMode.CONTINUE_SOMETHING -> "ID"
                 }
             )
         ).filterValues { it != null }
 
-        val all = graphQl(PICK_QUERY, variables)
+        return graphQl(PICK_QUERY, variables)
             .path("Page")
             .path("media")
             .mapNotNull { it.toAnimeItem() }
             .distinctBy { it.id }
-        val available = all.filterNot { it.id in excludedIds }.ifEmpty { all }
-        val item = available.takeIf { it.isNotEmpty() }
-            ?.let { it[(System.nanoTime().ushr(1) % it.size.toLong()).toInt()] }
-        DiscoveryPick(
-            mode = mode,
-            anime = item,
-            reason = when (mode) {
-                DiscoveryMode.SURPRISE_ME -> "A surprise from what is trending now."
-                DiscoveryMode.PICK_A_MOVIE -> "A well-rated anime movie."
-                DiscoveryMode.ONE_EPISODE_WATCH -> "A movie, OVA, or special designed for a shorter watch."
-                DiscoveryMode.START_SOMETHING_NEW -> "A recent title outside your current library and history."
-                DiscoveryMode.CONTINUE_SOMETHING -> "Resume an unfinished episode."
-            }
-        )
     }
 
     suspend fun titleInfo(animeId: Int): DiscoveryTitleInfo = withContext(Dispatchers.IO) {
@@ -371,10 +411,14 @@ class DiscoveryRepository {
     )
 
     companion object {
+        private const val SURPRISE_PAGE_ATTEMPTS = 3
+        private const val DEFAULT_CATALOG_LAST_PAGE = 400
+        private const val MAX_CATALOG_LAST_PAGE = 10_000
         private const val ITEM_FIELDS = "id title{romaji english native} coverImage{large extraLarge} bannerImage format seasonYear startDate{year month day} averageScore"
         private const val SEARCH_QUERY = "query(\$page:Int,\$perPage:Int,\$search:String,\$sort:[MediaSort],\$formatIn:[MediaFormat],\$statusIn:[MediaStatus],\$season:MediaSeason,\$startDateGreater:FuzzyDateInt,\$startDateLesser:FuzzyDateInt,\$genreIn:[String],\$genreNotIn:[String],\$averageScoreGreater:Int,\$episodesLesser:Int,\$durationLesser:Int,\$source:MediaSource,\$country:CountryCode){Page(page:\$page,perPage:\$perPage){media(search:\$search,type:ANIME,isAdult:false,sort:\$sort,format_in:\$formatIn,status_in:\$statusIn,season:\$season,startDate_greater:\$startDateGreater,startDate_lesser:\$startDateLesser,genre_in:\$genreIn,genre_not_in:\$genreNotIn,averageScore_greater:\$averageScoreGreater,episodes_lesser:\$episodesLesser,duration_lesser:\$durationLesser,source:\$source,countryOfOrigin:\$country){$ITEM_FIELDS studios{nodes{id}}}}}"
         private const val STUDIO_QUERY = "query{Page(page:1,perPage:30){studios(sort:FAVOURITES_DESC){id name isAnimationStudio}}}"
-        private const val PICK_QUERY = "query(\$formatIn:[MediaFormat],\$statusIn:[MediaStatus],\$episodesLesser:Int,\$sort:[MediaSort]){Page(page:1,perPage:40){media(type:ANIME,isAdult:false,format_in:\$formatIn,status_in:\$statusIn,episodes_lesser:\$episodesLesser,sort:\$sort){$ITEM_FIELDS}}}"
+        private const val CATALOG_PAGE_INFO_QUERY = "query{Page(page:1,perPage:40){pageInfo{lastPage} media(type:ANIME,isAdult:false,sort:[ID]){id}}}"
+        private const val PICK_QUERY = "query(\$page:Int,\$formatIn:[MediaFormat],\$statusIn:[MediaStatus],\$episodesLesser:Int,\$sort:[MediaSort]){Page(page:\$page,perPage:40){media(type:ANIME,isAdult:false,format_in:\$formatIn,status_in:\$statusIn,episodes_lesser:\$episodesLesser,sort:\$sort){$ITEM_FIELDS}}}"
         private const val TITLE_QUERY = "query(\$id:Int){Media(id:\$id,type:ANIME){$ITEM_FIELDS idMal description(asHtml:false) status episodes duration genres source countryOfOrigin season synonyms studios(isMain:true){nodes{id name}} relations{edges{relationType node{type $ITEM_FIELDS episodes}}} characters(sort:[ROLE,RELEVANCE,ID],perPage:18){edges{role node{id name{full native} image{large}} voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){id name{full native} image{large}}}} staff(sort:[RELEVANCE,ID],perPage:14){edges{role node{id name{full native} image{large}}}}}}"
     }
 }

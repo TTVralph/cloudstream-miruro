@@ -104,37 +104,40 @@ fun AdvancedSearchScreen(
             ) {
             Column(
                 Modifier
-                    .width(if (settings.largeUiText) 460.dp else 420.dp)
+                    .width(if (settings.largeUiText) 430.dp else 382.dp)
                     .fillMaxHeight()
                     .verticalScroll(rememberScrollState())
                     .padding(bottom = 28.dp)
             ) {
                 Text(
-                    "Advanced Search",
+                    "Search",
                     color = Color.White,
-                    fontSize = (if (settings.largeUiText) 37 else 32).sp,
+                    fontSize = (if (settings.largeUiText) 35 else 30).sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Search alternate titles and combine detailed AniList filters.",
+                    "Find a title or narrow the catalogue with filters.",
                     color = MiruroColors.Subtle,
                     fontSize = (if (settings.largeUiText) 15 else 12).sp
                 )
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.dp))
                 AdvancedSearchBox(
                     query = filters.query,
                     settings = settings,
                     onQueryChange = { filters = filters.copy(query = it, page = 1) }
                 )
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DiscoveryChoice("All", filters.formats.isEmpty(), settings, Modifier.width(88.dp)) {
+                Spacer(Modifier.height(9.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DiscoveryChoice("All", filters.formats.isEmpty(), settings, Modifier.weight(1f)) {
                         filters = filters.copy(formats = emptySet(), page = 1)
                     }
-                    DiscoveryChoice("Series", filters.formats == setOf("TV"), settings, Modifier.width(102.dp)) {
+                    DiscoveryChoice("Series", filters.formats == setOf("TV"), settings, Modifier.weight(1f)) {
                         filters = filters.copy(formats = setOf("TV"), page = 1)
                     }
-                    DiscoveryChoice("Movies", filters.formats == setOf("MOVIE"), settings, Modifier.width(108.dp)) {
+                    DiscoveryChoice("Movies", filters.formats == setOf("MOVIE"), settings, Modifier.weight(1f)) {
                         filters = filters.copy(formats = setOf("MOVIE"), page = 1)
                     }
                 }
@@ -204,18 +207,23 @@ fun AdvancedSearchScreen(
                         )
                     } else {
                         LazyVerticalGrid(
-                            columns = GridCells.Adaptive(if (settings.largeUiText) 200.dp else 174.dp),
-                            horizontalArrangement = Arrangement.spacedBy(17.dp),
-                            verticalArrangement = Arrangement.spacedBy(17.dp),
-                            contentPadding = PaddingValues(bottom = 30.dp),
-                            modifier = Modifier.fillMaxSize()
+                            columns = GridCells.Fixed(if (settings.largeUiText) 2 else 3),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            contentPadding = PaddingValues(
+                                start = 8.dp,
+                                top = 9.dp,
+                                end = 8.dp,
+                                bottom = 30.dp
+                            ),
+                            modifier = Modifier.weight(1f).fillMaxWidth()
                         ) {
                             gridItems(current.data, key = { it.id }) { anime ->
                                 DiscoveryMediaCard(
                                     item = anime,
                                     settings = settings,
-                                    width = if (settings.largeUiText) 194.dp else 170.dp,
-                                    height = if (settings.largeUiText) 274.dp else 240.dp,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    landscape = true,
                                     subtitle = listOfNotNull(
                                         anime.type.takeIf { it.name != "UNKNOWN" }?.name?.replace('_', ' '),
                                         anime.year?.toString(),
@@ -293,7 +301,7 @@ private fun AdvancedSearchBox(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(if (settings.largeUiText) 72.dp else 64.dp)
+            .height(if (settings.largeUiText) 66.dp else 58.dp)
             .background(if (focused) Color.White else Color(0xFF161616), shape)
             .border(
                 if (focused || settings.highContrastUi) 2.dp else 1.dp,
@@ -350,44 +358,72 @@ private fun AdvancedKeyboard(
     onClear: () -> Unit,
     onSearch: () -> Unit
 ) {
-    val rows = listOf("QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM")
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    val rows = listOf(
+        "QWERTYUIOP".map { it.toString() },
+        listOf("") + "ASDFGHJKL".map { it.toString() },
+        listOf("") + "ZXCVBNM".map { it.toString() } + listOf("", "")
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
                 row.forEach { letter ->
-                    FocusableSurface(
-                        onClick = { onCharacter(letter.toString()) },
-                        modifier = Modifier.size(
-                            width = if (settings.largeUiText) 40.dp else 36.dp,
-                            height = if (settings.largeUiText) 46.dp else 40.dp
-                        ),
-                        shape = RoundedCornerShape(6.dp),
-                        unfocusedBackground = if (settings.highContrastUi) Color.Black else Color.White.copy(alpha = 0.07f),
-                        focusedBackground = Color.White
-                    ) { focused ->
-                        Box(
-                            Modifier.fillMaxSize().then(
-                                if (settings.highContrastUi && !focused) {
-                                    Modifier.border(1.dp, Color.White.copy(alpha = 0.75f), RoundedCornerShape(6.dp))
-                                } else Modifier
-                            ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            TvControlLabel(
-                                text = letter.toString(),
-                                color = if (focused) Color.Black else Color.White,
-                                fontSize = (if (settings.largeUiText) 16 else 14).sp
-                            )
-                        }
+                    if (letter.isBlank()) {
+                        Spacer(Modifier.weight(1f))
+                    } else {
+                        AdvancedKeyboardKey(
+                            letter = letter,
+                            settings = settings,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onCharacter(letter) }
+                        )
                     }
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            SecondaryButton("⌫", Modifier.width(64.dp), onBackspace)
-            SecondaryButton("Space", Modifier.width(104.dp), onSpace)
-            SecondaryButton("Clear", Modifier.width(90.dp), onClear)
-            PrimaryButton("Search", Modifier.width(140.dp), onSearch)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SecondaryButton("⌫", Modifier.weight(0.7f), onBackspace)
+            SecondaryButton("Space", Modifier.weight(1f), onSpace)
+            SecondaryButton("Clear", Modifier.weight(0.85f), onClear)
+            PrimaryButton("Search", Modifier.weight(1.45f), onSearch)
+        }
+    }
+}
+
+@Composable
+private fun AdvancedKeyboardKey(
+    letter: String,
+    settings: AppSettings,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(6.dp)
+    FocusableSurface(
+        onClick = onClick,
+        modifier = modifier.height(if (settings.largeUiText) 44.dp else 38.dp),
+        shape = shape,
+        unfocusedBackground = if (settings.highContrastUi) Color.Black else Color.White.copy(alpha = 0.07f),
+        focusedBackground = Color.White
+    ) { focused ->
+        Box(
+            Modifier.fillMaxSize().then(
+                if (settings.highContrastUi && !focused) {
+                    Modifier.border(1.dp, Color.White.copy(alpha = 0.75f), shape)
+                } else Modifier
+            ),
+            contentAlignment = Alignment.Center
+        ) {
+            TvControlLabel(
+                text = letter,
+                color = if (focused) Color.Black else Color.White,
+                fontSize = (if (settings.largeUiText) 16 else 14).sp
+            )
         }
     }
 }
