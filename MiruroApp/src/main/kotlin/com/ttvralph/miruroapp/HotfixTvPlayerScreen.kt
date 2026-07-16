@@ -55,6 +55,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,6 +84,7 @@ import com.ttvralph.miruroapp.data.SubtitleTrack
 import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.LoadingState
 import com.ttvralph.miruroapp.ui.MiruroColors
+import com.ttvralph.miruroapp.ui.TvControlLabel
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -990,11 +992,11 @@ private fun HotfixSkipPrompt(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                interval.kind.label,
+            TvControlLabel(
+                text = interval.kind.label,
                 color = if (focused) Color.Black else Color.White,
                 fontSize = 15.sp,
-                fontWeight = FontWeight.Black
+                textAlign = TextAlign.Start
             )
             Text("›", color = if (focused) Color.Black else Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         }
@@ -1024,7 +1026,7 @@ private fun HotfixPlayerErrorScreen(
                 .padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Playback source failed", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black)
+            Text("Playback source failed", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             Text(
                 message,
@@ -1103,7 +1105,7 @@ private fun HotfixControls(
                     episode.title ?: "Episode ${episode.episodeNumber}",
                     color = Color.White,
                     fontSize = if (largeControls) 24.sp else 20.sp,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1191,13 +1193,11 @@ private fun HotfixButton(
             ),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text,
+            TvControlLabel(
+                text = text,
                 color = if (focused || primary) Color.Black else Color.White,
                 fontSize = if (large) 16.sp else 13.sp,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 9.dp)
             )
         }
     }
@@ -1469,7 +1469,7 @@ private fun HotfixPlayerPanel(
                 .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
                 .padding(18.dp)
         ) {
-            Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
+            Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 570.dp),
@@ -1509,17 +1509,16 @@ private fun HotfixPanelRow(
             ).padding(horizontal = 14.dp),
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                if (selected) "✓ $text" else text,
+            TvControlLabel(
+                text = if (selected) "✓ $text" else text,
                 color = when {
                     focused -> Color.Black
                     selected -> MiruroColors.AccentSoft
                     else -> Color.White
                 },
                 fontSize = if (large) 17.sp else 15.sp,
-                fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth()
             )
             supporting?.let {
                 Text(
@@ -1540,7 +1539,7 @@ private fun HotfixPanelSection(text: String) {
         text.uppercase(Locale.ROOT),
         color = MiruroColors.AccentSoft,
         fontSize = 12.sp,
-        fontWeight = FontWeight.Black,
+        fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(top = 10.dp, start = 5.dp, bottom = 3.dp)
     )
 }

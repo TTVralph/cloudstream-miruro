@@ -131,7 +131,7 @@ fun DiscoveryHubScreen(
                         "Discover",
                         color = Color.White,
                         fontSize = (if (settings.largeUiText) 36 else 31).sp,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
                         "Play Something, browse ideas, or use detailed filters.",
@@ -243,7 +243,7 @@ private fun DiscoveryModeCard(
                 mode.label,
                 color = if (focused) Color.Black else Color.White,
                 fontSize = (if (settings.largeUiText) 19 else 17).sp,
-                fontWeight = FontWeight.Black
+                fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(5.dp))
             Text(
@@ -300,7 +300,7 @@ private fun DiscoveryPickHero(
             when (state) {
                 is UiState.Loading -> LoadingState("Choosing something for $profileName…")
                 is UiState.Error -> {
-                    Text("Play Something", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black)
+                    Text("Play Something", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     Text(state.message, color = MiruroColors.Subtle, fontSize = 15.sp)
                     Spacer(Modifier.height(18.dp))
@@ -312,14 +312,14 @@ private fun DiscoveryPickHero(
                         value.mode.label.uppercase(),
                         color = MiruroColors.AccentSoft,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(7.dp))
                     Text(
                         value.anime?.title ?: "Nothing to resume yet",
                         color = Color.White,
                         fontSize = (if (settings.largeUiText) 36 else 31).sp,
-                        fontWeight = FontWeight.Black,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -353,7 +353,7 @@ private fun DiscoveryPickHero(
                         "Not sure what to watch?",
                         color = Color.White,
                         fontSize = (if (settings.largeUiText) 36 else 31).sp,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(

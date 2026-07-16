@@ -51,6 +51,7 @@ import com.ttvralph.miruroapp.ui.MinimalActionButton
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PrimaryButton
 import com.ttvralph.miruroapp.ui.SecondaryButton
+import com.ttvralph.miruroapp.ui.TvBadgeLabel
 
 @Composable
 fun DailyDetailsScreen(
@@ -155,7 +156,7 @@ fun DailyDetailsScreen(
                     item {
                         Column(Modifier.padding(horizontal = ReliableSafeX, vertical = 8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Episodes", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black)
+                                Text("Episodes", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.width(14.dp))
                                 Text(
                                     if (knownEpisodeTotal > 0) {
@@ -173,7 +174,7 @@ fun DailyDetailsScreen(
                                         "NO-SPOILER MODE",
                                         color = MiruroColors.AccentSoft,
                                         fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
@@ -404,7 +405,7 @@ private fun DailyDetailsHero(
                 color = Color.White,
                 fontSize = 38.sp,
                 lineHeight = 41.sp,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -467,7 +468,7 @@ private fun DailySeasonHeader(
                     "Season ${season.seasonNumber}: ${season.title}",
                     color = Color.White,
                     fontSize = 19.sp,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -611,7 +612,7 @@ private fun DailyEpisodeCard(
                             progress?.takeUnless { it.watched }?.let { " • ${(it.percent * 100).toInt()}%" }.orEmpty(),
                         color = if (focused) Color.Black else MiruroColors.AccentSoft,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
                         if (hideSpoilers) "Episode ${episode.episodeNumber}" else episode.title ?: "Episode ${episode.episodeNumber}",
@@ -655,9 +656,10 @@ private fun DailyEpisodeCard(
 private fun DailyEpisodeBadge(text: String, background: Color) {
     Box(
         Modifier.clip(RoundedCornerShape(5.dp)).background(background)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Text(text, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black)
+        TvBadgeLabel(text, color = Color.White, fontSize = 10.sp)
     }
 }
 

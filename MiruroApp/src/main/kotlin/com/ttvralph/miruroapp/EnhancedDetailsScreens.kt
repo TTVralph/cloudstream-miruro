@@ -223,7 +223,7 @@ fun TitleExtrasScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SecondaryButton("Back", Modifier.width(120.dp), onBack)
                 Spacer(Modifier.width(18.dp))
-                Text("More Like This", color = Color.White, fontSize = 31.sp, fontWeight = FontWeight.Black)
+                Text("More Like This", color = Color.White, fontSize = 31.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(18.dp))
         }

@@ -2,6 +2,7 @@ package com.ttvralph.miruroapp.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -81,5 +82,7 @@ fun MiruroTheme(
             error = Color(0xFFBA1A1A)
         )
     }
-    MaterialTheme(colorScheme = colorScheme, content = content)
+    MaterialTheme(colorScheme = colorScheme) {
+        ProvideTextStyle(value = YumeBaseTextStyle, content = content)
+    }
 }

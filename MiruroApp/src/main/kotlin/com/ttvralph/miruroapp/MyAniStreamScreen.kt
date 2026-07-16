@@ -297,7 +297,7 @@ private fun MyAniStreamTracking(
 @Composable
 private fun HubStat(value: String, label: String) {
     Column(Modifier.width(155.dp)) {
-        Text(value, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Black)
+        Text(value, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Text(label, color = MiruroColors.Subtle, fontSize = 12.sp, maxLines = 1)
     }
 }

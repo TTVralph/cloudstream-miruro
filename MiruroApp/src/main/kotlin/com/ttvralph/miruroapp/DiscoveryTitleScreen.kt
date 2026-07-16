@@ -274,7 +274,7 @@ private fun TitleGuideHero(
                 "EXPLORE TITLE",
                 color = MiruroColors.AccentSoft,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 letterSpacing = 1.1.sp
             )
             Spacer(Modifier.height(7.dp))
@@ -282,7 +282,7 @@ private fun TitleGuideHero(
                 info.anime.title,
                 color = Color.White,
                 fontSize = (if (settings.largeUiText) 42 else 36).sp,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -425,7 +425,7 @@ private fun PersonCard(
                     person.name,
                     color = if (focused) Color.Black else Color.White,
                     fontSize = (if (settings.largeUiText) 16 else 14).sp,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -479,7 +479,7 @@ private fun ThemeList(
                 title,
                 color = if (focused) MiruroColors.Accent else MiruroColors.AccentSoft,
                 fontSize = (if (settings.largeUiText) 18 else 16).sp,
-                fontWeight = FontWeight.Black
+                fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(8.dp))
             if (values.isEmpty()) {

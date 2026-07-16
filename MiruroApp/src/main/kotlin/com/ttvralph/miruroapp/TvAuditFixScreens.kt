@@ -56,7 +56,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -81,6 +80,9 @@ import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PrimaryButton
 import com.ttvralph.miruroapp.ui.SecondaryButton
 import com.ttvralph.miruroapp.ui.StateMessage
+import com.ttvralph.miruroapp.ui.TvBadgeLabel
+import com.ttvralph.miruroapp.ui.TvControlLabel
+import com.ttvralph.miruroapp.ui.YumeBaseTextStyle
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -279,7 +281,7 @@ private fun AuditHomeHero(
         Column(Modifier.align(Alignment.BottomStart).padding(start = AuditSafeX, bottom = 38.dp).width(560.dp)) {
             Text("YUME  •  FEATURED", color = Color.White.copy(.72f), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             Spacer(Modifier.height(10.dp))
-            Text(item.title, color = Color.White, fontSize = 38.sp, lineHeight = 41.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(item.title, color = Color.White, fontSize = 38.sp, lineHeight = 41.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 item.score?.let {
@@ -444,7 +446,7 @@ fun AuditSearchScreen(viewModel: MiruroViewModel, onOpenDetails: (Int) -> Unit) 
         }
 
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            Text("Top Results", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Black)
+            Text("Top Results", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             when (val current = state) {
                 null -> StateMessage("Type a title or use the TV keyboard to search.")
@@ -485,7 +487,11 @@ private fun AuditSearchBox(query: String, onQueryChange: (String) -> Unit) {
             value = query,
             onValueChange = onQueryChange,
             singleLine = true,
-            textStyle = TextStyle(color = if (focused) Color.Black else Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold),
+            textStyle = YumeBaseTextStyle.copy(
+                color = if (focused) Color.Black else Color.White,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.SemiBold
+            ),
             modifier = Modifier.fillMaxWidth().focusRequester(requester).onFocusChanged { focused = it.isFocused },
             decorationBox = { inner ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -535,7 +541,7 @@ private fun AuditKeyboardKey(text: String, width: Dp, onClick: () -> Unit) {
         focusedBackground = Color.White
     ) { focused ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(text, color = if (focused) Color.Black else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            TvControlLabel(text, color = if (focused) Color.Black else Color.White, fontSize = 14.sp)
         }
     }
 }
@@ -551,7 +557,12 @@ private fun AuditActionKey(text: String, modifier: Modifier, onClick: () -> Unit
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(text, color = if (focused) Color.Black else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black, maxLines = 1)
+        TvControlLabel(
+            text,
+            color = if (focused) Color.Black else Color.White,
+            fontSize = 14.sp,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 7.dp)
+        )
     }
 }
 
@@ -565,7 +576,12 @@ private fun AuditPill(text: String, selected: Boolean, onClick: () -> Unit) {
         focusedBackground = Color.White
     ) { focused ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(if (selected) "✓ $text" else text, color = if (focused) Color.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            TvControlLabel(
+                if (selected) "✓ $text" else text,
+                color = if (focused) Color.Black else Color.White,
+                fontSize = 13.sp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 9.dp)
+            )
         }
     }
 }
@@ -595,7 +611,7 @@ fun AuditSettingsScreen(
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
-            title = { Text("Clear watch history?", color = Color.White, fontWeight = FontWeight.Black) },
+            title = { Text("Clear watch history?", color = Color.White, fontWeight = FontWeight.Bold) },
             text = { Text("This removes Continue Watching and all locally saved episode progress. This cannot be undone.", color = MiruroColors.Muted) },
             confirmButton = {
                 PrimaryButton("Clear history", Modifier.width(180.dp)) {
@@ -613,7 +629,7 @@ fun AuditSettingsScreen(
         contentPadding = PaddingValues(bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { Text("Settings", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black) }
+        item { Text("Settings", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold) }
         item { AuditSettingsHeader("Playback") }
         item {
             AuditSettingChoiceRow("Preferred audio", "Used when both Sub and Dub are available.", listOf("SUB" to "Sub", "DUB" to "Dub"), settings.preferredAudio.name) {
@@ -660,7 +676,7 @@ fun AuditSettingsScreen(
 
 @Composable
 private fun AuditSettingsHeader(text: String) {
-    Text(text.uppercase(Locale.ROOT), color = MiruroColors.AccentSoft, fontSize = 14.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 12.dp))
+    Text(text.uppercase(Locale.ROOT), color = MiruroColors.AccentSoft, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
 }
 
 @Composable
@@ -688,7 +704,12 @@ private fun AuditSettingChoiceRow(
                     focusedBackground = Color.White
                 ) { focused ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(if (selected == value) "✓ ${option.second}" else option.second, color = if (focused) Color.Black else Color.White, fontWeight = FontWeight.Bold, maxLines = 1)
+                        TvControlLabel(
+                            if (selected == value) "✓ ${option.second}" else option.second,
+                            color = if (focused) Color.Black else Color.White,
+                            fontSize = 14.sp,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp)
+                        )
                     }
                 }
             }
@@ -756,7 +777,7 @@ fun AuditDetailsScreen(
                 item {
                     Column(Modifier.padding(horizontal = AuditSafeX, vertical = 18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Episodes", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black)
+                            Text("Episodes", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.width(16.dp))
                             Text("$watchedCount/${unique.size} watched", color = Color.White.copy(.62f), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
@@ -824,7 +845,7 @@ private fun AuditDetailsHero(
                 Text(listOfNotNull(details.year?.toString(), "${details.seasons.size} season${if (details.seasons.size == 1) "" else "s"}").joinToString(" • "), color = Color.White.copy(.76f), fontSize = 14.sp)
             }
             Spacer(Modifier.height(8.dp))
-            Text(details.title, color = Color.White, fontSize = 38.sp, lineHeight = 41.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(details.title, color = Color.White, fontSize = 38.sp, lineHeight = 41.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(10.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(details.genres.take(4), key = { it }) { GenreChip(it) } }
             Spacer(Modifier.height(10.dp))
@@ -846,8 +867,16 @@ private fun AuditEpisodeCard(episode: AnimeEpisode, progress: WatchProgress?, mo
         Column {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MiruroColors.CardHigh)) {
                 episode.thumbnailUrl?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
-                Box(Modifier.align(Alignment.TopStart).padding(9.dp).clip(RoundedCornerShape(5.dp)).background(Color.Black.copy(.75f)).padding(horizontal = 9.dp, vertical = 5.dp)) {
-                    Text(episode.audioType.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(9.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color.Black.copy(.75f))
+                        .padding(horizontal = 9.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TvBadgeLabel(episode.audioType.name, color = Color.White, fontSize = 11.sp)
                 }
                 progress?.let {
                     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0xFF333333)))
@@ -855,7 +884,7 @@ private fun AuditEpisodeCard(episode: AnimeEpisode, progress: WatchProgress?, mo
                 }
             }
             Column(Modifier.padding(12.dp)) {
-                Text("E${episode.episodeNumber} • ${episode.audioType.name}", color = if (focused) Color.Black else MiruroColors.AccentSoft, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                Text("E${episode.episodeNumber} • ${episode.audioType.name}", color = if (focused) Color.Black else MiruroColors.AccentSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Text(episode.title ?: "Episode ${episode.episodeNumber}", color = if (focused) Color.Black else Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -890,7 +919,7 @@ fun AuditEpisodeDetailsScreen(
                     episode.thumbnailUrl?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
                 }
                 Column(Modifier.weight(1.15f)) {
-                    Text("Season ${episode.seasonNumber} • Episode ${episode.episodeNumber}", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black)
+                    Text("Season ${episode.seasonNumber} • Episode ${episode.episodeNumber}", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     Text(episode.title ?: "Episode ${episode.episodeNumber}", color = Color.White.copy(.76f), fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.height(16.dp))
@@ -900,7 +929,7 @@ fun AuditEpisodeDetailsScreen(
         }
         if (episode.sourceCandidates.isNotEmpty()) {
             item {
-                Text("Available providers", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                Text("Available providers", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(10.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(providers, key = { it }) { provider ->

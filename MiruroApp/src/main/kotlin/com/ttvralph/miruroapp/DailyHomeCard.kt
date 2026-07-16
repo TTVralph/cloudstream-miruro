@@ -46,6 +46,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.ui.MiruroColors
+import com.ttvralph.miruroapp.ui.TvBadgeLabel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -162,9 +163,10 @@ internal fun DailyHomeCard(
                     .padding(8.dp)
                     .clip(RoundedCornerShape(5.dp))
                     .background(if (label.startsWith("NEW")) MiruroColors.Accent else Color.Black.copy(alpha = 0.78f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                TvBadgeLabel(label, color = Color.White, fontSize = 10.sp)
             }
         }
 

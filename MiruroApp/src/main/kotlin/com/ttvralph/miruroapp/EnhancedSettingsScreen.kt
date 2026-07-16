@@ -25,13 +25,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ttvralph.miruroapp.data.SettingsStore
 import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.SecondaryButton
+import com.ttvralph.miruroapp.ui.TvControlLabel
 import kotlinx.coroutines.launch
 
 @Composable
@@ -65,7 +65,7 @@ fun EnhancedSettingsScreen(
                     "Player & accessibility",
                     color = Color.White,
                     fontSize = 20.sp,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.Bold
                 )
                 Text(
                     "Defaults are saved separately for each local profile.",
@@ -182,7 +182,7 @@ private fun PlayerSettingChoices(
             .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
             .padding(12.dp)
     ) {
-        Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Black)
+        Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         Text(description, color = MiruroColors.Subtle, fontSize = 11.sp, lineHeight = 14.sp)
         Spacer(Modifier.height(8.dp))
         options.chunked(3).forEach { row ->
@@ -199,13 +199,11 @@ private fun PlayerSettingChoices(
                         focusedBackground = Color.White
                     ) { focused ->
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(
-                                if (selected == option) "✓ $option" else option,
+                            TvControlLabel(
+                                text = if (selected == option) "✓ $option" else option,
                                 color = if (focused) Color.Black else Color.White,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 7.dp)
                             )
                         }
                     }
@@ -231,7 +229,7 @@ private fun PlayerSettingToggle(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Black)
+            Text(title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Text(description, color = MiruroColors.Subtle, fontSize = 11.sp, lineHeight = 14.sp)
         }
         SecondaryButton(

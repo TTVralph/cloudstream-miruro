@@ -46,7 +46,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,6 +62,8 @@ import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.PrimaryButton
 import com.ttvralph.miruroapp.ui.SecondaryButton
 import com.ttvralph.miruroapp.ui.StateMessage
+import com.ttvralph.miruroapp.ui.TvControlLabel
+import com.ttvralph.miruroapp.ui.YumeBaseTextStyle
 import java.util.Calendar
 import kotlinx.coroutines.delay
 
@@ -112,7 +113,7 @@ fun AdvancedSearchScreen(
                     "Advanced Search",
                     color = Color.White,
                     fontSize = (if (settings.largeUiText) 37 else 32).sp,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.Bold
                 )
                 Text(
                     "Search alternate titles and combine detailed AniList filters.",
@@ -164,7 +165,7 @@ fun AdvancedSearchScreen(
                     "Results",
                     color = Color.White,
                     fontSize = (if (settings.largeUiText) 31 else 27).sp,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.weight(1f))
                 if (filters.page > 1) {
@@ -265,18 +266,16 @@ private fun AdvancedFiltersButton(
             modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "Advanced filters",
+            TvControlLabel(
+                text = "Advanced filters",
                 color = if (focused) Color.Black else Color.White,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Black
+                fontSize = 15.sp
             )
             Spacer(Modifier.weight(1f))
-            Text(
-                if (selectedCount == 0) "Open  ›" else "$selectedCount selected  ›",
+            TvControlLabel(
+                text = if (selectedCount == 0) "Open  ›" else "$selectedCount selected  ›",
                 color = if (focused) Color.Black else MiruroColors.AccentSoft,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
+                fontSize = 13.sp
             )
         }
     }
@@ -309,10 +308,10 @@ private fun AdvancedSearchBox(
             value = query,
             onValueChange = onQueryChange,
             singleLine = true,
-            textStyle = TextStyle(
+            textStyle = YumeBaseTextStyle.copy(
                 color = if (focused) Color.Black else Color.White,
                 fontSize = (if (settings.largeUiText) 23 else 20).sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.SemiBold
             ),
             modifier = Modifier.fillMaxWidth().focusRequester(requester).onFocusChanged { focused = it.isFocused },
             decorationBox = { inner ->
@@ -374,11 +373,10 @@ private fun AdvancedKeyboard(
                             ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                letter.toString(),
+                            TvControlLabel(
+                                text = letter.toString(),
                                 color = if (focused) Color.Black else Color.White,
-                                fontSize = (if (settings.largeUiText) 16 else 14).sp,
-                                fontWeight = FontWeight.Bold
+                                fontSize = (if (settings.largeUiText) 16 else 14).sp
                             )
                         }
                     }
@@ -469,7 +467,7 @@ private fun AdvancedFilterOverlay(
                         "Advanced Filters",
                         color = Color.White,
                         fontSize = (if (settings.largeUiText) 31 else 27).sp,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
                         "Include and exclude genres, then narrow by release, score, length, source, studio, and availability.",
@@ -701,7 +699,7 @@ private fun FilterSection(
             title,
             color = Color.White,
             fontSize = (if (settings.largeUiText) 18 else 16).sp,
-            fontWeight = FontWeight.Black
+            fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(9.dp))
         content()

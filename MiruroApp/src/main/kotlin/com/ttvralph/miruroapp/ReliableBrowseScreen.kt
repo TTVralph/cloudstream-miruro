@@ -119,7 +119,7 @@ fun ReliableBrowseScreen(
             title,
             color = Color.White,
             fontSize = 30.sp,
-            fontWeight = FontWeight.Black,
+            fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 24.dp, bottom = 16.dp)
         )
 
