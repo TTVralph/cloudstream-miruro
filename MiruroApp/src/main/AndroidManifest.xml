@@ -3,7 +3,7 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
-    <application android:theme="@style/AppTheme" android:label="@string/app_name" android:icon="@drawable/yume_google_tv_icon" android:roundIcon="@drawable/yume_google_tv_icon" android:banner="@drawable/yume_tv_banner" android:usesCleartextTraffic="true" android:resizeableActivity="true">
+    <application android:theme="@style/AppTheme" android:label="@string/app_name" android:icon="@drawable/yume_google_tv_icon_centered" android:roundIcon="@drawable/yume_google_tv_icon_centered" android:banner="@drawable/yume_tv_banner" android:usesCleartextTraffic="true" android:resizeableActivity="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
