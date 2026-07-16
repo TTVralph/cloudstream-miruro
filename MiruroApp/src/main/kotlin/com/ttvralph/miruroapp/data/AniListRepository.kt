@@ -152,8 +152,13 @@ class AniListRepository {
         )
 
     /**
-     * Returns title metadata and lightweight season placeholders after one AniList request.
-     * Episode/provider calls are deliberately deferred until a season is opened.
+     * Returns metadata for the exact AniList media entry the user selected.
+     *
+     * AniList models seasons, cours, films, recaps, and compilation releases as separate
+     * media entries. A details page must therefore keep the selected ID as its only playback
+     * season. Pulling a direct PREQUEL/SEQUEL into this list can relabel an older entry as
+     * "Season 1" and send playback to that entry instead of the title shown on screen.
+     * Episode/provider calls are deliberately deferred until this entry is opened.
      */
     suspend fun detailsShell(id: Int): AnimeDetails {
         detailsShellCache[id]?.let { return it }
@@ -165,19 +170,14 @@ class AniListRepository {
         val root = media.toSeasonEntry()
             ?: error("AniList returned incomplete media details.")
 
-        val seasons = lightweightSeasonChain(root, media).mapIndexed { index, entry ->
-            AnimeSeason(
-                id = entry.id,
-                seasonNumber = index + 1,
-                title = entry.title,
-                year = entry.year,
-                episodes = emptyList(),
-                synopsis = entry.description,
-                episodeCount = entry.episodes,
-                runtimeMinutes = entry.duration,
-                episodesLoaded = false
-            )
-        }
+        val selectedSeason = exactPlaybackSeason(
+            id = root.id,
+            title = root.title,
+            year = root.year,
+            synopsis = root.description,
+            episodeCount = root.episodes,
+            runtimeMinutes = root.duration
+        )
 
         val result = AnimeDetails(
             id = id,
@@ -192,21 +192,7 @@ class AniListRepository {
             rating = media.path("averageScore").asInt(0).takeIf { it > 0 }
                 ?.let { "$it% AniList" },
             genres = media.path("genres").mapNotNull { it.asText(null) },
-            seasons = seasons.ifEmpty {
-                listOf(
-                    AnimeSeason(
-                        id = root.id,
-                        seasonNumber = 1,
-                        title = root.title,
-                        year = root.year,
-                        episodes = emptyList(),
-                        synopsis = root.description,
-                        episodeCount = root.episodes,
-                        runtimeMinutes = root.duration,
-                        episodesLoaded = false
-                    )
-                )
-            }
+            seasons = listOf(selectedSeason)
         )
         detailsShellCache[id] = result
         return result
@@ -338,24 +324,6 @@ class AniListRepository {
         return values
     }
 
-    private fun lightweightSeasonChain(root: SeasonEntry, media: JsonNode): List<SeasonEntry> {
-        if (root.format !in TV_FORMATS || root.isLongRunning()) return listOf(root)
-        val related = media.path("relations").path("edges")
-            .mapNotNull { edge ->
-                val relation = text(edge, "relationType")
-                val node = edge.path("node")
-                if (relation !in setOf("PREQUEL", "SEQUEL")) return@mapNotNull null
-                if (text(node, "type") != "ANIME") return@mapNotNull null
-                node.toSeasonEntry()
-            }
-            .filter { it.format in TV_FORMATS && sameFranchise(root.title, it.title) }
-
-        return (related + root)
-            .distinctBy { it.id }
-            .sortedWith(compareBy<SeasonEntry> { it.sortKey }.thenBy { it.id })
-            .take(MAX_SEASON_CHAIN)
-    }
-
     private fun resolvedEpisodeCount(
         officialCount: Int?,
         episodeData: Map<Int, EpisodeMetadataWithSources>
@@ -431,11 +399,8 @@ class AniListRepository {
             description = clean(text(this, "description")),
             episodes = path("episodes").asInt(0).takeIf { it > 0 },
             duration = path("duration").asInt(0).takeIf { it > 0 },
-            format = text(this, "format"),
             year = path("seasonYear").asInt(0).takeIf { it > 0 }
-                ?: path("startDate").path("year").asInt(0).takeIf { it > 0 },
-            month = path("startDate").path("month").asInt(12),
-            day = path("startDate").path("day").asInt(31)
+                ?: path("startDate").path("year").asInt(0).takeIf { it > 0 }
         )
     }
 
@@ -537,54 +502,20 @@ class AniListRepository {
             else -> "FALL"
         }
 
-    private fun titleTokens(value: String): Set<String> = value
-        .lowercase(Locale.ROOT)
-        .replace(Regex("[^a-z0-9]+"), " ")
-        .split(Regex("\\s+"))
-        .filter {
-            it.isNotBlank() && it !in setOf(
-                "the", "season", "part", "movie", "ova", "special", "final", "cour", "series"
-            ) && it.toIntOrNull() == null
-        }
-        .toSet()
-
-    private fun sameFranchise(first: String, second: String): Boolean {
-        val firstTokens = titleTokens(first)
-        val secondTokens = titleTokens(second)
-        if (firstTokens.isEmpty() || secondTokens.isEmpty()) return false
-        val shorterSize = minOf(firstTokens.size, secondTokens.size)
-        val overlap = firstTokens.intersect(secondTokens).size
-        val required = if (shorterSize == 1) 1 else 2
-        return overlap >= required && overlap.toDouble() / shorterSize >= 0.6
-    }
-
     private data class SeasonEntry(
         val id: Int,
         val title: String,
         val description: String?,
         val episodes: Int?,
         val duration: Int?,
-        val format: String?,
-        val year: Int?,
-        val month: Int,
-        val day: Int
-    ) {
-        val sortKey: Int = (year ?: 9999) * 10000 + month * 100 + day
-
-        fun isLongRunning(): Boolean = (episodes ?: 0) >= 100 ||
-            title.lowercase(Locale.ROOT).let { value ->
-                listOf("one piece", "detective conan", "case closed", "pokemon", "boruto", "naruto")
-                    .any(value::contains)
-            }
-    }
+        val year: Int?
+    )
 
     companion object {
         private const val HOME_CACHE_MS = 5 * 60 * 1000L
         private const val MAX_EPISODES_PER_SEASON = 1500
         private const val MAX_ALLOWED_EPISODE_GAP = 1
-        private const val MAX_SEASON_CHAIN = 8
         private const val MAX_CONCURRENT_SEASON_LOADS = 3
-        private val TV_FORMATS = setOf("TV", "TV_SHORT")
 
         private const val MEDIA_CARD_FIELDS = "id title{romaji english native} coverImage{large extraLarge} bannerImage format seasonYear startDate{year} averageScore"
 
@@ -598,7 +529,7 @@ class AniListRepository {
 
         private const val PAGE_QUERY = "query(\$page:Int,\$perPage:Int,\$search:String,\$sort:[MediaSort],\$status:MediaStatus,\$season:MediaSeason,\$seasonYear:Int,\$format:MediaFormat,\$genreIn:[String]){Page(page:\$page,perPage:\$perPage){media(search:\$search,type:ANIME,sort:\$sort,status:\$status,season:\$season,seasonYear:\$seasonYear,format:\$format,genre_in:\$genreIn,isAdult:false){$MEDIA_CARD_FIELDS}}}"
 
-        private const val MEDIA_QUERY = "query(\$id:Int){Media(id:\$id,type:ANIME){id title{romaji english native} description(asHtml:false) coverImage{large extraLarge} bannerImage format episodes duration averageScore genres status seasonYear startDate{year month day} relations{edges{relationType node{id type format title{romaji english native} description(asHtml:false) episodes duration seasonYear startDate{year month day}}}}}}"
+        private const val MEDIA_QUERY = "query(\$id:Int){Media(id:\$id,type:ANIME){id title{romaji english native} description(asHtml:false) coverImage{large extraLarge} bannerImage format episodes duration averageScore genres status seasonYear startDate{year}}}"
 
         private const val AIRING_QUERY = "query(\$mediaId:Int){Page(page:1,perPage:200){airingSchedules(mediaId:\$mediaId,sort:EPISODE){episode airingAt}}}"
     }

@@ -152,10 +152,10 @@ internal fun DiscoveryMediaCard(
                 Text(
                     item.title,
                     color = Color.White,
-                    fontSize = (if (settings.largeUiText) 16 else 14).sp,
-                    lineHeight = (if (settings.largeUiText) 20 else 17).sp,
+                    fontSize = (if (settings.largeUiText) 16 else if (landscape) 13 else 14).sp,
+                    lineHeight = (if (settings.largeUiText) 19 else if (landscape) 16 else 17).sp,
                     fontWeight = FontWeight.Bold,
-                    maxLines = if (landscape) 1 else 2,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 subtitle?.takeIf { it.isNotBlank() }?.let {
