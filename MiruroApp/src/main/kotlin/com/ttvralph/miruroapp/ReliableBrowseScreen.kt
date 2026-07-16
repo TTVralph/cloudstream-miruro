@@ -161,7 +161,12 @@ fun ReliableBrowseScreen(
             ),
             horizontalArrangement = Arrangement.spacedBy(20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
-            contentPadding = PaddingValues(bottom = 86.dp),
+            contentPadding = PaddingValues(
+                start = 9.dp,
+                top = 10.dp,
+                end = 9.dp,
+                bottom = 86.dp
+            ),
             modifier = Modifier.weight(1f).fillMaxWidth()
         ) {
             itemsIndexed(visibleItems, key = { _, anime -> anime.id }) { _, anime ->

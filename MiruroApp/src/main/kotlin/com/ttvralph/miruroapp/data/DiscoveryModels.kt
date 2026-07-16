@@ -1,7 +1,7 @@
 package com.ttvralph.miruroapp.data
 
 enum class DiscoveryMode(val label: String, val description: String) {
-    SURPRISE_ME("Surprise Me", "A broad pick from popular and trending anime."),
+    SURPRISE_ME("Surprise Me", "Choose from the full anime catalogue, not just trending titles."),
     CONTINUE_SOMETHING("Continue Something", "Resume one of your unfinished episodes."),
     PICK_A_MOVIE("Pick a Movie", "Choose a highly rated anime movie."),
     ONE_EPISODE_WATCH("One-Episode Watch", "Choose a movie, OVA, or special that can be finished quickly."),

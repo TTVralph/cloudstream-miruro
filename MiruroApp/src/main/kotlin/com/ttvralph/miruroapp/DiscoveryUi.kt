@@ -3,6 +3,7 @@ package com.ttvralph.miruroapp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -84,14 +84,20 @@ internal fun DiscoveryMediaCard(
     modifier: Modifier = Modifier,
     width: Dp = 180.dp,
     height: Dp = 255.dp,
+    landscape: Boolean = false,
     subtitle: String? = null,
     badge: String? = null,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(9.dp)
+    val cardModifier = if (landscape) {
+        modifier.fillMaxWidth().aspectRatio(16f / 9f)
+    } else {
+        modifier.width(width).height(height)
+    }
     FocusableSurface(
         onClick = onClick,
-        modifier = modifier.width(width).height(height),
+        modifier = cardModifier,
         shape = shape,
         unfocusedBackground = if (settings.highContrastUi) Color.Black else Color(0xFF171717),
         focusedBackground = Color.White
@@ -99,11 +105,6 @@ internal fun DiscoveryMediaCard(
         Box(
             Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    val value = if (focused && !settings.reducedUiMotion) 1.025f else 1f
-                    scaleX = value
-                    scaleY = value
-                }
                 .clip(shape)
                 .then(
                     if (settings.highContrastUi || focused) {
@@ -116,7 +117,7 @@ internal fun DiscoveryMediaCard(
                 )
         ) {
             AsyncImage(
-                model = item.posterUrl ?: item.bannerUrl,
+                model = if (landscape) item.bannerUrl ?: item.posterUrl else item.posterUrl ?: item.bannerUrl,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -152,8 +153,9 @@ internal fun DiscoveryMediaCard(
                     item.title,
                     color = Color.White,
                     fontSize = (if (settings.largeUiText) 16 else 14).sp,
+                    lineHeight = (if (settings.largeUiText) 20 else 17).sp,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 2,
+                    maxLines = if (landscape) 1 else 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 subtitle?.takeIf { it.isNotBlank() }?.let {

@@ -319,6 +319,7 @@ private fun DiscoveryPickHero(
                         value.anime?.title ?: "Nothing to resume yet",
                         color = Color.White,
                         fontSize = (if (settings.largeUiText) 36 else 31).sp,
+                        lineHeight = (if (settings.largeUiText) 42 else 36).sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
