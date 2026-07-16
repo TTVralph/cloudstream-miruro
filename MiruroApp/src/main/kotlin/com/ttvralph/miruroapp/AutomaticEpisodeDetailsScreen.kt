@@ -126,7 +126,7 @@ fun AutomaticEpisodeDetailsScreen(
                         "Season ${episode.seasonNumber} • Episode ${episode.episodeNumber}",
                         color = Color.White,
                         fontSize = 27.sp,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -151,7 +151,7 @@ fun AutomaticEpisodeDetailsScreen(
                         "Synopsis",
                         color = Color.White,
                         fontSize = 18.sp,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(7.dp))
                     Text(
@@ -182,7 +182,7 @@ fun AutomaticEpisodeDetailsScreen(
                     "Available providers",
                     color = Color.White,
                     fontSize = 20.sp,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(10.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

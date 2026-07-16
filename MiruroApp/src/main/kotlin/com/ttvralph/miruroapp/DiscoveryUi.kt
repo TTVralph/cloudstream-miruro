@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -32,6 +34,8 @@ import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.data.AppSettings
 import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.MiruroColors
+import com.ttvralph.miruroapp.ui.TvBadgeLabel
+import com.ttvralph.miruroapp.ui.TvControlLabel
 
 @Composable
 internal fun DiscoveryChoice(
@@ -63,13 +67,10 @@ internal fun DiscoveryChoice(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                if (selected) "✓ $text" else text,
+            TvControlLabel(
+                text = if (selected) "✓ $text" else text,
                 color = if (focused) Color.Black else Color.White,
                 fontSize = (if (settings.largeUiText) 15 else 13).sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 13.dp)
             )
         }
@@ -130,11 +131,10 @@ internal fun DiscoveryMediaCard(
                     )
             )
             badge?.let { value ->
-                Text(
-                    value,
+                TvBadgeLabel(
+                    text = value,
                     color = Color.White,
                     fontSize = 10.sp,
-                    fontWeight = FontWeight.Black,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(8.dp)
@@ -152,7 +152,7 @@ internal fun DiscoveryMediaCard(
                     item.title,
                     color = Color.White,
                     fontSize = (if (settings.largeUiText) 16 else 14).sp,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -186,14 +186,14 @@ internal fun DiscoverySectionHeading(
             title,
             color = Color.White,
             fontSize = (if (settings.largeUiText) 28 else 24).sp,
-            fontWeight = FontWeight.Black
+            fontWeight = FontWeight.Bold
         )
         eyebrow?.let {
             Text(
                 it,
                 color = MiruroColors.AccentSoft,
                 fontSize = (if (settings.largeUiText) 13 else 11).sp,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         }
@@ -209,6 +209,7 @@ internal fun DiscoveryInfoTile(
 ) {
     Column(
         modifier
+            .heightIn(min = if (settings.largeUiText) 82.dp else 72.dp)
             .background(
                 if (settings.highContrastUi) Color.Black else Color.White.copy(alpha = 0.055f),
                 RoundedCornerShape(10.dp)
@@ -218,22 +219,27 @@ internal fun DiscoveryInfoTile(
                     Modifier.border(1.dp, Color.White.copy(alpha = 0.72f), RoundedCornerShape(10.dp))
                 } else Modifier
             )
-            .padding(12.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            label.uppercase(),
+        TvBadgeLabel(
+            text = label.uppercase(),
             color = MiruroColors.AccentSoft,
             fontSize = 10.sp,
-            fontWeight = FontWeight.Black
+            modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(5.dp))
         Text(
             value,
             color = Color.White,
             fontSize = (if (settings.largeUiText) 16 else 14).sp,
-            fontWeight = FontWeight.Bold,
+            lineHeight = (if (settings.largeUiText) 20 else 18).sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
             maxLines = 2,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

@@ -40,7 +40,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -82,7 +81,7 @@ fun PrimaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> Un
         Row(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = if (focused) Color.Black else Color.White, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(8.dp))
-            Text(text, color = if (focused) Color.Black else Color.White, fontSize = 16.sp, fontWeight = FontWeight.Black, maxLines = 1)
+            TvControlLabel(text, color = if (focused) Color.Black else Color.White, fontSize = 16.sp)
         }
     }
 }
@@ -106,32 +105,29 @@ fun MinimalActionButton(
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.035f else 1f, label = "minimalActionFocusScale")
-    Column(
+    Box(
         modifier = modifier
             .height(48.dp)
             .scale(scale)
             .clip(RoundedCornerShape(5.dp))
             .background(if (focused) Color.White else Color.Transparent)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .padding(horizontal = 14.dp)
     ) {
-        Text(
-            text,
+        TvControlLabel(
+            text = text,
             color = when {
                 focused -> Color.Black
                 selected -> MiruroColors.AccentSoft
                 else -> MiruroColors.Text
             },
             fontSize = 14.sp,
-            fontWeight = if (focused || selected) FontWeight.Black else FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            modifier = Modifier.align(Alignment.Center).fillMaxWidth()
         )
-        Spacer(Modifier.height(4.dp))
         Box(
             Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 5.dp)
                 .width(if (focused || selected) 28.dp else 0.dp)
                 .height(3.dp)
                 .clip(RoundedCornerShape(99.dp))
@@ -180,31 +176,28 @@ private fun NavPill(label: String, selected: Boolean, onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.06f else 1f, label = "navFocusScale")
-    Column(
+    Box(
         modifier = Modifier
             .height(48.dp)
             .width(if (label.length > 8) 150.dp else 88.dp)
             .scale(scale)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .padding(horizontal = 4.dp)
     ) {
-        Text(
-            label,
+        TvControlLabel(
+            text = label,
             color = when {
                 focused -> MiruroColors.AccentSoft
                 selected -> MiruroColors.Text
                 else -> MiruroColors.Muted
             },
             fontSize = 16.sp,
-            fontWeight = if (selected || focused) FontWeight.Black else FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            modifier = Modifier.align(Alignment.Center).fillMaxWidth()
         )
-        Spacer(Modifier.height(5.dp))
         Box(
             Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 4.dp)
                 .width(if (selected || focused) 34.dp else 0.dp)
                 .height(3.dp)
                 .clip(RoundedCornerShape(99.dp))
@@ -236,14 +229,14 @@ private fun AvatarDot() {
 @Composable
 fun SectionTitle(text: String, badge: String? = null, trailing: @Composable (() -> Unit)? = null) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 16.dp)) {
-        Text(text, color = MiruroColors.Text, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.7).sp)
+        Text(text, color = MiruroColors.Text, fontSize = 24.sp, fontWeight = YumeFontWeight.Display, letterSpacing = (-0.35).sp)
         if (badge != null) {
             Spacer(Modifier.width(10.dp))
             Text(
                 badge,
                 color = MiruroColors.AccentSoft,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Black,
+                fontWeight = YumeFontWeight.Eyebrow,
                 letterSpacing = 0.5.sp
             )
         }
@@ -254,8 +247,14 @@ fun SectionTitle(text: String, badge: String? = null, trailing: @Composable (() 
 
 @Composable
 fun Badge(text: String, container: Color = MiruroColors.Accent, content: Color = Color.White) {
-    Box(modifier = Modifier.clip(RoundedCornerShape(7.dp)).background(container, RoundedCornerShape(7.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
-        Text(text.uppercase(Locale.ROOT), color = content, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(7.dp))
+            .background(container, RoundedCornerShape(7.dp))
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        TvBadgeLabel(text.uppercase(Locale.ROOT), color = content, fontSize = 12.sp)
     }
 }
 
@@ -263,14 +262,26 @@ fun Badge(text: String, container: Color = MiruroColors.Accent, content: Color =
 fun GenreChip(text: String, selected: Boolean = false, onClick: (() -> Unit)? = null) {
     val chipContent: @Composable (Boolean) -> Unit = { focused ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(text, color = if (selected || focused) Color.White else MiruroColors.Muted, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            TvControlLabel(
+                text,
+                color = if (selected || focused) Color.White else MiruroColors.Muted,
+                fontSize = 14.sp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+            )
         }
     }
     if (onClick != null) {
         FocusableSurface(onClick = onClick, modifier = Modifier.height(44.dp).width((text.length * 9).coerceIn(70, 150).dp), shape = RoundedCornerShape(999.dp), unfocusedBackground = if (selected) MiruroColors.Accent else Color.White.copy(alpha = 0.045f), focusedBackground = if (selected) MiruroColors.AccentSoft else Color.White.copy(alpha = 0.14f), content = chipContent)
     } else {
-        Box(modifier = Modifier.clip(RoundedCornerShape(999.dp)).background(if (selected) MiruroColors.Accent else Color.White.copy(alpha = 0.045f), RoundedCornerShape(999.dp)).border(1.dp, if (selected) Color.Transparent else MiruroColors.Border, RoundedCornerShape(999.dp)).padding(horizontal = 14.dp, vertical = 8.dp)) {
-            Text(text, color = if (selected) Color.White else MiruroColors.Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(if (selected) MiruroColors.Accent else Color.White.copy(alpha = 0.045f), RoundedCornerShape(999.dp))
+                .border(1.dp, if (selected) Color.Transparent else MiruroColors.Border, RoundedCornerShape(999.dp))
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            TvControlLabel(text, color = if (selected) Color.White else MiruroColors.Muted, fontSize = 13.sp)
         }
     }
 }
@@ -318,7 +329,7 @@ fun RatingLabel(score: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Filled.Star, contentDescription = null, tint = MiruroColors.Accent2, modifier = Modifier.size(17.dp))
         Spacer(Modifier.width(5.dp))
-        Text(score, color = MiruroColors.Accent2, fontSize = 15.sp, fontWeight = FontWeight.Black)
+        Text(score, color = MiruroColors.Accent2, fontSize = 15.sp, fontWeight = YumeFontWeight.Title)
     }
 }
 
@@ -341,7 +352,7 @@ fun PosterCard(
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.88f)))))
             if (rank != null) SmallBadge(rank, container = if (selected || focused) MiruroColors.Accent else MiruroColors.CardHigh, modifier = Modifier.align(Alignment.TopStart).padding(10.dp))
             Column(modifier = Modifier.align(Alignment.BottomStart).padding(14.dp)) {
-                Text(item.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = FontFamily.Serif)
+                Text(item.title, color = Color.White, fontWeight = YumeFontWeight.Title, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(listOfNotNull(item.year?.toString(), item.type.name.takeIf { it != "UNKNOWN" }).joinToString(" • "), color = MiruroColors.Muted, fontSize = 12.sp, maxLines = 1)
             }
         }
@@ -356,7 +367,7 @@ fun LandscapeCard(item: AnimeItem, width: Dp = 340.dp, height: Dp = 190.dp, rank
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.86f)))))
             rank?.let { Text(it, color = if (it == "1") MiruroColors.Accent else Color.White.copy(alpha = 0.25f), fontSize = 76.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 4.dp)) }
             Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = if (rank == null) 18.dp else 72.dp, end = 16.dp, bottom = 16.dp)) {
-                Text(item.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = FontFamily.Serif)
+                Text(item.title, color = Color.White, fontSize = 18.sp, fontWeight = YumeFontWeight.Title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     item.score?.let {
                         RatingLabel(String.format(Locale.US, "%.1f", it / 10f))
@@ -386,7 +397,13 @@ private fun CardImage(url: String?, contentDescription: String?) {
 
 @Composable
 private fun SmallBadge(text: String, container: Color, modifier: Modifier) {
-    Box(modifier.clip(RoundedCornerShape(7.dp)).background(container, RoundedCornerShape(7.dp)).padding(horizontal = 10.dp, vertical = 5.dp)) {
-        Text(text.uppercase(Locale.ROOT), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black)
+    Box(
+        modifier
+            .clip(RoundedCornerShape(7.dp))
+            .background(container, RoundedCornerShape(7.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        TvBadgeLabel(text.uppercase(Locale.ROOT), color = Color.White, fontSize = 12.sp)
     }
 }

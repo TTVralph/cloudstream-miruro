@@ -46,6 +46,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.ttvralph.miruroapp.data.AnimeItem
 import com.ttvralph.miruroapp.ui.MiruroColors
+import com.ttvralph.miruroapp.ui.TvControlLabel
 import java.util.Locale
 
 @Composable
@@ -139,7 +140,7 @@ internal fun ReliableHero(
             color = Color.White,
             fontSize = 38.sp,
             lineHeight = 41.sp,
-            fontWeight = FontWeight.Black,
+            fontWeight = FontWeight.Bold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -220,11 +221,11 @@ internal fun ReliableHeroButton(
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text,
+        TvControlLabel(
+            text = text,
             color = if (primary || focused) Color.Black else Color.White,
             fontSize = 16.sp,
-            fontWeight = FontWeight.Bold
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)
         )
     }
 }
@@ -236,7 +237,7 @@ internal fun ReliableHomeRow(title: String, content: @Composable () -> Unit) {
             title,
             color = Color.White,
             fontSize = 20.sp,
-            fontWeight = FontWeight.Black,
+            fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = ReliableSafeX)
         )
         content()

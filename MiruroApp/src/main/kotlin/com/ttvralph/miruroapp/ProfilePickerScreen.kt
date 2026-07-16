@@ -56,6 +56,7 @@ import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.Logo
 import com.ttvralph.miruroapp.ui.MiruroColors
 import com.ttvralph.miruroapp.ui.SecondaryButton
+import com.ttvralph.miruroapp.ui.TvControlLabel
 import com.ttvralph.miruroapp.ui.profileThemeColor
 import com.ttvralph.miruroapp.ui.profileThemeSoftColor
 import kotlinx.coroutines.delay
@@ -102,7 +103,7 @@ fun ProfilePickerScreen(
     ) {
         Logo(showTagline = true)
         Spacer(Modifier.height(24.dp))
-        Text("Who's watching?", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black)
+        Text("Who's watching?", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
         Text("Choose a profile to continue", color = MiruroColors.Muted, fontSize = 16.sp)
         Spacer(Modifier.height(24.dp))
@@ -241,7 +242,7 @@ internal fun ProfileEditorOverlay(
                 if (profile == null) "Create profile" else "Edit profile",
                 color = Color.White,
                 fontSize = 30.sp,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
             ProfilePrimaryButton(
@@ -287,10 +288,10 @@ internal fun ProfileEditorOverlay(
                             name.ifBlank { "Enter a profile name" },
                             color = if (focused) Color.Black else if (name.isBlank()) MiruroColors.Subtle else Color.White,
                             fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f)
                         )
-                        Text("Edit", color = if (focused) Color.Black else MiruroColors.AccentSoft, fontSize = 13.sp, fontWeight = FontWeight.Black)
+                        TvControlLabel("Edit", color = if (focused) Color.Black else MiruroColors.AccentSoft, fontSize = 13.sp)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -340,7 +341,7 @@ internal fun ProfileEditorOverlay(
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (themeColorId == id) {
-                                    Text("✓", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                                    Text("✓", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -372,7 +373,7 @@ private fun ProfileNameKeyboardOverlay(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Edit profile name", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
+        Text("Edit profile name", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -457,11 +458,11 @@ private fun ProfilePrimaryButton(text: String, modifier: Modifier = Modifier, on
         focusedBackground = Color.White
     ) { focused ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text,
+            TvControlLabel(
+                text = text,
                 color = if (focused) Color.Black else Color.White,
                 fontSize = 15.sp,
-                fontWeight = FontWeight.Black
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
             )
         }
     }
@@ -481,7 +482,12 @@ private fun ProfileKeyboardKey(
         focusedBackground = Color.White
     ) { focused ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(text, color = if (focused) Color.Black else Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black)
+            TvControlLabel(
+                text,
+                color = if (focused) Color.Black else Color.White,
+                fontSize = 14.sp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            )
         }
     }
 }

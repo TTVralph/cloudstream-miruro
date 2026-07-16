@@ -107,7 +107,7 @@ fun EnhancedPostPlayOverlay(
                 "EPISODE COMPLETE",
                 color = MiruroColors.AccentSoft,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 letterSpacing = 1.2.sp
             )
             Spacer(Modifier.height(7.dp))
@@ -132,7 +132,7 @@ fun EnhancedPostPlayOverlay(
                     "UP NEXT",
                     color = MiruroColors.AccentSoft,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp
                 )
                 Spacer(Modifier.height(5.dp))
@@ -140,7 +140,7 @@ fun EnhancedPostPlayOverlay(
                     nextEpisode.title ?: "Episode ${nextEpisode.episodeNumber}",
                     color = Color.White,
                     fontSize = 34.sp,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -194,7 +194,7 @@ fun EnhancedPostPlayOverlay(
                     "YOU'RE ALL CAUGHT UP",
                     color = MiruroColors.AccentSoft,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp
                 )
                 Spacer(Modifier.height(6.dp))
@@ -202,7 +202,7 @@ fun EnhancedPostPlayOverlay(
                     "No later playable episode is available yet.",
                     color = Color.White,
                     fontSize = 28.sp,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(18.dp))
             }

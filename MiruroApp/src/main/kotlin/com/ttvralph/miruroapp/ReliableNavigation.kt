@@ -4,9 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,7 +19,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -35,7 +32,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +40,7 @@ import com.ttvralph.miruroapp.data.WatchProgress
 import com.ttvralph.miruroapp.ui.FocusableSurface
 import com.ttvralph.miruroapp.ui.Logo
 import com.ttvralph.miruroapp.ui.MiruroColors
+import com.ttvralph.miruroapp.ui.TvControlLabel
 import com.ttvralph.miruroapp.ui.YumeBrand
 
 internal val ReliableSafeX = 52.dp
@@ -155,7 +152,7 @@ private fun ReliableNavText(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    Column(
+    Box(
         modifier = Modifier
             .width(width)
             .height(46.dp)
@@ -170,20 +167,18 @@ private fun ReliableNavText(
                     false
                 }
             }
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
     ) {
-        Text(
-            label,
+        TvControlLabel(
+            text = label,
             color = if (focused || selected) Color.White else Color.White.copy(alpha = 0.68f),
             fontSize = 14.sp,
-            fontWeight = if (focused || selected) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1
+            modifier = Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 4.dp)
         )
-        Spacer(Modifier.height(4.dp))
         Box(
             Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 4.dp)
                 .width(if (selected) 26.dp else 0.dp)
                 .height(3.dp)
                 .clip(RoundedCornerShape(99.dp))
